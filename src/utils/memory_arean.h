@@ -49,6 +49,9 @@ class MemoryArena
         IArenaMember *member = new ArenaMember<T>(allocated);
 
         arenaMembers.push_back(member);
+
+        allocatedSize += allocSize;
+
         return allocated;
     }
     template <typename T, typename... Args>
@@ -65,14 +68,15 @@ class MemoryArena
 
             arenaMembers.push_back(member);
         }
-
+        allocatedSize += allocSize;
         return ret;
     }
-    size_t GetAllocatedSize() { return head_ptr - base_ptr; }
+    size_t GetAllocatedSize() { return allocatedSize; }
 
   private:
     size_t size;
     uint8_t *head_ptr;
     uint8_t *base_ptr;
+    size_t allocatedSize = 0;
     std::vector<IArenaMember *> arenaMembers;
 };

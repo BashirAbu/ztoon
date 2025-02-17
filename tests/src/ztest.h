@@ -27,7 +27,7 @@ extern std::unordered_map<std::string, std::function<void()>> test_funcs;
                                  "Result is \"{}\".\nMessage: {}.\n",          \
                                  __FUNCTION__, __FILE__, __LINE__, #result,    \
                                  fail_msg);                                    \
-        assert(0);                                                             \
+        exit(-1);                                                              \
     }
 #define ASSERT_NE(value, result, fail_msg)                                     \
     if ((value) == (result))                                                   \
@@ -36,7 +36,7 @@ extern std::unordered_map<std::string, std::function<void()>> test_funcs;
                                  "Result is \"{}\".\nMessage: {}.\n",          \
                                  __FUNCTION__, __FILE__, __LINE__, #result,    \
                                  fail_msg);                                    \
-        assert(0);                                                             \
+        exit(-1);                                                              \
     }
 
 #define CALL_TEST(test_name)                                                   \

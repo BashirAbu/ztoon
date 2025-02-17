@@ -1,0 +1,11 @@
+Completion:
+     InsertIncludes: false
+InlayHints:
+     Enabled: No
+Diagnostics:
+   ClangTidy:
+      Add: bugprone-*
+      Remove: modernize-use-trailing-return-type
+      Remove: modernize-avoid-c-arrays      
+      CheckOptions:
+            readability-identifier-naming.VariableCase: CamelCase

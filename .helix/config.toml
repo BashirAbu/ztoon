@@ -1,0 +1,3 @@
+[keys.normal]
+F5 = ":sh debug.bat {file}:{line}"
+S-F5 = ":sh raddbg -q --auto_run"

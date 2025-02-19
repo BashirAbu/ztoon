@@ -3,6 +3,7 @@
 std::unordered_map<std::string, std::function<void()>> test_funcs;
 #include "lexer/lexer_test.cpp"
 #include "memory_arena/memory_arena_test.cpp"
+#include "parser/parser_tests.cpp"
 int main()
 {
     for (auto &testFunc : test_funcs)

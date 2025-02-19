@@ -4,17 +4,8 @@
 #include <string>
 #include <vector>
 // One Megabyte
-#define LEXER_ARENA_SIZE 1024ull * 1024ull
-extern MemoryArena lexerArena;
-
-#define SEPARATE_ARGS(...) SEPARATE_ARGS_IMPL(__VA_ARGS__)
-#define SEPARATE_ARGS_IMPL(first, ...) first, ##__VA_ARGS__
-
-#define MACRO_ENUM(enum_name, ...)                                             \
-    enum class enum_name                                                       \
-    {                                                                          \
-        SEPARATE_ARGS(__VA_ARGS__)                                             \
-    }
+#define ZTOON_ARENA_SIZE 1024ull * 1024ull
+extern MemoryArena gZtoonArena;
 
 enum class TokenType
 {
@@ -54,6 +45,10 @@ enum class TokenType
     DASH,
     PERCENTAGE,
     AS,
+
+    END_OF_FILE,
+    LEFT_PAREN,
+    RIGHT_PAREN,
 };
 template <typename... Types>
 
@@ -75,6 +70,8 @@ bool IsLiteralToken(TokenType type);
 bool IsInteger(TokenType type);
 bool IsSigned(TokenType type);
 bool IsFloat(TokenType type);
+
+bool IsDataType(TokenType type);
 class Token
 {
   public:

@@ -52,7 +52,6 @@ TEST(LexerVariableDeclarationTest)
     ASSERT_EQ(lexer.GetTokens().at(10)->GetType(), TokenType::FLOAT_LITERAL,
               "Token type should be FLOAT_LITERAL");
 }
-
 //---------------------------------------------------------
 // Basic Token Tests
 //---------------------------------------------------------
@@ -65,7 +64,7 @@ TEST(LexerSimpleTokenTest)
     std::string filename = "test1";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 1, "There should be 1 token for input 'i8'");
+    ASSERT_EQ(tokens.size(), 2, "There should be 2 token for input 'i8'");
     Token *token = tokens[0];
     ASSERT_EQ(token->GetType(), TokenType::I8, "Token type should be I8");
     ASSERT_EQ(token->GetLexeme(), "i8", "Token lexeme should be 'i8'");
@@ -82,7 +81,7 @@ TEST(LexerNumericLiteralTest)
     std::string filename = "test_numeric";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 1, "There should be 1 token for numeric literal");
+    ASSERT_EQ(tokens.size(), 2, "There should be 2 token for numeric literal");
     Token *token = tokens[0];
     ASSERT_EQ(token->GetType(), TokenType::INTEGER_LITERAL,
               "Token type should be INTEGER_LITERAL");
@@ -100,7 +99,7 @@ TEST(LexerFloatLiteralTest)
     std::string filename = "test_float";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 1, "There should be 1 token for float literal");
+    ASSERT_EQ(tokens.size(), 2, "There should be 2 token for numeric literal");
     Token *token = tokens[0];
     ASSERT_EQ(token->GetType(), TokenType::FLOAT_LITERAL,
               "Token type should be FLOAT_LITERAL");
@@ -119,7 +118,7 @@ TEST(LexerStringLiteralTest)
     std::string filename = "test_string";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 1, "There should be 1 token for string literal");
+    ASSERT_EQ(tokens.size(), 2, "There should be 2 token for numeric literal");
     Token *token = tokens[0];
     ASSERT_EQ(token->GetType(), TokenType::STRING_LITERAL,
               "Token type should be STRING_LITERAL");
@@ -138,8 +137,7 @@ TEST(LexerCharacterLiteralTest)
     std::string filename = "test_char";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 1,
-              "There should be 1 token for character literal");
+    ASSERT_EQ(tokens.size(), 2, "There should be 2 token for numeric literal");
     Token *token = tokens[0];
     ASSERT_EQ(token->GetType(), TokenType::CHARACTER_LITERAL,
               "Token type should be CHARACTER_LITERAL");
@@ -158,8 +156,8 @@ TEST(LexerBooleanLiteralTest)
     std::string filename = "test_bool";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 2,
-              "There should be 2 tokens for boolean literals");
+    ASSERT_EQ(tokens.size(), 3,
+              "There should be 3 tokens for boolean literals");
     Token *token1 = tokens[0];
     Token *token2 = tokens[1];
     ASSERT_EQ(token1->GetType(), TokenType::TRUE, "First token should be TRUE");
@@ -185,7 +183,7 @@ TEST(LexerIdentifierTest)
     std::string filename = "test_identifier";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 1, "There should be 1 token for identifier");
+    ASSERT_EQ(tokens.size(), 2, "There should be 2 token for identifier");
     Token *token = tokens[0];
     ASSERT_EQ(token->GetType(), TokenType::IDENTIFIER,
               "Token type should be IDENTIFIER");
@@ -203,7 +201,7 @@ TEST(LexerMultipleTokensTest)
     const auto &tokens = lexer.GetTokens();
     // Expected tokens: "i32" (I32), "x" (IDENTIFIER), "=" (EQUAL), "100"
     // (INTEGER_LITERAL), ";" (SEMICOLON)
-    ASSERT_EQ(tokens.size(), 5, "There should be 5 tokens for 'i32 x = 100;'");
+    ASSERT_EQ(tokens.size(), 6, "There should be 6 tokens for 'i32 x = 100;'");
     ASSERT_EQ(tokens[0]->GetType(), TokenType::I32,
               "First token should be I32");
     ASSERT_EQ(tokens[1]->GetType(), TokenType::IDENTIFIER,
@@ -224,7 +222,7 @@ TEST(LexerLineColumnTest)
     std::string filename = "test_line_column";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 2, "There should be 2 tokens for 'i8\\ni16'");
+    ASSERT_EQ(tokens.size(), 3, "There should be 3 tokens for 'i8\\ni16'");
     ASSERT_EQ(tokens[0]->GetType(), TokenType::I8, "First token should be I8");
     ASSERT_EQ(tokens[0]->GetLineNumber(), 1, "First token should be on line 1");
     ASSERT_EQ(tokens[1]->GetType(), TokenType::I16,
@@ -242,7 +240,7 @@ TEST(LexerCommentSkippingTest)
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
     // Comments should be skipped, leaving tokens for "i32" and "123"
-    ASSERT_EQ(tokens.size(), 2,
+    ASSERT_EQ(tokens.size(), 3,
               "Comments should be skipped, only tokens for 'i32' and '123' "
               "should remain");
     ASSERT_EQ(tokens[0]->GetType(), TokenType::I32,
@@ -260,7 +258,7 @@ TEST(LexerMultiLineCommentTest)
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
     // Multi-line comment should be skipped, leaving tokens for "i32" and "456"
-    ASSERT_EQ(tokens.size(), 2, "Multi-line comment should be skipped");
+    ASSERT_EQ(tokens.size(), 3, "Multi-line comment should be skipped");
     ASSERT_EQ(tokens[0]->GetType(), TokenType::I32,
               "First token should be I32");
     ASSERT_EQ(tokens[1]->GetType(), TokenType::INTEGER_LITERAL,
@@ -279,7 +277,7 @@ TEST(LexerEmptyInputTest)
     std::string filename = "empty";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 0, "Empty input should produce 0 tokens");
+    ASSERT_EQ(tokens.size(), 1, "Empty input should produce 1 tokens");
 }
 
 // Test that input containing only whitespace and newlines produces no tokens.
@@ -290,8 +288,8 @@ TEST(LexerWhitespaceOnlyTest)
     std::string filename = "whitespace";
     lexer.Tokenize(input, filename);
     const auto &tokens = lexer.GetTokens();
-    ASSERT_EQ(tokens.size(), 0,
-              "Whitespace only input should produce 0 tokens");
+    ASSERT_EQ(tokens.size(), 1,
+              "Whitespace only input should produce 1 tokens");
 }
 
 // Test a complex input that mixes different token types and comments.

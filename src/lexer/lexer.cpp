@@ -7,8 +7,8 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-MemoryArena lexerArena(LEXER_ARENA_SIZE);
 
+MemoryArena gZtoonArena(ZTOON_ARENA_SIZE);
 bool IsLiteralToken(TokenType type)
 {
     return TokenMatch(type, TokenType::FLOAT_LITERAL,
@@ -36,6 +36,13 @@ bool IsFloat(TokenType type)
     return TokenMatch(type, TokenType::F32, TokenType::F64);
 }
 
+bool IsDataType(TokenType type)
+{
+    return TokenMatch(type, TokenType::I8, TokenType::I16, TokenType::I32,
+                      TokenType::I64, TokenType::U8, TokenType::U16,
+                      TokenType::U32, TokenType::U64, TokenType::F32,
+                      TokenType::F64, TokenType::BOOL);
+}
 Lexer::Lexer()
 {
 
@@ -62,7 +69,10 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^as\b)"), TokenType::AS});
     patterns.push_back({std::regex(R"(^:)"), TokenType::COLON});
     patterns.push_back({std::regex(R"(^;)"), TokenType::SEMICOLON});
+    patterns.push_back({std::regex(R"(^\()"), TokenType::LEFT_PAREN});
+    patterns.push_back({std::regex(R"(^\))"), TokenType::RIGHT_PAREN});
     patterns.push_back({std::regex(R"(^=)"), TokenType::EQUAL});
+
     patterns.push_back(
         {std::regex(R"(^(\d+\.\d+)|(\.\d+))"), TokenType::FLOAT_LITERAL});
     patterns.push_back({std::regex(R"(^\d+)"), TokenType::INTEGER_LITERAL});
@@ -121,27 +131,27 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                     switch (pattern.type)
                     {
                     case TokenType::INTEGER_LITERAL:
-                        token = lexerArena.Allocate<TokenLiteral<uint64_t>>(
+                        token = gZtoonArena.Allocate<TokenLiteral<uint64_t>>(
                             pattern.type, std::stoull(match.str()));
                         break;
                     case TokenType::FLOAT_LITERAL:
-                        token = lexerArena.Allocate<TokenLiteral<double>>(
+                        token = gZtoonArena.Allocate<TokenLiteral<double>>(
                             pattern.type, std::stod(match.str()));
                         break;
                     case TokenType::CHARACTER_LITERAL:
-                        token = lexerArena.Allocate<TokenLiteral<int8_t>>(
+                        token = gZtoonArena.Allocate<TokenLiteral<int8_t>>(
                             pattern.type, match.str()[1]);
                         break;
                     case TokenType::STRING_LITERAL:
-                        token = lexerArena.Allocate<TokenLiteral<std::string>>(
+                        token = gZtoonArena.Allocate<TokenLiteral<std::string>>(
                             pattern.type, match.str());
                         break;
                     case TokenType::TRUE:
-                        token = lexerArena.Allocate<TokenLiteral<bool>>(
+                        token = gZtoonArena.Allocate<TokenLiteral<bool>>(
                             pattern.type, true);
                         break;
                     case TokenType::FALSE:
-                        token = lexerArena.Allocate<TokenLiteral<bool>>(
+                        token = gZtoonArena.Allocate<TokenLiteral<bool>>(
                             pattern.type, false);
                         break;
                     default:
@@ -151,7 +161,7 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
 
                 if (!token)
                 {
-                    token = lexerArena.Allocate<Token>(pattern.type);
+                    token = gZtoonArena.Allocate<Token>(pattern.type);
                 }
 
                 token->filename = filename;
@@ -163,7 +173,7 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
 
                 if (pattern.type == TokenType::UNKNOWN)
                 {
-                    token = lexerArena.Allocate<Token>(TokenType::UNKNOWN);
+                    token = gZtoonArena.Allocate<Token>(TokenType::UNKNOWN);
                     ReportError("Unknown token.", token);
                 }
                 oldPos = pos;
@@ -180,7 +190,10 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
         }
     }
 
-    // iterate over each line and match token with their liens.
+    Token *endOfFileToken = gZtoonArena.Allocate<Token>(TokenType::END_OF_FILE);
+    tokens.push_back(endOfFileToken);
+
+    // iterate over each line and match tokens with their line.
     std::istringstream sourceSS(sourceCode);
     std::string lineStr = "";
     std::unordered_map<size_t, std::string> codeLinesMap;

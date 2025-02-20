@@ -308,7 +308,7 @@ TEST(LexerComplexMixedTokensTest)
     // Line 2: i16, y, =, 200, ;
     // Line 3: "hello world"
     // Line 4: 'i'
-    ASSERT_EQ(tokens.size(), 12, "Complex input should produce 12 tokens");
+    ASSERT_EQ(tokens.size(), 13, "Complex input should produce 13 tokens");
 
     // Verify a few tokens from different lines.
     ASSERT_EQ(tokens[0]->GetType(), TokenType::I32, "Token 0 should be I32");
@@ -339,8 +339,8 @@ TEST(LexerOperatorTokensTest)
 
     // Expect 6 tokens in the order: ASTERISK, SLASH, PLUS, DASH, PERCENTAGE,
     // AS.
-    ASSERT_EQ(tokens.size(), 6,
-              "There should be 6 tokens for the operator input");
+    ASSERT_EQ(tokens.size(), 7,
+              "There should be 7 tokens for the operator input");
     ASSERT_EQ(tokens[0]->GetType(), TokenType::ASTERISK,
               "Token 0 should be ASTERISK");
     ASSERT_EQ(tokens[1]->GetType(), TokenType::SLASH,
@@ -379,8 +379,8 @@ TEST(LexerMixedOperatorsTest)
     //  12: "as"                -> AS
     //  13: "i32"               -> I32
     //  14: ";"                 -> SEMICOLON
-    ASSERT_EQ(tokens.size(), 15,
-              "There should be 15 tokens for the mixed operator input");
+    ASSERT_EQ(tokens.size(), 16,
+              "There should be 16 tokens for the mixed operator input");
     ASSERT_EQ(tokens[0]->GetType(), TokenType::I32, "Token 0 should be I32");
     ASSERT_EQ(tokens[1]->GetType(), TokenType::IDENTIFIER,
               "Token 1 should be IDENTIFIER");
@@ -406,4 +406,51 @@ TEST(LexerMixedOperatorsTest)
     ASSERT_EQ(tokens[13]->GetType(), TokenType::I32, "Token 13 should be I32");
     ASSERT_EQ(tokens[14]->GetType(), TokenType::SEMICOLON,
               "Token 14 should be SEMICOLON");
+}
+
+TEST(LexerParenthesesSimpleTest)
+{
+    Lexer lexer;
+    std::string input = "( )";
+    std::string filename = "test_parentheses_simple";
+    lexer.Tokenize(input, filename);
+    const auto &tokens = lexer.GetTokens();
+    // Expected tokens: LEFT_PAREN, RIGHT_PAREN, and the EOF token.
+    ASSERT_EQ(tokens.size(), 3, "There should be 3 tokens for input '( )'");
+    ASSERT_EQ(tokens[0]->GetType(), TokenType::LEFT_PAREN,
+              "First token should be LEFT_PAREN");
+    ASSERT_EQ(tokens[1]->GetType(), TokenType::RIGHT_PAREN,
+              "Second token should be RIGHT_PAREN");
+    ASSERT_EQ(tokens[2]->GetType(), TokenType::END_OF_FILE,
+              "Third token should be END_OF_FILE");
+}
+
+TEST(LexerParenthesesNestedTest)
+{
+    Lexer lexer;
+    std::string input = "((a))";
+    std::string filename = "test_parentheses_nested";
+    lexer.Tokenize(input, filename);
+    const auto &tokens = lexer.GetTokens();
+    // Expected tokens breakdown:
+    //  0: LEFT_PAREN
+    //  1: LEFT_PAREN
+    //  2: IDENTIFIER ("a")
+    //  3: RIGHT_PAREN
+    //  4: RIGHT_PAREN
+    //  5: END_OF_FILE
+    ASSERT_EQ(tokens.size(), 6, "There should be 6 tokens for input '((a))'");
+    ASSERT_EQ(tokens[0]->GetType(), TokenType::LEFT_PAREN,
+              "Token 0 should be LEFT_PAREN");
+    ASSERT_EQ(tokens[1]->GetType(), TokenType::LEFT_PAREN,
+              "Token 1 should be LEFT_PAREN");
+    ASSERT_EQ(tokens[2]->GetType(), TokenType::IDENTIFIER,
+              "Token 2 should be IDENTIFIER");
+    ASSERT_EQ(tokens[2]->GetLexeme(), "a", "Token 2 lexeme should be 'a'");
+    ASSERT_EQ(tokens[3]->GetType(), TokenType::RIGHT_PAREN,
+              "Token 3 should be RIGHT_PAREN");
+    ASSERT_EQ(tokens[4]->GetType(), TokenType::RIGHT_PAREN,
+              "Token 4 should be RIGHT_PAREN");
+    ASSERT_EQ(tokens[5]->GetType(), TokenType::END_OF_FILE,
+              "Token 5 should be END_OF_FILE");
 }

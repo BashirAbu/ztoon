@@ -152,7 +152,7 @@ Expression *Parser::ParseTermExpression()
 
 Expression *Parser::ParseFactorExpression()
 {
-    Expression *expr = ParseCastExpression();
+    Expression *expr = ParseUnaryExpression();
 
     while (TokenMatch(Peek()->GetType(), TokenType::ASTERISK, TokenType::SLASH))
     {
@@ -162,11 +162,43 @@ Expression *Parser::ParseFactorExpression()
         expressions.push_back(binaryExpression);
         binaryExpression->left = expr;
         binaryExpression->op = Prev();
-        binaryExpression->right = ParseCastExpression();
+        binaryExpression->right = ParseUnaryExpression();
         expr = binaryExpression;
     }
     return expr;
 }
+
+Expression *Parser::ParseUnaryExpression()
+{
+    if (TokenMatch(Peek()->GetType(), TokenType::DASH, TokenType::DASH_DASH,
+                   TokenType::PLUS, TokenType::PLUS_PLUS,
+                   TokenType::EXCLAMATION, TokenType::TILDE, TokenType::SIZEOF))
+    {
+        Advance();
+        UnaryExpression *unaryExpr = gZtoonArena.Allocate<UnaryExpression>();
+        expressions.push_back(unaryExpr);
+        unaryExpr->op = Prev();
+        if ((Prev()->GetType() == TokenType::SIZEOF) &&
+            Consume(TokenType::LEFT_PAREN))
+        {
+            unaryExpr->right = ParseCastExpression();
+
+            if (Consume(TokenType::RIGHT_PAREN))
+            {
+                return unaryExpr;
+            }
+            else
+            {
+                ReportError("Expect ')' after expression.", Prev());
+                return nullptr;
+            }
+        }
+        unaryExpr->right = ParseCastExpression();
+        return unaryExpr;
+    }
+    return ParseCastExpression();
+}
+
 Expression *Parser::ParseCastExpression()
 {
     Expression *expr = ParsePrimaryExpression();
@@ -234,6 +266,24 @@ Expression *Parser::ParsePrimaryExpression()
         retExpr = expr;
         break;
     }
+    case TokenType::TRUE:
+    {
+        Advance();
+        PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
+        expressions.push_back(expr);
+        expr->primary = Prev();
+        retExpr = expr;
+        break;
+    }
+    case TokenType::FALSE:
+    {
+        Advance();
+        PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
+        expressions.push_back(expr);
+        expr->primary = Prev();
+        retExpr = expr;
+        break;
+    }
     case TokenType::IDENTIFIER:
     {
         Advance();
@@ -281,8 +331,8 @@ std::string VarDeclStatement::PrettyString()
 {
     std::string str = "";
     std::string prefix = "";
-    str += "|_ =\n";
-    prefix += "     ";
+    str += "|_(=)\n";
+    prefix += "    ";
     if (expression)
     {
         str += expression->PrettyString(prefix, true);
@@ -298,8 +348,8 @@ std::string VarAssignmentStatement::PrettyString()
 {
     std::string str = "";
     std::string prefix = "";
-    str += "|_ =\n";
-    prefix += "     ";
+    str += "|_(=)\n";
+    prefix += "    ";
     str += expression ? expression->PrettyString(prefix, true) : "";
     str += prefix;
     str += "|_";
@@ -319,8 +369,8 @@ std::string BinaryExpression::PrettyString(std::string &prefix, bool isLeft)
 {
     std::string str = "";
     str += prefix;
-    str += isLeft ? "|-- " : "|_";
-    str += op->GetLexeme() + "\n";
+    str += isLeft ? "|-" : "|_";
+    str += (std::string) "(" + op->GetLexeme() + ")\n";
     prefix += isLeft ? "|   " : "    ";
     str += left->PrettyString(prefix, true);
     str += right->PrettyString(prefix, false);
@@ -331,14 +381,30 @@ std::string BinaryExpression::PrettyString(std::string &prefix, bool isLeft)
     return str;
 }
 
+std::string UnaryExpression::PrettyString(std::string &prefix, bool isLeft)
+{
+    std::string str = "";
+    str += prefix;
+    str += isLeft ? "|-" : "|_";
+    str += (std::string) "(" + op->GetLexeme() + ")\n";
+    prefix += isLeft ? "|   " : "    ";
+    str += right->PrettyString(prefix, false);
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+
+    return str;
+}
+
 std::string GroupingExpression::PrettyString(std::string &prefix, bool isLeft)
 {
     std::string str = "";
     str += prefix;
-    str += isLeft ? "|-- " : "|_";
+    str += isLeft ? "|-" : "|_";
     str += "()\n";
     prefix += isLeft ? "|   " : "    ";
-    str += expression ? expression->PrettyString(prefix, true) : "";
+    str += expression ? expression->PrettyString(prefix, false) : "";
     prefix.pop_back();
     prefix.pop_back();
     prefix.pop_back();
@@ -350,11 +416,11 @@ std::string CastExpression::PrettyString(std::string &prefix, bool isLeft)
 {
     std::string str = "";
     str += prefix;
-    str += isLeft ? "|-- " : "|_";
+    str += isLeft ? "|-" : "|_";
     str += (std::string) "as" + "\n";
     prefix += isLeft ? "|   " : "    ";
     str += prefix;
-    str += "|--";
+    str += "|-";
     str += dataType->GetLexeme() + "\n";
     str += expression ? expression->PrettyString(prefix, true) : "";
     prefix.pop_back();
@@ -369,7 +435,7 @@ std::string PrimaryExpression::PrettyString(std::string &prefix, bool isleft)
     std::string str = "";
 
     str += prefix;
-    str += isleft ? "|-- " : "|_";
+    str += isleft ? "|-" : "|_";
     str += primary->GetLexeme() + "\n";
     return str;
 }

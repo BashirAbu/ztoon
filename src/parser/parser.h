@@ -11,11 +11,21 @@
   expression | statement_expr;
   statement_expr -> expression ;
 
-  expression -> term (("+" \ "-") term)* ;
-  term -> factor (("*" \ "/") factor)* ;
-  factor -> cast (("*" \ "/") cast)* ;
-  cast -> primary ("as" DATATYPE)*;
-  primary -> INTEGER_LITERAL \ FLOAT_LITERAL \ STRING_LITERAL
+  expression ->  or ;
+  or -> and ("||" and)* ;
+  and -> bitwise_or ("&&" bitwise_or)* ;
+  bitwise_or -> bitwise_xor ("|" bitwise_xor)* ;
+  bitwise_xor -> bitwise_and ("^" bitwise_and)* ;
+  bitwise_and -> ==__!= ("&" ==__!=)* ;
+  ==__!= -> <__<=__>__>= (("==" | "!=")  <__<=__>__>=)* ;
+  <__<=__>__>= -> shift (("<" | "<=" | ">" | ">=") sift)* ;
+  shift -> term (("<<" | ">>") term)* ;
+  term -> factor (("+" \ "-") factor)* ;
+  factor -> unary (("*" \ "/" \ "%") unary)* ;
+  unary -> ("-" \ "--" \ "+" \ "++" \ "!" \ "~" \ ( "sizeof" "(" expression ")"
+  ) ) expression \ cast
+  cast -> primary ("as" DATATYPE)*; primary -> INTEGER_LITERAL
+  \ FLOAT_LITERAL \ STRING_LITERAL
   \ CHARACTER_LITERAL \ IDENTIFIER \ "(" expression ")" ;
 
 */
@@ -33,6 +43,9 @@ class VarDeclStatement : public Statement
 {
   public:
     virtual std::string PrettyString() override;
+    Token const *GetIdentifier() const { return identifier; }
+    Token const *GetDataType() const { return dataType; }
+    class Expression const *GetExpression() const { return expression; }
 
   private:
     Token const *identifier = nullptr;
@@ -46,6 +59,9 @@ class VarAssignmentStatement : public Statement
 {
   public:
     virtual std::string PrettyString() override;
+    Token const *GetIdentifier() const { return identifier; }
+    Token const *GetDataType() const { return dataType; }
+    class Expression const *GetExpression() const { return expression; }
 
   private:
     Token const *identifier = nullptr;
@@ -59,6 +75,7 @@ class ExpressionStatement : public Statement
 
   public:
     virtual std::string PrettyString() override;
+    class Expression const *GetExpression() const { return expression; }
 
   private:
     class Expression *expression = nullptr;
@@ -79,9 +96,25 @@ class BinaryExpression : public Expression
 {
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
+    Expression const *GetLeftExpression() const { return left; }
+    Expression const *GetRightExpression() const { return right; }
+    Token const *GetOperator() const { return op; }
 
   private:
     Expression *left = nullptr;
+    Expression *right = nullptr;
+    Token const *op = nullptr;
+    friend class Parser;
+};
+
+class UnaryExpression : public Expression
+{
+  public:
+    std::string PrettyString(std::string &prefix, bool isLeft) override;
+    Expression const *GetRightExpression() const { return right; }
+    Token const *GetOperator() const { return op; }
+
+  private:
     Expression *right = nullptr;
     Token const *op = nullptr;
     friend class Parser;
@@ -91,6 +124,8 @@ class GroupingExpression : public Expression
 {
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
+
+    class Expression const *GetExpression() const { return expression; }
 
   private:
     Expression *expression = nullptr;
@@ -102,6 +137,9 @@ class CastExpression : public Expression
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
 
+    class Expression const *GetExpression() const { return expression; }
+    Token const *GetDataType() const { return dataType; }
+
   private:
     Expression *expression = nullptr;
     Token const *dataType = nullptr;
@@ -112,6 +150,8 @@ class PrimaryExpression : public Expression
 {
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
+    Token const *GetPrimary() const { return primary; }
+    TokenType GetDataType() const { return dataType; }
 
   private:
     Token const *primary = nullptr;
@@ -127,6 +167,7 @@ class Parser
     void PrettyPrintAST();
     const std::vector<Statement *> &Parse();
 
+  private:
     Statement *ParseStatement();
     Statement *ParseVarDeclStatement();
     Statement *ParseVarAssignmentStatement();
@@ -135,10 +176,9 @@ class Parser
     Expression *ParseExpression();
     Expression *ParseTermExpression();
     Expression *ParseFactorExpression();
+    Expression *ParseUnaryExpression();
     Expression *ParseCastExpression();
     Expression *ParsePrimaryExpression();
-
-  private:
     bool Consume(TokenType type);
     Token const *Peek();
     Token const *PeekAhead(size_t steps);
@@ -149,13 +189,3 @@ class Parser
     std::vector<Expression *> expressions;
     std::vector<Statement *> statements;
 };
-
-/*
-(1 + 2) * 3;
-\_ Grouping '()'
-    \_+
-        \- 1
-        \_ 2
-
-
-*/

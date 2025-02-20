@@ -61,6 +61,9 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^f32\b)"), TokenType::F32});
     patterns.push_back({std::regex(R"(^f64\b)"), TokenType::F64});
     patterns.push_back({std::regex(R"(^bool\b)"), TokenType::BOOL});
+    patterns.push_back({std::regex(R"(^sizeof\b)"), TokenType::SIZEOF});
+    patterns.push_back({std::regex(R"(^--)"), TokenType::DASH_DASH});
+    patterns.push_back({std::regex(R"(^\+\+)"), TokenType::PLUS_PLUS});
     patterns.push_back({std::regex(R"(^\*)"), TokenType::ASTERISK});
     patterns.push_back({std::regex(R"(^/)"), TokenType::SLASH});
     patterns.push_back({std::regex(R"(^\+)"), TokenType::PLUS});
@@ -72,6 +75,8 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^\()"), TokenType::LEFT_PAREN});
     patterns.push_back({std::regex(R"(^\))"), TokenType::RIGHT_PAREN});
     patterns.push_back({std::regex(R"(^=)"), TokenType::EQUAL});
+    patterns.push_back({std::regex(R"(^\!)"), TokenType::EXCLAMATION});
+    patterns.push_back({std::regex(R"(^~)"), TokenType::TILDE});
 
     patterns.push_back(
         {std::regex(R"(^(\d+\.\d+)|(\.\d+))"), TokenType::FLOAT_LITERAL});

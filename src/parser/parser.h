@@ -52,7 +52,7 @@ class VarDeclStatement : public Statement
     virtual std::string PrettyString() override;
     Token const *GetIdentifier() const { return identifier; }
     Token const *GetDataType() const { return dataType; }
-    class Expression const *GetExpression() const { return expression; }
+    class Expression *GetExpression() const { return expression; }
 
   private:
     Token const *identifier = nullptr;
@@ -60,6 +60,7 @@ class VarDeclStatement : public Statement
     // datatype
     class Expression *expression = nullptr;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 class VarCompoundAssignmentStatement : public Statement
 {
@@ -68,7 +69,7 @@ class VarCompoundAssignmentStatement : public Statement
     Token const *GetIdentifier() const { return identifier; }
     Token const *GetDataType() const { return dataType; }
     Token const *GetCompoundAssignment() const { return compoundAssignment; }
-    class Expression const *GetExpression() const { return expression; }
+    class Expression *GetExpression() const { return expression; }
 
   private:
     Token const *identifier = nullptr;
@@ -76,6 +77,7 @@ class VarCompoundAssignmentStatement : public Statement
     Token const *compoundAssignment = nullptr;
     class Expression *expression = nullptr;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 class VarAssignmentStatement : public Statement
 {
@@ -83,13 +85,14 @@ class VarAssignmentStatement : public Statement
     virtual std::string PrettyString() override;
     Token const *GetIdentifier() const { return identifier; }
     Token const *GetDataType() const { return dataType; }
-    class Expression const *GetExpression() const { return expression; }
+    class Expression *GetExpression() const { return expression; }
 
   private:
     Token const *identifier = nullptr;
     Token const *dataType = nullptr;
     class Expression *expression = nullptr;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 
 class ExpressionStatement : public Statement
@@ -97,7 +100,7 @@ class ExpressionStatement : public Statement
 
   public:
     virtual std::string PrettyString() override;
-    class Expression const *GetExpression() const { return expression; }
+    class Expression *GetExpression() const { return expression; }
 
   private:
     class Expression *expression = nullptr;
@@ -109,17 +112,20 @@ class Expression
   public:
     virtual ~Expression() {}
     virtual std::string PrettyString(std::string &prefix, bool isLeft) = 0;
+    TokenType GetDataType() const { return dataType; }
 
-  private:
+  protected:
+    TokenType dataType = TokenType::UNKNOWN;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 
 class BinaryExpression : public Expression
 {
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
-    Expression const *GetLeftExpression() const { return left; }
-    Expression const *GetRightExpression() const { return right; }
+    Expression *GetLeftExpression() const { return left; }
+    Expression *GetRightExpression() const { return right; }
     Token const *GetOperator() const { return op; }
 
   private:
@@ -127,13 +133,14 @@ class BinaryExpression : public Expression
     Expression *right = nullptr;
     Token const *op = nullptr;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 
 class UnaryExpression : public Expression
 {
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
-    Expression const *GetRightExpression() const { return right; }
+    Expression *GetRightExpression() const { return right; }
     Token const *GetOperator() const { return op; }
 
   private:
@@ -147,7 +154,7 @@ class GroupingExpression : public Expression
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
 
-    class Expression const *GetExpression() const { return expression; }
+    class Expression *GetExpression() const { return expression; }
 
   private:
     Expression *expression = nullptr;
@@ -159,13 +166,14 @@ class CastExpression : public Expression
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
 
-    class Expression const *GetExpression() const { return expression; }
-    Token const *GetDataType() const { return dataType; }
+    class Expression *GetExpression() const { return expression; }
+    Token const *GetCastToType() { return castToType; }
 
   private:
     Expression *expression = nullptr;
-    Token const *dataType = nullptr;
+    Token const *castToType = nullptr;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 
 class PrimaryExpression : public Expression
@@ -173,12 +181,11 @@ class PrimaryExpression : public Expression
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
     Token const *GetPrimary() const { return primary; }
-    TokenType GetDataType() const { return dataType; }
 
   private:
     Token const *primary = nullptr;
-    TokenType dataType = TokenType::UNKNOWN;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 
 class Parser

@@ -78,6 +78,9 @@ enum class TokenType
     LEFT_PAREN,
     RIGHT_PAREN,
 };
+
+std::string TokenDataTypeToString(TokenType type);
+
 template <typename... Types>
 
 bool TokenMatch(TokenType type, Types... types)
@@ -94,7 +97,7 @@ bool TokenMatch(TokenType type, Types... types)
 }
 
 bool IsLiteralToken(TokenType type);
-
+bool IsNumerical(TokenType type);
 bool IsInteger(TokenType type);
 bool IsSigned(TokenType type);
 bool IsFloat(TokenType type);

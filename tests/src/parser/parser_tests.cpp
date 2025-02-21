@@ -416,7 +416,7 @@ TEST(ParserCastExpressionTest)
               "Inner literal should be '1'");
 
     // The cast should use the datatype "i32".
-    ASSERT_EQ(castExpr->GetDataType()->GetLexeme(), "i32",
+    ASSERT_EQ(TokenDataTypeToString(castExpr->GetDataType()), "i32",
               "Cast data type should be 'i32'");
 }
 

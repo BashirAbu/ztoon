@@ -9,6 +9,40 @@
 #include <unordered_map>
 
 MemoryArena gZtoonArena(ZTOON_ARENA_SIZE);
+
+std::string TokenDataTypeToString(TokenType type)
+{
+    switch (type)
+    {
+
+    case TokenType::I8:
+        return "i8";
+    case TokenType::I16:
+        return "i16";
+    case TokenType::I32:
+        return "i32";
+    case TokenType::I64:
+        return "i64";
+    case TokenType::U8:
+        return "u8";
+    case TokenType::U16:
+        return "u16";
+    case TokenType::U32:
+        return "u32";
+    case TokenType::U64:
+        return "u64";
+    case TokenType::F32:
+        return "f32";
+    case TokenType::F64:
+        return "f64";
+    case TokenType::BOOL:
+        return "bool";
+    default:
+        return "Unknown type";
+    }
+    return "Unknown type";
+}
+
 bool IsLiteralToken(TokenType type)
 {
     return TokenMatch(type, TokenType::FLOAT_LITERAL,
@@ -17,6 +51,7 @@ bool IsLiteralToken(TokenType type)
                       TokenType::TRUE);
 }
 
+bool IsNumerical(TokenType type) { return IsInteger(type) || IsFloat(type); }
 bool IsInteger(TokenType type)
 {
 

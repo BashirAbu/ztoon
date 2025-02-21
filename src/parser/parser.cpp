@@ -96,8 +96,8 @@ Statement *Parser::ParseVarDeclStatement()
                         ReportError("Expected expression after '='.", Peek());
                         return nullptr;
                     }
-                    return varDeclStatement;
                 }
+                return varDeclStatement;
             }
         }
     }
@@ -446,13 +446,14 @@ Expression *Parser::ParseCastExpression()
         castExpr->expression = expr;
         if (IsDataType(Peek()->GetType()))
         {
+            castExpr->dataType = Peek()->GetType();
             Advance();
-            castExpr->dataType = Prev();
         }
         else
         {
             ReportError("Expect datatype after 'as'.", Peek());
         }
+        castExpr->castToType = Prev();
         expr = castExpr;
     }
 
@@ -468,7 +469,6 @@ Expression *Parser::ParsePrimaryExpression()
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
         expr->primary = Prev();
-        expr->dataType = TokenType::U64;
         retExpr = expr;
         break;
     }
@@ -477,7 +477,6 @@ Expression *Parser::ParsePrimaryExpression()
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
         expr->primary = Prev();
-        expr->dataType = TokenType::F64;
         retExpr = expr;
         break;
     }
@@ -519,7 +518,7 @@ Expression *Parser::ParsePrimaryExpression()
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
         expr->primary = Prev();
-        retExpr = expr; // TODO: Check if you need to assing a type here?
+        retExpr = expr;
         break;
     }
     case TokenType::LEFT_PAREN:
@@ -581,7 +580,10 @@ std::string VarAssignmentStatement::PrettyString()
     str += expression ? expression->PrettyString(prefix, true) : "";
     str += prefix;
     str += "|_";
-    str += "var_assign(" + identifier->GetLexeme() + " (datatype" + ")" + ")\n";
+    str += "var_assign(" + identifier->GetLexeme() + " (" +
+           TokenDataTypeToString(dataType ? dataType->GetType()
+                                          : TokenType::UNKNOWN) +
+           ")" + ")\n";
     return str;
 }
 
@@ -662,7 +664,7 @@ std::string CastExpression::PrettyString(std::string &prefix, bool isLeft)
     prefix += isLeft ? "|   " : "    ";
     str += prefix;
     str += "|-";
-    str += dataType->GetLexeme() + "\n";
+    str += TokenDataTypeToString(dataType) + "\n";
     str += expression ? expression->PrettyString(prefix, true) : "";
     prefix.pop_back();
     prefix.pop_back();

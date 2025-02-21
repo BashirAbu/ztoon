@@ -26,5 +26,9 @@ void ReportError(std::string errorMsg, Token const *token)
     {
         std::cerr << std::format("Error: {}", errorMsg);
     }
+#ifdef _DEBUG
+    assert(0);
+#else
     exit(-1);
+#endif
 }

@@ -3,6 +3,17 @@
 #include <fstream>
 #include <sstream>
 
+// Helper function to check a token at a given position.
+void CheckToken(const std::vector<Token *> &tokens, int pos,
+                TokenType expectedType, const std::string &expectedLexeme)
+{
+    ASSERT_EQ(pos < tokens.size(), true, "Token position out of range");
+    ASSERT_EQ(tokens[pos]->GetType(), expectedType,
+              "Token type mismatch at position " + std::to_string(pos));
+    ASSERT_EQ(tokens[pos]->GetLexeme(), expectedLexeme,
+              "Token lexeme mismatch at position " + std::to_string(pos));
+}
+
 TEST(LexerVariableDeclarationTest)
 {
     std::fstream file("source_code/lexer_variabel_declaration_test.ztoon");
@@ -453,4 +464,199 @@ TEST(LexerParenthesesNestedTest)
               "Token 4 should be RIGHT_PAREN");
     ASSERT_EQ(tokens[5]->GetType(), TokenType::END_OF_FILE,
               "Token 5 should be END_OF_FILE");
+}
+
+//--------------------------------------------------------------------------
+// Test 1: Compound Assignment Token Test
+// Input: "a += 5;"
+TEST(LexerCompoundAssignmentTest)
+{
+    std::string source = "a += 5;";
+    std::string filename = "lexer_compound_assign.ztoon";
+    Lexer lexer;
+    lexer.Tokenize(source, filename);
+    const auto &tokens = lexer.GetTokens();
+    // Expected tokens:
+    //   0: IDENTIFIER "a"
+    //   1: PLUS_EQUAL "+="
+    //   2: INTEGER_LITERAL "5"
+    //   3: SEMICOLON ";"
+    //   4: END_OF_FILE ""
+    ASSERT_EQ(tokens.size(), 5, "Token count should be 5");
+    CheckToken(tokens, 0, TokenType::IDENTIFIER, "a");
+    CheckToken(tokens, 1, TokenType::PLUS_EQUAL, "+=");
+    CheckToken(tokens, 2, TokenType::INTEGER_LITERAL, "5");
+    CheckToken(tokens, 3, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, 4, TokenType::END_OF_FILE, "");
+}
+
+//--------------------------------------------------------------------------
+// Test 2: Logical Operators Test
+// Input: "1 || 0 && 1;"
+TEST(LexerLogicalOperatorsTest)
+{
+    std::string source = "1 || 0 && 1;";
+    std::string filename = "lexer_logical_ops.ztoon";
+    Lexer lexer;
+    lexer.Tokenize(source, filename);
+    const auto &tokens = lexer.GetTokens();
+    // Expected tokens:
+    //   0: INTEGER_LITERAL "1"
+    //   1: OR "||"
+    //   2: INTEGER_LITERAL "0"
+    //   3: AND "&&"
+    //   4: INTEGER_LITERAL "1"
+    //   5: SEMICOLON ";"
+    //   6: END_OF_FILE ""
+    ASSERT_EQ(tokens.size(), 7, "Token count should be 7");
+    CheckToken(tokens, 0, TokenType::INTEGER_LITERAL, "1");
+    CheckToken(tokens, 1, TokenType::OR, "||");
+    CheckToken(tokens, 2, TokenType::INTEGER_LITERAL, "0");
+    CheckToken(tokens, 3, TokenType::AND, "&&");
+    CheckToken(tokens, 4, TokenType::INTEGER_LITERAL, "1");
+    CheckToken(tokens, 5, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, 6, TokenType::END_OF_FILE, "");
+}
+
+//--------------------------------------------------------------------------
+// Test 3: Comparison Operators Test
+// Input: "1 < 2 <= 3 > 0 >= 0 == 1 != 2;"
+TEST(LexerComparisonOperatorsTest)
+{
+    std::string source = "1 < 2 <= 3 > 0 >= 0 == 1 != 2;";
+    std::string filename = "lexer_comparison.ztoon";
+    Lexer lexer;
+    lexer.Tokenize(source, filename);
+    const auto &tokens = lexer.GetTokens();
+    // Expected tokens:
+    //   0: INTEGER_LITERAL "1"
+    //   1: LESS "<"
+    //   2: INTEGER_LITERAL "2"
+    //   3: LESS_EQUAL "<="
+    //   4: INTEGER_LITERAL "3"
+    //   5: GREATER ">"
+    //   6: INTEGER_LITERAL "0"
+    //   7: GREATER_EQUAL ">="
+    //   8: INTEGER_LITERAL "0"
+    //   9: EQUAL_EQUAL "=="
+    //  10: INTEGER_LITERAL "1"
+    //  11: EXCLAMATION_EQUAL "!="
+    //  12: INTEGER_LITERAL "2"
+    //  13: SEMICOLON ";"
+    //  14: END_OF_FILE ""
+    ASSERT_EQ(tokens.size(), 15, "Token count should be 15");
+    CheckToken(tokens, 0, TokenType::INTEGER_LITERAL, "1");
+    CheckToken(tokens, 1, TokenType::LESS, "<");
+    CheckToken(tokens, 2, TokenType::INTEGER_LITERAL, "2");
+    CheckToken(tokens, 3, TokenType::LESS_EQUAL, "<=");
+    CheckToken(tokens, 4, TokenType::INTEGER_LITERAL, "3");
+    CheckToken(tokens, 5, TokenType::GREATER, ">");
+    CheckToken(tokens, 6, TokenType::INTEGER_LITERAL, "0");
+    CheckToken(tokens, 7, TokenType::GREATER_EQUAL, ">=");
+    CheckToken(tokens, 8, TokenType::INTEGER_LITERAL, "0");
+    CheckToken(tokens, 9, TokenType::EQUAL_EQUAL, "==");
+    CheckToken(tokens, 10, TokenType::INTEGER_LITERAL, "1");
+    CheckToken(tokens, 11, TokenType::EXCLAMATION_EQUAL, "!=");
+    CheckToken(tokens, 12, TokenType::INTEGER_LITERAL, "2");
+    CheckToken(tokens, 13, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, 14, TokenType::END_OF_FILE, "");
+}
+
+//--------------------------------------------------------------------------
+// Test 4: Bitwise Operators Test
+// Input: "1 | 2 ^ 3 & 4;"
+TEST(LexerBitwiseOperatorsTest)
+{
+    std::string source = "1 | 2 ^ 3 & 4;";
+    std::string filename = "lexer_bitwise_ops.ztoon";
+    Lexer lexer;
+    lexer.Tokenize(source, filename);
+    const auto &tokens = lexer.GetTokens();
+    // Expected tokens:
+    //   0: INTEGER_LITERAL "1"
+    //   1: BITWISE_OR "|"
+    //   2: INTEGER_LITERAL "2"
+    //   3: BITWISE_XOR "^"
+    //   4: INTEGER_LITERAL "3"
+    //   5: BITWISE_AND "&"
+    //   6: INTEGER_LITERAL "4"
+    //   7: SEMICOLON ";"
+    //   8: END_OF_FILE ""
+    ASSERT_EQ(tokens.size(), 9, "Token count should be 9");
+    CheckToken(tokens, 0, TokenType::INTEGER_LITERAL, "1");
+    CheckToken(tokens, 1, TokenType::BITWISE_OR, "|");
+    CheckToken(tokens, 2, TokenType::INTEGER_LITERAL, "2");
+    CheckToken(tokens, 3, TokenType::BITWISE_XOR, "^");
+    CheckToken(tokens, 4, TokenType::INTEGER_LITERAL, "3");
+    CheckToken(tokens, 5, TokenType::BITWISE_AND, "&");
+    CheckToken(tokens, 6, TokenType::INTEGER_LITERAL, "4");
+    CheckToken(tokens, 7, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, 8, TokenType::END_OF_FILE, "");
+}
+
+//--------------------------------------------------------------------------
+// Test 5: Shift Operators Test
+// Input: "1 << 2 >> 3;"
+TEST(LexerShiftOperatorsTest)
+{
+    std::string source = "1 << 2 >> 3;";
+    std::string filename = "lexer_shift_ops.ztoon";
+    Lexer lexer;
+    lexer.Tokenize(source, filename);
+    const auto &tokens = lexer.GetTokens();
+    // Expected tokens:
+    //   0: INTEGER_LITERAL "1"
+    //   1: SHIFT_LEFT "<<"
+    //   2: INTEGER_LITERAL "2"
+    //   3: SHIFT_RIGHT ">>"
+    //   4: INTEGER_LITERAL "3"
+    //   5: SEMICOLON ";"
+    //   6: END_OF_FILE ""
+    ASSERT_EQ(tokens.size(), 7, "Token count should be 7");
+    CheckToken(tokens, 0, TokenType::INTEGER_LITERAL, "1");
+    CheckToken(tokens, 1, TokenType::SHIFT_LEFT, "<<");
+    CheckToken(tokens, 2, TokenType::INTEGER_LITERAL, "2");
+    CheckToken(tokens, 3, TokenType::SHIFT_RIGHT, ">>");
+    CheckToken(tokens, 4, TokenType::INTEGER_LITERAL, "3");
+    CheckToken(tokens, 5, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, 6, TokenType::END_OF_FILE, "");
+}
+
+//--------------------------------------------------------------------------
+// Test 6: Unary Operators Test
+// Input: "++a; --b; !c; ~d; sizeof(e);"
+TEST(LexerUnaryOperatorsTest)
+{
+    std::string source = "++a; --b; !c; ~d; sizeof(e);";
+    std::string filename = "lexer_unary_ops.ztoon";
+    Lexer lexer;
+    lexer.Tokenize(source, filename);
+    const auto &tokens = lexer.GetTokens();
+    // Expected tokens breakdown:
+    // For "++a;": PLUS_PLUS, IDENTIFIER, SEMICOLON
+    // For "--b;": DASH_DASH, IDENTIFIER, SEMICOLON
+    // For "!c;":  EXCLAMATION, IDENTIFIER, SEMICOLON
+    // For "~d;":  TILDE, IDENTIFIER, SEMICOLON
+    // For "sizeof(e);": SIZEOF, LEFT_PAREN, IDENTIFIER, RIGHT_PAREN, SEMICOLON
+    // Followed by END_OF_FILE.
+    ASSERT_EQ(tokens.size(), 18, "Token count should be 18");
+    int pos = 0;
+    CheckToken(tokens, pos++, TokenType::PLUS_PLUS, "++");
+    CheckToken(tokens, pos++, TokenType::IDENTIFIER, "a");
+    CheckToken(tokens, pos++, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, pos++, TokenType::DASH_DASH, "--");
+    CheckToken(tokens, pos++, TokenType::IDENTIFIER, "b");
+    CheckToken(tokens, pos++, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, pos++, TokenType::EXCLAMATION, "!");
+    CheckToken(tokens, pos++, TokenType::IDENTIFIER, "c");
+    CheckToken(tokens, pos++, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, pos++, TokenType::TILDE, "~");
+    CheckToken(tokens, pos++, TokenType::IDENTIFIER, "d");
+    CheckToken(tokens, pos++, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, pos++, TokenType::SIZEOF, "sizeof");
+    CheckToken(tokens, pos++, TokenType::LEFT_PAREN, "(");
+    CheckToken(tokens, pos++, TokenType::IDENTIFIER, "e");
+    CheckToken(tokens, pos++, TokenType::RIGHT_PAREN, ")");
+    CheckToken(tokens, pos++, TokenType::SEMICOLON, ";");
+    CheckToken(tokens, pos++, TokenType::END_OF_FILE, "");
 }

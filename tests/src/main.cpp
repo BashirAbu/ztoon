@@ -12,4 +12,5 @@ int main()
         testFunc.second();
         std::cout << std::format("[PASS]\n");
     }
+    std::cout << std::format("No. Tests: {}\n", test_funcs.size());
 }

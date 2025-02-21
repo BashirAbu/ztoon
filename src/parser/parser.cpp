@@ -347,6 +347,7 @@ Expression *Parser::ParseEqualEqualNotEqualExpression()
     while (TokenMatch(Peek()->GetType(), TokenType::EQUAL_EQUAL,
                       TokenType::EXCLAMATION_EQUAL))
     {
+        Advance();
         Token const *op = Prev();
         expr = BuildBinaryExpression(op, expr, ParseLessGreaterExpression());
     }

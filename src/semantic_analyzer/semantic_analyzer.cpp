@@ -121,6 +121,12 @@ void SemanticAnalyzer::Analize()
 
             VarCompoundAssignmentStatement *varComAssignStatement =
                 dynamic_cast<VarCompoundAssignmentStatement *>(statement);
+
+            Variable const *var = currentScope->GetVariable(
+                varComAssignStatement->GetIdentifier()->GetLexeme(),
+                varComAssignStatement->GetIdentifier());
+            varComAssignStatement->dataType = var->GetDataType();
+
             EvaluateAndAssignDataTypeToExpression(
                 varComAssignStatement->GetExpression());
             PrimaryExpression *varExpr =
@@ -142,8 +148,6 @@ void SemanticAnalyzer::Analize()
                         varComAssignStatement->GetDataType()->GetLexeme()),
                     varComAssignStatement->GetIdentifier());
             }
-            Variable const *var = currentScope->GetVariable(
-                varComAssignStatement->GetIdentifier()->GetFilename());
         }
         else if (dynamic_cast<ExpressionStatement *>(statement))
         {
@@ -317,7 +321,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::EXCLAMATION:
         {
             // numerical
-            if (!IsNumerical(rightDataType) || rightDataType != TokenType::BOOL)
+            if (rightDataType != TokenType::BOOL)
             {
                 ReportError(
                     std::format(
@@ -367,7 +371,23 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         TokenType exprDataType = castExpression->GetExpression()->dataType;
         castExpression->dataType = castExpression->GetCastToType()->GetType();
         // TODO: is cast possible?
+        // boolean are only catable to int types. it is one directional thing.
+        // cannot cast int to bool.
         // what types cannot be cast to another?
+        //
+
+        // Only allow bool to bool cast for now.
+        if (castExpression->dataType == TokenType::BOOL)
+        {
+            if (exprDataType != TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Cannot cast datatype '{}' to datatype '{}'",
+                                TokenDataTypeToString(exprDataType),
+                                castExpression->GetCastToType()->GetLexeme()),
+                    castExpression->GetCastToType());
+            }
+        }
     }
     else if (PrimaryExpression *primaryExpression =
                  dynamic_cast<PrimaryExpression *>(expression))

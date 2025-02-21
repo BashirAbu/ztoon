@@ -9,11 +9,18 @@
   \ var_assignment_statement ;
   var_assignment_statement -> IDENTIFIER "="
   expression | statement_expr;
+
+  var_compound_assignment_statement -> IDENTIFIER ( ("=" | "+=" | "-=" | "*=" |
+  "/=", "%=", "&=", "^=", "|=", "<<=", ">>=") expression ;
+
   statement_expr -> expression ;
 
-  expression ->  or ;
+  expression -> or ;
+
   or -> and ("||" and)* ;
+
   and -> bitwise_or ("&&" bitwise_or)* ;
+
   bitwise_or -> bitwise_xor ("|" bitwise_xor)* ;
   bitwise_xor -> bitwise_and ("^" bitwise_and)* ;
   bitwise_and -> ==__!= ("&" ==__!=)* ;
@@ -54,7 +61,22 @@ class VarDeclStatement : public Statement
     class Expression *expression = nullptr;
     friend class Parser;
 };
+class VarCompoundAssignmentStatement : public Statement
+{
+  public:
+    virtual std::string PrettyString() override;
+    Token const *GetIdentifier() const { return identifier; }
+    Token const *GetDataType() const { return dataType; }
+    Token const *GetCompoundAssignment() const { return compoundAssignment; }
+    class Expression const *GetExpression() const { return expression; }
 
+  private:
+    Token const *identifier = nullptr;
+    Token const *dataType = nullptr;
+    Token const *compoundAssignment = nullptr;
+    class Expression *expression = nullptr;
+    friend class Parser;
+};
 class VarAssignmentStatement : public Statement
 {
   public:
@@ -171,14 +193,29 @@ class Parser
     Statement *ParseStatement();
     Statement *ParseVarDeclStatement();
     Statement *ParseVarAssignmentStatement();
+    Statement *ParseVarCompundAssignmentStatement();
     Statement *ParseExpressionStatement();
 
     Expression *ParseExpression();
+    Expression *ParseAssignmentExpression();
+    Expression *ParseORExpression();
+    Expression *ParseANDExpression();
+    Expression *ParseBitwiseORExpression();
+    Expression *ParseBitwiseXORExpression();
+    Expression *ParseBitwiseANDExpression();
+    Expression *ParseEqualEqualNotEqualExpression();
+    Expression *ParseLessGreaterExpression();
+    Expression *ParseShiftExpression();
+
     Expression *ParseTermExpression();
     Expression *ParseFactorExpression();
     Expression *ParseUnaryExpression();
     Expression *ParseCastExpression();
     Expression *ParsePrimaryExpression();
+
+    Expression *BuildBinaryExpression(Token const *op, Expression *left,
+                                      Expression *right);
+
     bool Consume(TokenType type);
     Token const *Peek();
     Token const *PeekAhead(size_t steps);
@@ -186,6 +223,5 @@ class Parser
     void Advance();
     size_t currentIndex = 0;
     const std::vector<Token *> tokens;
-    std::vector<Expression *> expressions;
     std::vector<Statement *> statements;
 };

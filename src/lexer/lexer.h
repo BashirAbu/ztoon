@@ -38,12 +38,35 @@ enum class TokenType
 
     IDENTIFIER,
     EQUAL,
+    PLUS_EQUAL,
+    DASH_EQUAL,
+    ASTERISK_EQUAL,
+    SLASH_EQUAL,
+    PERCENTAGE_EQUAL,
+    BITWISE_AND_EQUAL,
+    BITWISE_XOR_EQUAL,
+    BITWISE_OR_EQUAL,
+    SHIFT_LEFT_EQUAL,
+    SHIFT_RIGHT_EQUAL,
 
     ASTERISK,
     SLASH,
     PLUS,
     PLUS_PLUS,
 
+    OR,
+    AND,
+    LESS,
+    LESS_EQUAL,
+    GREATER,
+    GREATER_EQUAL,
+    EQUAL_EQUAL,
+    EXCLAMATION_EQUAL,
+    SHIFT_LEFT,
+    SHIFT_RIGHT,
+    BITWISE_OR,
+    BITWISE_AND,
+    BITWISE_XOR,
     DASH,
     DASH_DASH,
     PERCENTAGE,
@@ -75,7 +98,7 @@ bool IsLiteralToken(TokenType type);
 bool IsInteger(TokenType type);
 bool IsSigned(TokenType type);
 bool IsFloat(TokenType type);
-
+bool IsCompoundAssignment(TokenType type);
 bool IsDataType(TokenType type);
 class Token
 {
@@ -97,6 +120,7 @@ class Token
     size_t colNumber = 0;
     std::string lineStr = "";
     friend class Lexer;
+    friend class Parser;
 };
 
 template <typename T>

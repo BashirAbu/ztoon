@@ -1,6 +1,7 @@
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser.h"
+#include <format>
 #include <iostream>
 std::unordered_map<Token const *, Token const *> identifierMap;
 
@@ -120,6 +121,141 @@ Statement *Parser::ParseVarAssignmentStatement()
     }
     else
     {
+        return ParseVarCompundAssignmentStatement();
+    }
+}
+Statement *Parser::ParseVarCompundAssignmentStatement()
+{
+    if (Peek()->GetType() == TokenType::IDENTIFIER &&
+        IsCompoundAssignment(PeekAhead(1)->GetType()))
+    {
+        Advance();
+        VarCompoundAssignmentStatement *statement =
+            gZtoonArena.Allocate<VarCompoundAssignmentStatement>();
+        statements.push_back(statement);
+        statement->identifier = Prev();
+        PrimaryExpression *left = gZtoonArena.Allocate<PrimaryExpression>();
+
+        left->primary = Prev();
+        left->dataType = TokenType::UNKNOWN; // TODO: do types.
+        Advance();
+        statement->compoundAssignment = Prev();
+        Expression *right = ParseExpression();
+        if (!right)
+            ReportError(std::format("Expect expression after '{}'",
+                                    Peek()->GetLexeme()),
+                        Peek());
+        BinaryExpression *binaryExpression =
+            gZtoonArena.Allocate<BinaryExpression>();
+        binaryExpression->left = left;
+        binaryExpression->right = right;
+
+        if (!binaryExpression->right)
+            ReportError(std::format("Expect expression after '{}'",
+                                    binaryExpression->op->GetLexeme()),
+                        binaryExpression->op);
+        switch (statement->compoundAssignment->GetType())
+        {
+        case TokenType::PLUS_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::PLUS);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::PLUS;
+            op->lexeme = "+";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::DASH_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::DASH);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::DASH;
+            op->lexeme = "-";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::ASTERISK_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::ASTERISK);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::ASTERISK;
+            op->lexeme = "*";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::SLASH_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::SLASH);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::SLASH;
+            op->lexeme = "/";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::BITWISE_OR_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::BITWISE_OR);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::BITWISE_OR;
+            op->lexeme = "|";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::BITWISE_AND_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::BITWISE_AND);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::PLUS;
+            op->lexeme = "&";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::BITWISE_XOR_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::BITWISE_XOR);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::BITWISE_XOR;
+            op->lexeme = "^";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::PERCENTAGE_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::PERCENTAGE);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::PERCENTAGE;
+            op->lexeme = "%%";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::SHIFT_LEFT_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::SHIFT_LEFT);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::SHIFT_LEFT;
+            op->lexeme = "<<";
+            binaryExpression->op = op;
+            break;
+        }
+        case TokenType::SHIFT_RIGHT_EQUAL:
+        {
+            Token *op = gZtoonArena.Allocate<Token>(TokenType::SHIFT_RIGHT);
+            *op = *(statement->compoundAssignment);
+            op->type = TokenType::SHIFT_RIGHT;
+            op->lexeme = ">>";
+            binaryExpression->op = op;
+            break;
+        }
+        default:
+        {
+            break;
+        }
+        }
+        statement->expression = binaryExpression;
+        return statement;
+    }
+    else
+    {
         return ParseExpressionStatement();
     }
 }
@@ -131,21 +267,124 @@ Statement *Parser::ParseExpressionStatement()
     return es;
 }
 
-Expression *Parser::ParseExpression() { return ParseTermExpression(); }
+Expression *Parser::BuildBinaryExpression(Token const *op, Expression *left,
+                                          Expression *right)
+{
+    BinaryExpression *expr = gZtoonArena.Allocate<BinaryExpression>();
+    if (!left)
+        ReportError(
+            std::format("Expect expression before '{}'", op->GetLexeme()), op);
+    if (!right)
+        ReportError(
+            std::format("Expect expression after '{}'", op->GetLexeme()), op);
 
+    expr->left = left;
+    expr->right = right;
+    expr->op = op;
+    return expr;
+}
+
+Expression *Parser::ParseExpression() { return ParseORExpression(); }
+
+Expression *Parser::ParseORExpression()
+{
+    Expression *expr = ParseANDExpression();
+    while (Consume(TokenType::OR))
+    {
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseANDExpression());
+    }
+    return expr;
+}
+Expression *Parser::ParseANDExpression()
+{
+    Expression *expr = ParseBitwiseORExpression();
+    while (Consume(TokenType::AND))
+    {
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseBitwiseORExpression());
+    }
+    return expr;
+}
+Expression *Parser::ParseBitwiseORExpression()
+{
+
+    Expression *expr = ParseBitwiseXORExpression();
+    while (Consume(TokenType::BITWISE_OR))
+    {
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseBitwiseXORExpression());
+    }
+    return expr;
+}
+Expression *Parser::ParseBitwiseXORExpression()
+{
+
+    Expression *expr = ParseBitwiseANDExpression();
+    while (Consume(TokenType::BITWISE_XOR))
+    {
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseBitwiseANDExpression());
+    }
+    return expr;
+}
+Expression *Parser::ParseBitwiseANDExpression()
+{
+
+    Expression *expr = ParseEqualEqualNotEqualExpression();
+    while (Consume(TokenType::BITWISE_AND))
+    {
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr,
+                                     ParseEqualEqualNotEqualExpression());
+    }
+    return expr;
+}
+Expression *Parser::ParseEqualEqualNotEqualExpression()
+{
+
+    Expression *expr = ParseLessGreaterExpression();
+    while (TokenMatch(Peek()->GetType(), TokenType::EQUAL_EQUAL,
+                      TokenType::EXCLAMATION_EQUAL))
+    {
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseLessGreaterExpression());
+    }
+    return expr;
+}
+Expression *Parser::ParseLessGreaterExpression()
+{
+    Expression *expr = ParseShiftExpression();
+    while (TokenMatch(Peek()->GetType(), TokenType::LESS, TokenType::LESS_EQUAL,
+                      TokenType::GREATER, TokenType::GREATER_EQUAL))
+    {
+        Advance();
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseShiftExpression());
+    }
+    return expr;
+}
+Expression *Parser::ParseShiftExpression()
+{
+
+    Expression *expr = ParseTermExpression();
+    while (TokenMatch(Peek()->GetType(), TokenType::SHIFT_LEFT,
+                      TokenType::SHIFT_RIGHT))
+    {
+        Advance();
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseTermExpression());
+    }
+    return expr;
+}
 Expression *Parser::ParseTermExpression()
 {
     Expression *expr = ParseFactorExpression();
     while (TokenMatch(Peek()->GetType(), TokenType::PLUS, TokenType::DASH))
     {
         Advance();
-        BinaryExpression *binaryExpression =
-            gZtoonArena.Allocate<BinaryExpression>();
-        expressions.push_back(binaryExpression);
-        binaryExpression->left = expr;
-        binaryExpression->op = Prev();
-        binaryExpression->right = ParseFactorExpression();
-        expr = binaryExpression;
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseFactorExpression());
     }
     return expr;
 }
@@ -157,13 +396,8 @@ Expression *Parser::ParseFactorExpression()
     while (TokenMatch(Peek()->GetType(), TokenType::ASTERISK, TokenType::SLASH))
     {
         Advance();
-        BinaryExpression *binaryExpression =
-            gZtoonArena.Allocate<BinaryExpression>();
-        expressions.push_back(binaryExpression);
-        binaryExpression->left = expr;
-        binaryExpression->op = Prev();
-        binaryExpression->right = ParseUnaryExpression();
-        expr = binaryExpression;
+        Token const *op = Prev();
+        expr = BuildBinaryExpression(op, expr, ParseUnaryExpression());
     }
     return expr;
 }
@@ -176,13 +410,15 @@ Expression *Parser::ParseUnaryExpression()
     {
         Advance();
         UnaryExpression *unaryExpr = gZtoonArena.Allocate<UnaryExpression>();
-        expressions.push_back(unaryExpr);
         unaryExpr->op = Prev();
         if ((Prev()->GetType() == TokenType::SIZEOF) &&
             Consume(TokenType::LEFT_PAREN))
         {
             unaryExpr->right = ParseCastExpression();
-
+            if (!unaryExpr->right)
+                ReportError(std::format("Expect expression after '{}'",
+                                        unaryExpr->op->GetLexeme()),
+                            unaryExpr->op);
             if (Consume(TokenType::RIGHT_PAREN))
             {
                 return unaryExpr;
@@ -206,7 +442,6 @@ Expression *Parser::ParseCastExpression()
     while (Consume(TokenType::AS))
     {
         CastExpression *castExpr = gZtoonArena.Allocate<CastExpression>();
-        expressions.push_back(castExpr);
         castExpr->expression = expr;
         if (IsDataType(Peek()->GetType()))
         {
@@ -231,7 +466,6 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
-        expressions.push_back(expr);
         expr->primary = Prev();
         expr->dataType = TokenType::U64;
         retExpr = expr;
@@ -241,7 +475,6 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
-        expressions.push_back(expr);
         expr->primary = Prev();
         expr->dataType = TokenType::F64;
         retExpr = expr;
@@ -252,7 +485,6 @@ Expression *Parser::ParsePrimaryExpression()
 
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
-        expressions.push_back(expr);
         expr->primary = Prev();
         retExpr = expr;
         break;
@@ -261,7 +493,6 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
-        expressions.push_back(expr);
         expr->primary = Prev();
         retExpr = expr;
         break;
@@ -270,7 +501,6 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
-        expressions.push_back(expr);
         expr->primary = Prev();
         retExpr = expr;
         break;
@@ -279,7 +509,6 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
-        expressions.push_back(expr);
         expr->primary = Prev();
         retExpr = expr;
         break;
@@ -288,7 +517,6 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
-        expressions.push_back(expr);
         expr->primary = Prev();
         retExpr = expr; // TODO: Check if you need to assing a type here?
         break;
@@ -297,7 +525,6 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Consume(TokenType::LEFT_PAREN);
         GroupingExpression *gExpr = gZtoonArena.Allocate<GroupingExpression>();
-        expressions.push_back(gExpr);
         gExpr->expression = ParseExpression();
         if (Consume(TokenType::RIGHT_PAREN))
         {
@@ -351,6 +578,19 @@ std::string VarAssignmentStatement::PrettyString()
     str += "|_(=)\n";
     prefix += "    ";
     str += expression ? expression->PrettyString(prefix, true) : "";
+    str += prefix;
+    str += "|_";
+    str += "var_assign(" + identifier->GetLexeme() + " (datatype" + ")" + ")\n";
+    return str;
+}
+
+std::string VarCompoundAssignmentStatement::PrettyString()
+{
+    std::string str = "";
+    std::string prefix = "";
+    str += "|_(=)\n";
+    prefix += "    ";
+    str += expression->PrettyString(prefix, true);
     str += prefix;
     str += "|_";
     str += "var_assign(" + identifier->GetLexeme() + " (datatype" + ")" + ")\n";

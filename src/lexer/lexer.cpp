@@ -43,6 +43,15 @@ bool IsDataType(TokenType type)
                       TokenType::U32, TokenType::U64, TokenType::F32,
                       TokenType::F64, TokenType::BOOL);
 }
+bool IsCompoundAssignment(TokenType type)
+{
+    return TokenMatch(type, TokenType::PLUS_EQUAL, TokenType::DASH_EQUAL,
+                      TokenType::ASTERISK_EQUAL, TokenType::SLASH_EQUAL,
+                      TokenType::PERCENTAGE_EQUAL, TokenType::BITWISE_AND_EQUAL,
+                      TokenType::BITWISE_OR_EQUAL, TokenType::BITWISE_XOR_EQUAL,
+                      TokenType::SHIFT_LEFT_EQUAL,
+                      TokenType::SHIFT_RIGHT_EQUAL);
+}
 Lexer::Lexer()
 {
 
@@ -63,6 +72,29 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^bool\b)"), TokenType::BOOL});
     patterns.push_back({std::regex(R"(^sizeof\b)"), TokenType::SIZEOF});
     patterns.push_back({std::regex(R"(^--)"), TokenType::DASH_DASH});
+    patterns.push_back({std::regex(R"(^\+=)"), TokenType::PLUS_EQUAL});
+    patterns.push_back({std::regex(R"(^-=)"), TokenType::DASH_EQUAL});
+    patterns.push_back({std::regex(R"(^\*=)"), TokenType::ASTERISK_EQUAL});
+    patterns.push_back({std::regex(R"(^/=)"), TokenType::SLASH_EQUAL});
+    patterns.push_back({std::regex(R"(^%=)"), TokenType::PERCENTAGE_EQUAL});
+    patterns.push_back({std::regex(R"(^&=)"), TokenType::BITWISE_AND_EQUAL});
+    patterns.push_back({std::regex(R"(^\^=)"), TokenType::BITWISE_XOR_EQUAL});
+    patterns.push_back({std::regex(R"(^\|=)"), TokenType::BITWISE_OR_EQUAL});
+    patterns.push_back({std::regex(R"(^<<=)"), TokenType::SHIFT_LEFT_EQUAL});
+    patterns.push_back({std::regex(R"(^>>=)"), TokenType::SHIFT_RIGHT_EQUAL});
+    patterns.push_back({std::regex(R"(^\|\|)"), TokenType::OR});
+    patterns.push_back({std::regex(R"(^&&)"), TokenType::AND});
+    patterns.push_back({std::regex(R"(^<<)"), TokenType::SHIFT_LEFT});
+    patterns.push_back({std::regex(R"(^>>)"), TokenType::SHIFT_RIGHT});
+    patterns.push_back({std::regex(R"(^<=)"), TokenType::LESS_EQUAL});
+    patterns.push_back({std::regex(R"(^<)"), TokenType::LESS});
+    patterns.push_back({std::regex(R"(^>=)"), TokenType::GREATER_EQUAL});
+    patterns.push_back({std::regex(R"(^>)"), TokenType::GREATER});
+    patterns.push_back({std::regex(R"(^==)"), TokenType::EQUAL_EQUAL});
+    patterns.push_back({std::regex(R"(^!=)"), TokenType::EXCLAMATION_EQUAL});
+    patterns.push_back({std::regex(R"(^&)"), TokenType::BITWISE_AND});
+    patterns.push_back({std::regex(R"(^\|)"), TokenType::BITWISE_OR});
+    patterns.push_back({std::regex(R"(^\^)"), TokenType::BITWISE_XOR});
     patterns.push_back({std::regex(R"(^\+\+)"), TokenType::PLUS_PLUS});
     patterns.push_back({std::regex(R"(^\*)"), TokenType::ASTERISK});
     patterns.push_back({std::regex(R"(^/)"), TokenType::SLASH});
@@ -75,7 +107,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^\()"), TokenType::LEFT_PAREN});
     patterns.push_back({std::regex(R"(^\))"), TokenType::RIGHT_PAREN});
     patterns.push_back({std::regex(R"(^=)"), TokenType::EQUAL});
-    patterns.push_back({std::regex(R"(^\!)"), TokenType::EXCLAMATION});
+    patterns.push_back({std::regex(R"(^!)"), TokenType::EXCLAMATION});
     patterns.push_back({std::regex(R"(^~)"), TokenType::TILDE});
 
     patterns.push_back(

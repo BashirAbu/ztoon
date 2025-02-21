@@ -3,6 +3,16 @@
 #include "ztest.h"
 #include <string>
 
+TEST(ParserNewFeatureTest)
+{
+    std::string source = "a *= (1 | 2 * 4);";
+    Lexer lexer;
+    lexer.Tokenize(source, "assignment.ztoon");
+    Parser parser(lexer.GetTokens());
+    parser.Parse();
+    parser.PrettyPrintAST();
+}
+
 //--------------------------------------------------------------------------
 // Test: Unary Minus Expression
 // Input: "-5;"

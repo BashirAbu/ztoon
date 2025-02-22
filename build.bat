@@ -4,7 +4,7 @@ mkdir build
 
 pushd build
 
-cmake -G "Ninja" .. -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DLLVM_DIR=D:\llvm_installd\lib\cmake\llvm\
-cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ..
+cmake -G "Ninja" .. -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DLLVM_DIR=D:\llvm_installd\lib\cmake\llvm\ -Wno-dev
+cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -Wno-dev ..
 ninja -j0
 popd

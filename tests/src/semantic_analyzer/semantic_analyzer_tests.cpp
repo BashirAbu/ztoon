@@ -17,9 +17,6 @@ TEST(SemanticTesting)
     lexer.Tokenize(source, "semantics.ztoon");
     Parser parser(lexer.GetTokens());
     auto statements = parser.Parse();
-    parser.PrettyPrintAST();
     SemanticAnalyzer analyzer(statements);
     analyzer.Analize();
-
-    parser.PrettyPrintAST();
 }

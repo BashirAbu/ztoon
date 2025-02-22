@@ -31,8 +31,9 @@ class Variable
 class Scope
 {
   public:
-    Variable const *GetVariable(std::string name,
-                                Token const *tokenForErrorHandeling = nullptr);
+    Variable const *
+    GetVariable(std::string name,
+                Token const *tokenForErrorHandeling = nullptr) const;
     void AddVariable(Variable *variable);
 
   private:
@@ -52,6 +53,7 @@ class SemanticAnalyzer
     TokenType DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);
     Scope globalScope;
-    Scope *currentScope = nullptr;
+
     const std::vector<Statement *> statements;
+    friend class CodeGen;
 };

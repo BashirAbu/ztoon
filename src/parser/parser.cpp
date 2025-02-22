@@ -447,13 +447,13 @@ Expression *Parser::ParseCastExpression()
         if (IsDataType(Peek()->GetType()))
         {
             castExpr->dataType = Peek()->GetType();
+            castExpr->castToType = Peek();
             Advance();
         }
         else
         {
             ReportError("Expect datatype after 'as'.", Peek());
         }
-        castExpr->castToType = Prev();
         expr = castExpr;
     }
 

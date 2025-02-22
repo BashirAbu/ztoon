@@ -103,6 +103,7 @@ bool IsSigned(TokenType type);
 bool IsFloat(TokenType type);
 bool IsCompoundAssignment(TokenType type);
 bool IsDataType(TokenType type);
+uint32_t TokenDataTypeBitWidth(TokenType type);
 class Token
 {
   public:

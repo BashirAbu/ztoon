@@ -10,6 +10,39 @@
 
 MemoryArena gZtoonArena(ZTOON_ARENA_SIZE);
 
+uint32_t TokenDataTypeBitWidth(TokenType type)
+{
+
+    switch (type)
+    {
+
+    case TokenType::I8:
+        return 8;
+    case TokenType::I16:
+        return 16;
+    case TokenType::I32:
+        return 32;
+    case TokenType::I64:
+        return 64;
+    case TokenType::U8:
+        return 8;
+    case TokenType::U16:
+        return 16;
+    case TokenType::U32:
+        return 32;
+    case TokenType::U64:
+        return 64;
+    case TokenType::F32:
+        return 32;
+    case TokenType::F64:
+        return 64;
+    case TokenType::BOOL:
+        return 1;
+    default:
+        return 0;
+    }
+    return 0;
+}
 std::string TokenDataTypeToString(TokenType type)
 {
     switch (type)
@@ -203,11 +236,11 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                     switch (pattern.type)
                     {
                     case TokenType::INTEGER_LITERAL:
-                        token = gZtoonArena.Allocate<TokenLiteral<uint64_t>>(
+                        token = gZtoonArena.Allocate<TokenLiteral<int32_t>>(
                             pattern.type, std::stoull(match.str()));
                         break;
                     case TokenType::FLOAT_LITERAL:
-                        token = gZtoonArena.Allocate<TokenLiteral<double>>(
+                        token = gZtoonArena.Allocate<TokenLiteral<float>>(
                             pattern.type, std::stod(match.str()));
                         break;
                     case TokenType::CHARACTER_LITERAL:

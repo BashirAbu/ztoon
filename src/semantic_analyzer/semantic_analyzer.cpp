@@ -4,11 +4,11 @@
 #include "semantic_analyzer.h"
 #include <format>
 Variable const *Scope::GetVariable(std::string name,
-                                   Token const *tokenForErrorHandeling)
+                                   Token const *tokenForErrorHandeling) const
 {
     if (variablesMap.contains(name))
     {
-        return variablesMap[name];
+        return variablesMap.at(name);
     }
     else
     {
@@ -39,7 +39,6 @@ void Scope::AddVariable(Variable *variable)
 SemanticAnalyzer::SemanticAnalyzer(const std::vector<Statement *> &statements)
     : statements(statements)
 {
-    currentScope = &globalScope;
 }
 SemanticAnalyzer::~SemanticAnalyzer() {}
 void SemanticAnalyzer::Analize()
@@ -79,7 +78,7 @@ void SemanticAnalyzer::Analize()
                 varDeclStatement->GetIdentifier()->GetLexeme(),
                 varDeclStatement->GetDataType(),
                 varDeclStatement->GetIdentifier());
-            currentScope->AddVariable(var);
+            globalScope.AddVariable(var);
         }
         else if (dynamic_cast<VarAssignmentStatement *>(statement))
         {
@@ -87,7 +86,7 @@ void SemanticAnalyzer::Analize()
             VarAssignmentStatement *varAssignmentStatement =
                 dynamic_cast<VarAssignmentStatement *>(statement);
 
-            Variable const *var = currentScope->GetVariable(
+            Variable const *var = globalScope.GetVariable(
                 varAssignmentStatement->GetIdentifier()->GetLexeme(),
                 varAssignmentStatement->GetIdentifier());
 
@@ -122,7 +121,7 @@ void SemanticAnalyzer::Analize()
             VarCompoundAssignmentStatement *varComAssignStatement =
                 dynamic_cast<VarCompoundAssignmentStatement *>(statement);
 
-            Variable const *var = currentScope->GetVariable(
+            Variable const *var = globalScope.GetVariable(
                 varComAssignStatement->GetIdentifier()->GetLexeme(),
                 varComAssignStatement->GetIdentifier());
             varComAssignStatement->dataType = var->GetDataType();
@@ -268,9 +267,10 @@ TokenType SemanticAnalyzer::DecideDataType(Expression **left,
 void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
     Expression *expression)
 {
-    if (BinaryExpression *binaryExpression =
-            dynamic_cast<BinaryExpression *>(expression))
+    if (dynamic_cast<BinaryExpression *>(expression))
     {
+        BinaryExpression *binaryExpression =
+            dynamic_cast<BinaryExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(
             binaryExpression->GetLeftExpression());
         EvaluateAndAssignDataTypeToExpression(
@@ -290,9 +290,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         }
         binaryExpression->dataType = dataType;
     }
-    else if (UnaryExpression *unaryExpression =
-                 dynamic_cast<UnaryExpression *>(expression))
+    else if (dynamic_cast<UnaryExpression *>(expression))
     {
+        UnaryExpression *unaryExpression =
+            dynamic_cast<UnaryExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(
             unaryExpression->GetRightExpression());
         TokenType rightDataType =
@@ -301,7 +302,32 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         switch (unaryExpression->GetOperator()->GetType())
         {
         case TokenType::DASH:
+        {
+            // numerical
+            if (!IsNumerical(rightDataType) && !IsSigned(rightDataType))
+            {
+                ReportError(
+                    std::format(
+                        "Cannot perform unary operator '{}' on datatype '{}'.",
+                        unaryExpression->GetOperator()->GetLexeme(),
+                        TokenDataTypeToString(rightDataType)),
+                    unaryExpression->GetOperator());
+            }
+            break;
+        }
         case TokenType::TILDE:
+        {
+            if (!IsInteger(rightDataType))
+            {
+                ReportError(
+                    std::format(
+                        "Cannot perform unary operator '{}' on datatype '{}'.",
+                        unaryExpression->GetOperator()->GetLexeme(),
+                        TokenDataTypeToString(rightDataType)),
+                    unaryExpression->GetOperator());
+            }
+            break;
+        }
         case TokenType::DASH_DASH:
         case TokenType::PLUS:
         case TokenType::PLUS_PLUS:
@@ -356,17 +382,19 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         }
         unaryExpression->dataType = rightDataType;
     }
-    else if (GroupingExpression *groupingExpression =
-                 dynamic_cast<GroupingExpression *>(expression))
+    else if (dynamic_cast<GroupingExpression *>(expression))
     {
+        GroupingExpression *groupingExpression =
+            dynamic_cast<GroupingExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(
             groupingExpression->GetExpression());
         TokenType exprDataType = groupingExpression->GetExpression()->dataType;
         groupingExpression->dataType = exprDataType;
     }
-    else if (CastExpression *castExpression =
-                 dynamic_cast<CastExpression *>(expression))
+    else if (dynamic_cast<CastExpression *>(expression))
     {
+        CastExpression *castExpression =
+            dynamic_cast<CastExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(castExpression->GetExpression());
         TokenType exprDataType = castExpression->GetExpression()->dataType;
         castExpression->dataType = castExpression->GetCastToType()->GetType();
@@ -389,9 +417,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             }
         }
     }
-    else if (PrimaryExpression *primaryExpression =
-                 dynamic_cast<PrimaryExpression *>(expression))
+    else if (dynamic_cast<PrimaryExpression *>(expression))
     {
+        PrimaryExpression *primaryExpression =
+            dynamic_cast<PrimaryExpression *>(expression);
         switch (primaryExpression->GetPrimary()->GetType())
         {
         case TokenType::INTEGER_LITERAL:
@@ -423,9 +452,9 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::IDENTIFIER:
         {
             primaryExpression->dataType =
-                currentScope
-                    ->GetVariable(primaryExpression->GetPrimary()->GetLexeme(),
-                                  primaryExpression->GetPrimary())
+                globalScope
+                    .GetVariable(primaryExpression->GetPrimary()->GetLexeme(),
+                                 primaryExpression->GetPrimary())
                     ->GetDataType()
                     ->GetType();
             break;

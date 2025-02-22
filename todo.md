@@ -19,28 +19,3 @@
 
   - [ ] Scope
 
-
-
-[ ] arrays.
-
-[ ] strings.
-
-[ ] Structs.
-
-
-[ ] enums
-
-[ ] for loop
-
-[ ] ? : constion
-
-[ ] structs methods.
-
-[ ] variadic funstions.
-
-[ ] generics
-
-[ ] operator overloading
-
-[ ] pointers
-

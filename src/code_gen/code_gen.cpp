@@ -250,7 +250,7 @@ void CodeGen::GenIR()
                 nullptr, varDeclStatement->GetIdentifier()->GetLexeme());
             IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
             irVariable->aInsta = inst;
-            irVariable->variabel = semanticAnalyzer.globalScope.GetVariable(
+            irVariable->variabel = semanticAnalyzer.currentScope->GetVariable(
                 varDeclStatement->GetIdentifier()->GetLexeme(),
                 varDeclStatement->GetIdentifier());
             irVariable->irType =

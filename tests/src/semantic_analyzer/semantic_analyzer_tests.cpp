@@ -30,9 +30,9 @@ TEST(SemanticAnalyzerIfStatement)
         else if 5 > 2 && 11 != 1 || true {
             c: f64 = 3.14;
         }
-        else if false || 1 == 1
-            b--;
+        
         else {
+        {}{}{}
             d: u8 = 1;
         }
     )";
@@ -41,6 +41,40 @@ TEST(SemanticAnalyzerIfStatement)
     lexer.Tokenize(source, "ifStatement.ztoon");
     Parser parser(lexer.GetTokens());
     auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+}
+
+TEST(SemanticAnalyzerScope)
+{
+
+    std::string source = R"(
+        a : i32 = 1;
+        {
+            a: f32 = 3243.0;
+            b: i32 = a as i32;
+            {
+            b = 0;
+                {
+                b = 3;
+                    {
+                        man: i32 = b;
+                    }
+                  b = 1;  
+                }
+                b = 0;
+            }
+            
+        }
+        b: i32 = 333;
+        c: i32 = b;
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "scopes.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    parser.PrettyPrintAST();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
 }

@@ -6,7 +6,6 @@
 //  Check if a variable is used before its declaration.
 //  handeling scope.
 
-bool AreTypesCompatible(TokenType left, TokenType right);
 class Variable
 {
   public:
@@ -35,9 +34,10 @@ class Scope
     GetVariable(std::string name,
                 Token const *tokenForErrorHandeling = nullptr) const;
     void AddVariable(Variable *variable);
+    Scope(Scope *parent = nullptr) : parent(parent) {}
 
   private:
-    Scope *enclosing = nullptr;
+    Scope *parent = nullptr;
     std::unordered_map<std::string, Variable *> variablesMap;
     friend class SemanticAnalyzer;
 };
@@ -53,8 +53,8 @@ class SemanticAnalyzer
     void AnalizeStatement(Statement *statement);
     TokenType DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);
-    Scope globalScope;
-
+    Scope *currentScope = nullptr;
+    std::unordered_map<BlockStatement *, Scope *> blockToScopeMap;
     const std::vector<Statement *> statements;
     friend class CodeGen;
 };

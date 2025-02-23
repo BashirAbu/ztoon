@@ -6,14 +6,33 @@
 Variable const *Scope::GetVariable(std::string name,
                                    Token const *tokenForErrorHandeling) const
 {
-    if (variablesMap.contains(name))
+    Variable *var = nullptr;
+
+    Scope const *current = this;
+    while (!var)
     {
-        return variablesMap.at(name);
+        if (current->variablesMap.contains(name))
+        {
+            var = current->variablesMap.at(name);
+        }
+        // go up one level;
+        if (!current->parent)
+        {
+            // no more scopes.
+            break;
+        }
+        current = current->parent;
+    }
+
+    if (var)
+    {
+        return var;
     }
     else
     {
-        ReportError(std::format("Variable '{}' is not defined.", name),
-                    tokenForErrorHandeling ? tokenForErrorHandeling : nullptr);
+        ReportError(
+            std::format("Variable '{}' is not defined in this scope.", name),
+            tokenForErrorHandeling ? tokenForErrorHandeling : nullptr);
     }
     return nullptr;
 }
@@ -39,6 +58,7 @@ void Scope::AddVariable(Variable *variable)
 SemanticAnalyzer::SemanticAnalyzer(const std::vector<Statement *> &statements)
     : statements(statements)
 {
+    currentScope = gZtoonArena.Allocate<Scope>();
 }
 SemanticAnalyzer::~SemanticAnalyzer() {}
 void SemanticAnalyzer::Analize()
@@ -81,7 +101,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         Variable *var = gZtoonArena.Allocate<Variable>(
             varDeclStatement->GetIdentifier()->GetLexeme(),
             varDeclStatement->GetDataType(), varDeclStatement->GetIdentifier());
-        globalScope.AddVariable(var);
+        currentScope->AddVariable(var);
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
     {
@@ -89,7 +109,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         VarAssignmentStatement *varAssignmentStatement =
             dynamic_cast<VarAssignmentStatement *>(statement);
 
-        Variable const *var = globalScope.GetVariable(
+        Variable const *var = currentScope->GetVariable(
             varAssignmentStatement->GetIdentifier()->GetLexeme(),
             varAssignmentStatement->GetIdentifier());
 
@@ -121,7 +141,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         VarCompoundAssignmentStatement *varComAssignStatement =
             dynamic_cast<VarCompoundAssignmentStatement *>(statement);
 
-        Variable const *var = globalScope.GetVariable(
+        Variable const *var = currentScope->GetVariable(
             varComAssignStatement->GetIdentifier()->GetLexeme(),
             varComAssignStatement->GetIdentifier());
         varComAssignStatement->dataType = var->GetDataType();
@@ -151,10 +171,16 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
         BlockStatement *blockStatement =
             dynamic_cast<BlockStatement *>(statement);
+
+        Scope *scope = gZtoonArena.Allocate<Scope>(currentScope);
+        Scope *temp = currentScope;
+        currentScope = scope;
+        blockToScopeMap[blockStatement] = scope;
         for (Statement *s : blockStatement->GetStatements())
         {
             AnalizeStatement(s);
         }
+        currentScope = temp;
     }
     else if (dynamic_cast<IfStatement *>(statement))
     {
@@ -167,7 +193,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                         ifStatement->ifToken);
         }
 
-        AnalizeStatement(ifStatement->GetStatement());
+        AnalizeStatement(ifStatement->GetBlockStatement());
 
         for (Statement *s : ifStatement->GetNextElseIforElseStatements())
         {
@@ -185,13 +211,13 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             ReportError(std::format("Expression after 'if' must be boolean."),
                         elifStatement->ifToken);
         }
-        AnalizeStatement(elifStatement->GetStatement());
+        AnalizeStatement(elifStatement->GetBlockStatement());
     }
     else if (dynamic_cast<ElseStatement *>(statement))
     {
         ElseStatement *elseStatement = dynamic_cast<ElseStatement *>(statement);
 
-        AnalizeStatement(elseStatement->GetStatement());
+        AnalizeStatement(elseStatement->GetBlockStatement());
     }
     else if (dynamic_cast<ExpressionStatement *>(statement))
     {
@@ -533,9 +559,9 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::IDENTIFIER:
         {
             primaryExpression->dataType =
-                globalScope
-                    .GetVariable(primaryExpression->GetPrimary()->GetLexeme(),
-                                 primaryExpression->GetPrimary())
+                currentScope
+                    ->GetVariable(primaryExpression->GetPrimary()->GetLexeme(),
+                                  primaryExpression->GetPrimary())
                     ->GetDataType()
                     ->GetType();
             break;

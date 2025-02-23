@@ -15,7 +15,7 @@
 
   if_statement -> "if" expression (block | statement) (("else" "if"
   expression
-  (block | statement)) * | "else" (block | statement) ) ? ;
+  block * | "else" block ) ? ;
 
   block -> "{" statement* "}" ;
 
@@ -131,7 +131,7 @@ class IfStatement : public Statement
   public:
     virtual std::string PrettyString(std::string &prefix) override;
     class Expression *GetExpression() const { return expression; }
-    Statement *GetStatement() { return statement; }
+    BlockStatement *GetBlockStatement() { return blockStatement; }
     const std::vector<Statement *> &GetNextElseIforElseStatements()
     {
         return nextElseIforElseStatements;
@@ -141,7 +141,7 @@ class IfStatement : public Statement
 
   private:
     class Expression *expression = nullptr;
-    Statement *statement;
+    BlockStatement *blockStatement;
     std::vector<Statement *> nextElseIforElseStatements;
     friend class Parser;
 };
@@ -151,25 +151,25 @@ class ElseIfStatement : public Statement
   public:
     virtual std::string PrettyString(std::string &prefix) override;
     class Expression *GetExpression() const { return expression; }
-    Statement *GetStatement() { return statement; }
+    BlockStatement *GetBlockStatement() { return blockStatement; }
 
     Token const *ifToken = nullptr;
 
   private:
     class Expression *expression = nullptr;
-    Statement *statement;
+    BlockStatement *blockStatement;
     friend class Parser;
 };
 class ElseStatement : public Statement
 {
   public:
     virtual std::string PrettyString(std::string &prefix) override;
-    Statement *GetStatement() { return statement; }
+    BlockStatement *GetBlockStatement() { return blockStatement; }
 
     Token const *elseToken = nullptr;
 
   private:
-    Statement *statement;
+    BlockStatement *blockStatement;
     friend class Parser;
 };
 

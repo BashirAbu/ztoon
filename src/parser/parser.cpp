@@ -282,8 +282,13 @@ Statement *Parser::ParseIfStatement()
         ifStatement->ifToken = Prev();
         ifStatement->expression = ParseExpression();
 
-        ifStatement->statement = ParseStatement();
+        ifStatement->blockStatement =
+            dynamic_cast<BlockStatement *>(ParseBlockStatement());
 
+        if (!ifStatement->blockStatement)
+        {
+            ReportError("Expect block statement after 'expression'", Prev());
+        }
         while (Peek()->GetType() == TokenType::ELSE &&
                PeekAhead(1)->GetType() == TokenType::IF)
         {
@@ -308,10 +313,11 @@ Statement *Parser::ParseElseStatement()
 {
     ElseStatement *elseStatement = gZtoonArena.Allocate<ElseStatement>();
     elseStatement->elseToken = Prev();
-    elseStatement->statement = ParseStatement();
-    if (!elseStatement->statement)
+    elseStatement->blockStatement =
+        dynamic_cast<BlockStatement *>(ParseBlockStatement());
+    if (!elseStatement->blockStatement)
     {
-        ReportError("Expect statement after 'else'", Prev());
+        ReportError("Expect block statement after 'else'", Prev());
     }
 
     return elseStatement;
@@ -327,11 +333,14 @@ Statement *Parser::ParseElseIfStatement()
     {
         ReportError("Expect expression after 'if else'", Prev());
     }
-    elifStatement->statement = ParseStatement();
-    if (!elifStatement->statement)
+    elifStatement->blockStatement =
+        dynamic_cast<BlockStatement *>(ParseBlockStatement());
+
+    if (!elifStatement->blockStatement)
     {
-        ReportError("Expect statement after 'expression'", Prev());
+        ReportError("Expect block statement after 'expression'", Prev());
     }
+
     return elifStatement;
 }
 Statement *Parser::ParseExpressionStatement()
@@ -641,7 +650,8 @@ void Parser::PrettyPrintAST()
 }
 std::string BlockStatement::PrettyString(std::string &prefix)
 {
-    bool isLeft = *(prefix.end() - 1) == '|';
+
+    bool isLeft = prefix.empty() ? false : *(prefix.end() - 1) == '|';
     if (isLeft)
         prefix.pop_back();
     std::string str = prefix;
@@ -664,7 +674,7 @@ std::string IfStatement::PrettyString(std::string &prefix)
     std::string str = prefix;
     str += "|_(if)\n";
     prefix += "|   |";
-    str += statement->PrettyString(prefix);
+    str += blockStatement->PrettyString(prefix);
     str += expression->PrettyString(prefix, false);
 
     prefix.pop_back();
@@ -684,7 +694,7 @@ std::string ElseIfStatement::PrettyString(std::string &prefix)
     std::string str = prefix;
     str += "|_(else if)\n";
     prefix += "|   |";
-    str += statement->PrettyString(prefix);
+    str += blockStatement->PrettyString(prefix);
     str += expression->PrettyString(prefix, false);
     prefix.pop_back();
     prefix.pop_back();
@@ -699,7 +709,7 @@ std::string ElseStatement::PrettyString(std::string &prefix)
     std::string str = prefix;
     str += "|_(else)\n";
     prefix += "    ";
-    str += statement->PrettyString(prefix);
+    str += blockStatement->PrettyString(prefix);
     prefix.pop_back();
     prefix.pop_back();
     prefix.pop_back();

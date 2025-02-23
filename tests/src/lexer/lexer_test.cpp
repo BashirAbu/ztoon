@@ -96,9 +96,9 @@ TEST(LexerNumericLiteralTest)
     Token *token = tokens[0];
     ASSERT_EQ(token->GetType(), TokenType::INTEGER_LITERAL,
               "Token type should be INTEGER_LITERAL");
-    auto *intToken = dynamic_cast<TokenLiteral<uint64_t> *>(token);
+    auto *intToken = dynamic_cast<TokenLiteral<int32_t> *>(token);
     ASSERT_NE(intToken, nullptr,
-              "Token should be of type TokenLiteral<uint64_t>");
+              "Token should be of type TokenLiteral<int32_t>");
     ASSERT_EQ(intToken->GetValue(), 123, "Integer literal value should be 123");
 }
 
@@ -114,10 +114,10 @@ TEST(LexerFloatLiteralTest)
     Token *token = tokens[0];
     ASSERT_EQ(token->GetType(), TokenType::FLOAT_LITERAL,
               "Token type should be FLOAT_LITERAL");
-    auto *floatToken = dynamic_cast<TokenLiteral<double> *>(token);
+    auto *floatToken = dynamic_cast<TokenLiteral<float> *>(token);
     ASSERT_NE(floatToken, nullptr,
-              "Token should be of type TokenLiteral<double>");
-    ASSERT_EQ(floatToken->GetValue(), 3.14,
+              "Token should be of type TokenLiteral<float>");
+    ASSERT_EQ(floatToken->GetValue(), 3.14f,
               "Float literal value should be 3.14");
 }
 

@@ -392,53 +392,20 @@ Expression *Parser::ParseTermExpression()
 
 Expression *Parser::ParseFactorExpression()
 {
-    Expression *expr = ParseUnaryExpression();
+    Expression *expr = ParseCastExpression();
 
     while (TokenMatch(Peek()->GetType(), TokenType::ASTERISK, TokenType::SLASH))
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseUnaryExpression());
+        expr = BuildBinaryExpression(op, expr, ParseCastExpression());
     }
     return expr;
 }
 
-Expression *Parser::ParseUnaryExpression()
-{
-    if (TokenMatch(Peek()->GetType(), TokenType::DASH, TokenType::DASH_DASH,
-                   TokenType::PLUS, TokenType::PLUS_PLUS,
-                   TokenType::EXCLAMATION, TokenType::TILDE, TokenType::SIZEOF))
-    {
-        Advance();
-        UnaryExpression *unaryExpr = gZtoonArena.Allocate<UnaryExpression>();
-        unaryExpr->op = Prev();
-        if ((Prev()->GetType() == TokenType::SIZEOF) &&
-            Consume(TokenType::LEFT_PAREN))
-        {
-            unaryExpr->right = ParseCastExpression();
-            if (!unaryExpr->right)
-                ReportError(std::format("Expect expression after '{}'",
-                                        unaryExpr->op->GetLexeme()),
-                            unaryExpr->op);
-            if (Consume(TokenType::RIGHT_PAREN))
-            {
-                return unaryExpr;
-            }
-            else
-            {
-                ReportError("Expect ')' after expression.", Prev());
-                return nullptr;
-            }
-        }
-        unaryExpr->right = ParseCastExpression();
-        return unaryExpr;
-    }
-    return ParseCastExpression();
-}
-
 Expression *Parser::ParseCastExpression()
 {
-    Expression *expr = ParsePrimaryExpression();
+    Expression *expr = ParseUnaryExpression();
 
     while (Consume(TokenType::AS))
     {
@@ -459,6 +426,39 @@ Expression *Parser::ParseCastExpression()
 
     return expr;
 }
+Expression *Parser::ParseUnaryExpression()
+{
+    if (TokenMatch(Peek()->GetType(), TokenType::DASH, TokenType::DASH_DASH,
+                   TokenType::PLUS, TokenType::PLUS_PLUS,
+                   TokenType::EXCLAMATION, TokenType::TILDE, TokenType::SIZEOF))
+    {
+        Advance();
+        UnaryExpression *unaryExpr = gZtoonArena.Allocate<UnaryExpression>();
+        unaryExpr->op = Prev();
+        if ((Prev()->GetType() == TokenType::SIZEOF) &&
+            Consume(TokenType::LEFT_PAREN))
+        {
+            unaryExpr->right = ParsePrimaryExpression();
+            if (!unaryExpr->right)
+                ReportError(std::format("Expect expression after '{}'",
+                                        unaryExpr->op->GetLexeme()),
+                            unaryExpr->op);
+            if (Consume(TokenType::RIGHT_PAREN))
+            {
+                return unaryExpr;
+            }
+            else
+            {
+                ReportError("Expect ')' after expression.", Prev());
+                return nullptr;
+            }
+        }
+        unaryExpr->right = ParsePrimaryExpression();
+        return unaryExpr;
+    }
+    return ParsePrimaryExpression();
+}
+
 Expression *Parser::ParsePrimaryExpression()
 {
     Expression *retExpr = nullptr;

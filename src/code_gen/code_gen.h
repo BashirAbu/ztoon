@@ -11,6 +11,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include <memory>
 #include <unordered_map>
 
 struct IRType
@@ -37,11 +38,13 @@ class CodeGen
     CodeGen(const SemanticAnalyzer &semanticAnalyzer);
     ~CodeGen();
     void GenIR();
-    llvm::LLVMContext &GetCTX() { return ctx; }
-    llvm::IRBuilder<> *GetIRBuilder() { return irBuilder; }
-    llvm::Module *GetModule() { return module; }
     void AddIRVariable(IRVariable *irVariable);
     IRVariable *GetIRVariable(std::string name);
+
+    std::unique_ptr<llvm::LLVMContext> ctx;
+    std::unique_ptr<llvm::Module> module;
+    std::unique_ptr<llvm::IRBuilder<>> irBuilder;
+    std::unique_ptr<llvm::DataLayout> moduleDataLayout;
 
   private:
     IRValue GenExpressionIR(Expression *expression);
@@ -53,10 +56,6 @@ class CodeGen
     IRValue CastFloatToInt(IRValue value, IRType castType);
     IRValue CastIntToFloat(IRValue value, IRType castType);
 
-    llvm::LLVMContext ctx;
-    llvm::Module *module = nullptr;
-    llvm::IRBuilder<> *irBuilder = nullptr;
-    llvm::DataLayout *moduleDataLayout = nullptr;
     std::unordered_map<std::string, IRVariable *> irVariablesMap;
     const SemanticAnalyzer &semanticAnalyzer;
 };

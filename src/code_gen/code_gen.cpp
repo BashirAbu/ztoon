@@ -6,9 +6,11 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/TypeSize.h"
 #include <format>
+#include <memory>
 IRType CodeGen::TokenTypeToLLVMType(TokenType type)
 {
     IRType irType = {};
@@ -180,8 +182,8 @@ IRValue CodeGen::CastIntToFloat(IRValue value, IRType castType)
 {
 
     IRValue castedValue = {};
-    uint32_t valueBitWidth = value.type.type->isFloatTy() ? 32 : 64;
-    uint32_t castTypeBitWidth = castType.type->getIntegerBitWidth();
+    uint32_t valueBitWidth = value.type.type->getIntegerBitWidth();
+    uint32_t castTypeBitWidth = castType.type->isFloatTy() ? 32 : 64;
     castedValue.type = castType;
     castedValue.value =
         value.type.isSigned
@@ -226,16 +228,12 @@ IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
 CodeGen::CodeGen(const SemanticAnalyzer &semanticAnalyzer)
     : semanticAnalyzer(semanticAnalyzer)
 {
-    module = new llvm::Module("ztoon module", ctx);
-    moduleDataLayout = new llvm::DataLayout(module);
-    irBuilder = new llvm::IRBuilder<>(ctx);
+    ctx = std::make_unique<llvm::LLVMContext>();
+    module = std::make_unique<llvm::Module>("ztoon module", *ctx);
+    moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
+    irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
 }
-CodeGen::~CodeGen()
-{
-    delete moduleDataLayout;
-    delete module;
-    delete irBuilder;
-}
+CodeGen::~CodeGen() {}
 
 void CodeGen::GenIR()
 {
@@ -414,12 +412,15 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         UnaryExpression *unaryExpression =
             dynamic_cast<UnaryExpression *>(expression);
         IRValue rValue = GenExpressionIR(unaryExpression->GetRightExpression());
+        irValue.type = rValue.type;
         switch (unaryExpression->GetOperator()->GetType())
         {
         case TokenType::DASH:
         {
+            irValue.type.isSigned = !irValue.type.isSigned;
             if (IsInteger(unaryExpression->GetDataType()))
             {
+
                 irValue.value = irBuilder->CreateNeg(
                     rValue.value,
                     std::format("unary_op_{}",
@@ -503,17 +504,18 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         {
             // numerical
             irValue.value = irBuilder->CreateXor(
-                rValue.value, llvm::ConstantInt::getTrue(ctx),
+                rValue.value, llvm::ConstantInt::getTrue(*ctx),
                 std::format("unary_op_{}",
                             unaryExpression->GetOperator()->GetLexeme()));
             break;
         }
         case TokenType::SIZEOF:
         {
+            irValue.type = TokenTypeToLLVMType(TokenType::U64);
             uint64_t size =
                 moduleDataLayout->getTypeAllocSize(rValue.value->getType());
             irValue.value =
-                llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), size);
+                llvm::ConstantInt::get(llvm::Type::getInt64Ty(*ctx), size);
             break;
         }
         default:
@@ -583,12 +585,12 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         }
         case TokenType::TRUE:
         {
-            irValue.value = llvm::ConstantInt::getTrue(ctx);
+            irValue.value = llvm::ConstantInt::getTrue(*ctx);
             break;
         }
         case TokenType::FALSE:
         {
-            irValue.value = llvm::ConstantInt::getFalse(ctx);
+            irValue.value = llvm::ConstantInt::getFalse(*ctx);
             break;
         }
         case TokenType::IDENTIFIER:

@@ -24,7 +24,7 @@ list(REMOVE_ITEM ${ZTOON_SOURCES} src/main.cpp)
 add_library(${PROJECT_NAME}-lib STATIC ${ZTOON_SOURCES})
 target_include_directories(${PROJECT_NAME}-lib PUBLIC src/)
 
-llvm_map_components_to_libnames(llvm_libs support core irreader)
+llvm_map_components_to_libnames(llvm_libs support core irreader native orcjit)
 
 target_link_libraries(${PROJECT_NAME}-lib PUBLIC ${llvm_libs})
 

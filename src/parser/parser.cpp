@@ -55,21 +55,38 @@ const std::vector<Statement *> &Parser::Parse()
 {
     while (Peek()->GetType() != TokenType::END_OF_FILE)
     {
-        ParseStatement();
+        statements.push_back(ParseStatement());
     }
     return statements;
 }
 
 Statement *Parser::ParseStatement()
 {
-    Statement *statement = ParseVarDeclStatement();
-    if (Consume(TokenType::SEMICOLON))
+    Statement *statement = ParseBlockStatement();
+    if (dynamic_cast<BlockStatement *>(statement) ||
+        dynamic_cast<IfStatement *>(statement) || Consume(TokenType::SEMICOLON))
     {
         return statement;
     }
     ReportError("Expected ';' after statement.", Peek());
     return nullptr;
 }
+
+Statement *Parser::ParseBlockStatement()
+{
+    if (Consume(TokenType::LEFT_CURLY_BRACKET))
+    {
+        BlockStatement *blockStatement = gZtoonArena.Allocate<BlockStatement>();
+
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+            blockStatement->statements.push_back(ParseStatement());
+        }
+        return blockStatement;
+    }
+    return ParseVarDeclStatement();
+}
+
 Statement *Parser::ParseVarDeclStatement()
 {
     if (Peek()->GetType() == TokenType::IDENTIFIER &&
@@ -78,7 +95,6 @@ Statement *Parser::ParseVarDeclStatement()
         Advance();
         VarDeclStatement *varDeclStatement =
             gZtoonArena.Allocate<VarDeclStatement>();
-        statements.push_back(varDeclStatement);
         varDeclStatement->identifier = Prev();
         if (Consume(TokenType::COLON))
         {
@@ -113,7 +129,6 @@ Statement *Parser::ParseVarAssignmentStatement()
         Advance();
         VarAssignmentStatement *statement =
             gZtoonArena.Allocate<VarAssignmentStatement>();
-        statements.push_back(statement);
         statement->identifier = Prev();
         Advance();
         statement->expression = ParseExpression();
@@ -132,7 +147,6 @@ Statement *Parser::ParseVarCompundAssignmentStatement()
         Advance();
         VarCompoundAssignmentStatement *statement =
             gZtoonArena.Allocate<VarCompoundAssignmentStatement>();
-        statements.push_back(statement);
         statement->identifier = Prev();
         PrimaryExpression *left = gZtoonArena.Allocate<PrimaryExpression>();
 
@@ -256,13 +270,73 @@ Statement *Parser::ParseVarCompundAssignmentStatement()
     }
     else
     {
-        return ParseExpressionStatement();
+        return ParseIfStatement();
     }
+}
+
+Statement *Parser::ParseIfStatement()
+{
+    if (Consume(TokenType::IF))
+    {
+        IfStatement *ifStatement = gZtoonArena.Allocate<IfStatement>();
+        ifStatement->ifToken = Prev();
+        ifStatement->expression = ParseExpression();
+
+        ifStatement->statement = ParseStatement();
+
+        while (Peek()->GetType() == TokenType::ELSE &&
+               PeekAhead(1)->GetType() == TokenType::IF)
+        {
+            Advance(); // consume if
+            Advance(); // consume else
+            ifStatement->nextElseIforElseStatements.push_back(
+                ParseElseIfStatement());
+        }
+
+        if (Consume(TokenType::ELSE))
+        {
+            ifStatement->nextElseIforElseStatements.push_back(
+                ParseElseStatement());
+        }
+
+        return ifStatement;
+    }
+    return ParseExpressionStatement();
+}
+
+Statement *Parser::ParseElseStatement()
+{
+    ElseStatement *elseStatement = gZtoonArena.Allocate<ElseStatement>();
+    elseStatement->elseToken = Prev();
+    elseStatement->statement = ParseStatement();
+    if (!elseStatement->statement)
+    {
+        ReportError("Expect statement after 'else'", Prev());
+    }
+
+    return elseStatement;
+}
+
+Statement *Parser::ParseElseIfStatement()
+{
+    ElseIfStatement *elifStatement = gZtoonArena.Allocate<ElseIfStatement>();
+
+    elifStatement->ifToken = Prev();
+    elifStatement->expression = ParseExpression();
+    if (!elifStatement->expression)
+    {
+        ReportError("Expect expression after 'if else'", Prev());
+    }
+    elifStatement->statement = ParseStatement();
+    if (!elifStatement->statement)
+    {
+        ReportError("Expect statement after 'expression'", Prev());
+    }
+    return elifStatement;
 }
 Statement *Parser::ParseExpressionStatement()
 {
     ExpressionStatement *es = gZtoonArena.Allocate<ExpressionStatement>();
-    statements.push_back(es);
     es->expression = ParseExpression();
     return es;
 }
@@ -456,7 +530,19 @@ Expression *Parser::ParseUnaryExpression()
         unaryExpr->right = ParsePrimaryExpression();
         return unaryExpr;
     }
-    return ParsePrimaryExpression();
+
+    Expression *expr = ParsePrimaryExpression();
+    if (TokenMatch(Peek()->GetType(), TokenType::DASH_DASH,
+                   TokenType::PLUS_PLUS))
+    {
+        Advance();
+        UnaryExpression *unaryExpr = gZtoonArena.Allocate<UnaryExpression>();
+        unaryExpr->op = Prev();
+
+        unaryExpr->right = expr;
+        return unaryExpr;
+    }
+    return expr;
 }
 
 Expression *Parser::ParsePrimaryExpression()
@@ -548,16 +634,82 @@ void Parser::PrettyPrintAST()
 {
     for (Statement *s : statements)
     {
-        std::string astStr = s->PrettyString();
-
+        std::string prefix = "";
+        std::string astStr = s->PrettyString(prefix);
         std::cout << astStr << std::endl;
     }
 }
-
-std::string VarDeclStatement::PrettyString()
+std::string BlockStatement::PrettyString(std::string &prefix)
 {
-    std::string str = "";
-    std::string prefix = "";
+    bool isLeft = *(prefix.end() - 1) == '|';
+    if (isLeft)
+        prefix.pop_back();
+    std::string str = prefix;
+    str += isLeft ? "|-" : "|_";
+    str += "(Block)\n";
+    prefix += isLeft ? "|   " : "    ";
+    for (auto s : statements)
+    {
+        str += s->PrettyString(prefix);
+    }
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    return str;
+}
+
+std::string IfStatement::PrettyString(std::string &prefix)
+{
+    std::string str = prefix;
+    str += "|_(if)\n";
+    prefix += "|   |";
+    str += statement->PrettyString(prefix);
+    str += expression->PrettyString(prefix, false);
+
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    for (auto s : nextElseIforElseStatements)
+    {
+        str += s->PrettyString(prefix);
+    }
+    return str;
+}
+
+std::string ElseIfStatement::PrettyString(std::string &prefix)
+{
+
+    std::string str = prefix;
+    str += "|_(else if)\n";
+    prefix += "|   |";
+    str += statement->PrettyString(prefix);
+    str += expression->PrettyString(prefix, false);
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    return str;
+}
+
+std::string ElseStatement::PrettyString(std::string &prefix)
+{
+
+    std::string str = prefix;
+    str += "|_(else)\n";
+    prefix += "    ";
+    str += statement->PrettyString(prefix);
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    return str;
+}
+
+std::string VarDeclStatement::PrettyString(std::string &prefix)
+{
+    std::string str = prefix;
     str += "|_(=)\n";
     prefix += "    ";
     if (expression)
@@ -568,13 +720,16 @@ std::string VarDeclStatement::PrettyString()
     str += "|_";
     str += "var_decl(" + identifier->GetLexeme() + " (" +
            dataType->GetLexeme() + ")" + ")\n";
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
     return str;
 }
 
-std::string VarAssignmentStatement::PrettyString()
+std::string VarAssignmentStatement::PrettyString(std::string &prefix)
 {
-    std::string str = "";
-    std::string prefix = "";
+    std::string str = prefix;
     str += "|_(=)\n";
     prefix += "    ";
     str += expression ? expression->PrettyString(prefix, true) : "";
@@ -584,27 +739,33 @@ std::string VarAssignmentStatement::PrettyString()
            TokenDataTypeToString(dataType ? dataType->GetType()
                                           : TokenType::UNKNOWN) +
            ")" + ")\n";
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
     return str;
 }
 
-std::string VarCompoundAssignmentStatement::PrettyString()
+std::string VarCompoundAssignmentStatement::PrettyString(std::string &prefix)
 {
-    std::string str = "";
-    std::string prefix = "";
+    std::string str = prefix;
     str += "|_(=)\n";
     prefix += "    ";
     str += expression->PrettyString(prefix, true);
     str += prefix;
     str += "|_";
     str += "var_assign(" + identifier->GetLexeme() + " (datatype" + ")" + ")\n";
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
     return str;
 }
 
-std::string ExpressionStatement::PrettyString()
+std::string ExpressionStatement::PrettyString(std::string &prefix)
 {
     std::string str = "";
-    std::string prefix = "";
-    str += expression ? expression->PrettyString(prefix, true) : "";
+    str += expression ? expression->PrettyString(prefix, false) : "";
     return str;
 }
 

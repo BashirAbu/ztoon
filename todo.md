@@ -1,21 +1,22 @@
 ##Todo
 
-#Truing-complete:
-  - [ ] reassigning a variable.
-  
-  - [ ] add "binary op "= operator.
-  
-  - [ ] Test other binary operator
+- [ ] if statement
+- [ ] While loop
+- [ ] Funcitons
+- [ ] Pointers
+- [ ] Arrays
+- [ ] Srructs
+- [ ] Enums
+- [ ] Unions
+- [ ] Packages
+- [ ] FFI
 
-  - [ ] Check division by zero.
 
-  - [ ] Complete logical and bitwise ops.
 
-  - [ ] Control Flow "if"
-
-  - [ ] Loops "while"
-
-  - [ ] functions
-
-  - [ ] Scope
-
+- [ ] for loop
+- [ ] ? : ;
+- [ ] methods
+- [ ] generics
+- [ ] clousres
+- [ ] operator overloading, + - * / []
+- [ ] proc macros, like rust.  

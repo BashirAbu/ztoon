@@ -5,13 +5,20 @@
 /*
   program -> statements* "EOF" ;
   statement -> var_decl_statement ";" ;
-  var_decl_statement -> (IDENTIFIER ":" DATATYPE \ "=" expression)
-  \ var_assignment_statement ;
+  var_decl_statement -> (IDENTIFIER ":" DATATYPE | "=" expression)
+  | var_assignment_statement ;
   var_assignment_statement -> IDENTIFIER "="
   expression | statement_expr;
 
   var_compound_assignment_statement -> IDENTIFIER ( ("=" | "+=" | "-=" | "*=" |
   "/=", "%=", "&=", "^=", "|=", "<<=", ">>=") expression ;
+
+  if_statement -> "if" expression (block | statement) (("else" "if"
+  expression
+  (block | statement)) * | "else" (block | statement) ) ? ;
+
+  block -> "{" statement* "}" ;
+
 
   statement_expr -> expression ;
 
@@ -27,13 +34,14 @@
   ==__!= -> <__<=__>__>= (("==" | "!=")  <__<=__>__>=)* ;
   <__<=__>__>= -> shift (("<" | "<=" | ">" | ">=") sift)* ;
   shift -> term (("<<" | ">>") term)* ;
-  term -> factor (("+" \ "-") factor)* ;
-  factor -> unary (("*" \ "/" \ "%") unary)* ;
-  unary -> ("-" \ "--" \ "+" \ "++" \ "!" \ "~" \ ( "sizeof" "(" expression ")"
-  ) ) expression \ cast
-  cast -> primary ("as" DATATYPE)*; primary -> INTEGER_LITERAL
-  \ FLOAT_LITERAL \ STRING_LITERAL
-  \ CHARACTER_LITERAL \ IDENTIFIER \ "(" expression ")" ;
+  term -> factor (("+" | "-") factor)* ;
+  factor -> unary (("*" | "/" | "%") unary)* ;
+  cast -> primary ("as" DATATYPE)*;
+  unary -> ("-" | "--" | "+" | "++" | "!" | "~" | ( "sizeof" "(" expression ")"
+  ) ) expression | cast ;
+   primary -> INTEGER_LITERAL
+  | FLOAT_LITERAL | STRING_LITERAL
+  | CHARACTER_LITERAL | IDENTIFIER | "(" expression ")" ;
 
 */
 
@@ -43,13 +51,13 @@ class Statement
 {
   public:
     virtual ~Statement() {}
-    virtual std::string PrettyString() = 0;
+    virtual std::string PrettyString(std::string &prefix) = 0;
 };
 
 class VarDeclStatement : public Statement
 {
   public:
-    virtual std::string PrettyString() override;
+    virtual std::string PrettyString(std::string &prefix) override;
     Token const *GetIdentifier() const { return identifier; }
     Token const *GetDataType() const { return dataType; }
     class Expression *GetExpression() const { return expression; }
@@ -65,7 +73,7 @@ class VarDeclStatement : public Statement
 class VarCompoundAssignmentStatement : public Statement
 {
   public:
-    virtual std::string PrettyString() override;
+    virtual std::string PrettyString(std::string &prefix) override;
     Token const *GetIdentifier() const { return identifier; }
     Token const *GetDataType() const { return dataType; }
     Token const *GetCompoundAssignment() const { return compoundAssignment; }
@@ -82,7 +90,7 @@ class VarCompoundAssignmentStatement : public Statement
 class VarAssignmentStatement : public Statement
 {
   public:
-    virtual std::string PrettyString() override;
+    virtual std::string PrettyString(std::string &prefix) override;
     Token const *GetIdentifier() const { return identifier; }
     Token const *GetDataType() const { return dataType; }
     class Expression *GetExpression() const { return expression; }
@@ -99,11 +107,69 @@ class ExpressionStatement : public Statement
 {
 
   public:
-    virtual std::string PrettyString() override;
+    virtual std::string PrettyString(std::string &prefix) override;
     class Expression *GetExpression() const { return expression; }
 
   private:
     class Expression *expression = nullptr;
+    friend class Parser;
+};
+
+class BlockStatement : public Statement
+{
+  public:
+    virtual std::string PrettyString(std::string &prefix) override;
+    const std::vector<Statement *> &GetStatements() const { return statements; }
+
+  private:
+    std::vector<Statement *> statements;
+    friend class Parser;
+};
+
+class IfStatement : public Statement
+{
+  public:
+    virtual std::string PrettyString(std::string &prefix) override;
+    class Expression *GetExpression() const { return expression; }
+    Statement *GetStatement() { return statement; }
+    const std::vector<Statement *> &GetNextElseIforElseStatements()
+    {
+        return nextElseIforElseStatements;
+    }
+
+    Token const *ifToken = nullptr;
+
+  private:
+    class Expression *expression = nullptr;
+    Statement *statement;
+    std::vector<Statement *> nextElseIforElseStatements;
+    friend class Parser;
+};
+
+class ElseIfStatement : public Statement
+{
+  public:
+    virtual std::string PrettyString(std::string &prefix) override;
+    class Expression *GetExpression() const { return expression; }
+    Statement *GetStatement() { return statement; }
+
+    Token const *ifToken = nullptr;
+
+  private:
+    class Expression *expression = nullptr;
+    Statement *statement;
+    friend class Parser;
+};
+class ElseStatement : public Statement
+{
+  public:
+    virtual std::string PrettyString(std::string &prefix) override;
+    Statement *GetStatement() { return statement; }
+
+    Token const *elseToken = nullptr;
+
+  private:
+    Statement *statement;
     friend class Parser;
 };
 
@@ -202,6 +268,10 @@ class Parser
     Statement *ParseVarAssignmentStatement();
     Statement *ParseVarCompundAssignmentStatement();
     Statement *ParseExpressionStatement();
+    Statement *ParseBlockStatement();
+    Statement *ParseIfStatement();
+    Statement *ParseElseIfStatement();
+    Statement *ParseElseStatement();
 
     Expression *ParseExpression();
     Expression *ParseAssignmentExpression();
@@ -216,8 +286,8 @@ class Parser
 
     Expression *ParseTermExpression();
     Expression *ParseFactorExpression();
-    Expression *ParseUnaryExpression();
     Expression *ParseCastExpression();
+    Expression *ParseUnaryExpression();
     Expression *ParsePrimaryExpression();
 
     Expression *BuildBinaryExpression(Token const *op, Expression *left,

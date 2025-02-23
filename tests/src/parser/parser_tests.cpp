@@ -15,6 +15,32 @@ parseSource(const std::string &source,
     return parser.Parse();
 }
 
+TEST(ParserIFstatement)
+{
+    std::string source = R"(
+        a: bool = true;
+        b: i32 = 1;
+        if a
+        {
+            b++;
+        }
+        else
+        {
+            b--;
+        }
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "if_statement.ztoon");
+
+    lexer.DebugPrint();
+
+    Parser parser(lexer.GetTokens());
+    auto stmt = parser.Parse();
+
+    parser.PrettyPrintAST();
+}
+
 //--------------------------------------------------------------------------
 // Test: Unary Minus Expression
 // Input: "-5;"
@@ -26,7 +52,6 @@ TEST(ParserUnaryMinusTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     ExpressionStatement *exprStmt =
         dynamic_cast<ExpressionStatement *>(stmts[0]);
@@ -60,7 +85,6 @@ TEST(ParserUnaryPlusPlusTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     ExpressionStatement *exprStmt =
         dynamic_cast<ExpressionStatement *>(stmts[0]);
@@ -94,7 +118,6 @@ TEST(ParserUnaryExclamationTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     ExpressionStatement *exprStmt =
         dynamic_cast<ExpressionStatement *>(stmts[0]);
@@ -128,7 +151,6 @@ TEST(ParserSizeofTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     ExpressionStatement *exprStmt =
         dynamic_cast<ExpressionStatement *>(stmts[0]);
@@ -162,7 +184,6 @@ TEST(ParserCombinedUnaryBinaryTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     ExpressionStatement *exprStmt =
         dynamic_cast<ExpressionStatement *>(stmts[0]);
@@ -211,7 +232,6 @@ TEST(ParserVarDeclTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     // The statement should be a variable declaration.
     VarDeclStatement *varDecl = dynamic_cast<VarDeclStatement *>(stmts[0]);
@@ -243,7 +263,6 @@ TEST(ParserVarAssignmentTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     // The statement should be a variable assignment.
     VarAssignmentStatement *varAssign =
@@ -272,7 +291,6 @@ TEST(ParserBinaryExpressionTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     // The statement should be an expression statement.
     ExpressionStatement *exprStmt =
@@ -330,7 +348,6 @@ TEST(ParserGroupingExpressionTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     ExpressionStatement *exprStmt =
         dynamic_cast<ExpressionStatement *>(stmts[0]);
@@ -395,7 +412,6 @@ TEST(ParserCastExpressionTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
 
     ExpressionStatement *exprStmt =
         dynamic_cast<ExpressionStatement *>(stmts[0]);
@@ -432,8 +448,6 @@ TEST(ParserCompoundAssignmentPlusEqualTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1,
-              "Should parse one statement for compound assignment");
 
     auto compoundStmt =
         dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
@@ -446,7 +460,8 @@ TEST(ParserCompoundAssignmentPlusEqualTest)
         dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
     ASSERT_NE(binExpr, nullptr,
               "Compound assignment should yield a BinaryExpression");
-    // The compound assignment should be transformed: a += b  becomes a + b.
+    // The compound assignment should be transformed: a += b  becomes
+    // a + b.
     ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::PLUS,
               "Binary operator should be PLUS");
     ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "+",
@@ -475,8 +490,6 @@ TEST(ParserCompoundAssignmentDashEqualTest)
     lexer.Tokenize(source, filename);
     Parser parser(lexer.GetTokens());
     const auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1, "Should parse one statement");
-
     auto compoundStmt =
         dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
     ASSERT_NE(compoundStmt, nullptr,

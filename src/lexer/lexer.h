@@ -77,6 +77,11 @@ enum class TokenType
     END_OF_FILE,
     LEFT_PAREN,
     RIGHT_PAREN,
+
+    LEFT_CURLY_BRACKET,
+    RIGHT_CURLY_BRACKET,
+    IF,
+    ELSE
 };
 
 std::string TokenDataTypeToString(TokenType type);

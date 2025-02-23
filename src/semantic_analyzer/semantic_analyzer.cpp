@@ -45,116 +45,159 @@ void SemanticAnalyzer::Analize()
 {
     for (Statement *statement : statements)
     {
-        if (dynamic_cast<VarDeclStatement *>(statement))
+        AnalizeStatement(statement);
+    }
+}
+void SemanticAnalyzer::AnalizeStatement(Statement *statement)
+{
+    if (dynamic_cast<VarDeclStatement *>(statement))
+    {
+        VarDeclStatement *varDeclStatement =
+            dynamic_cast<VarDeclStatement *>(statement);
+        if (varDeclStatement->GetExpression())
         {
-            VarDeclStatement *varDeclStatement =
-                dynamic_cast<VarDeclStatement *>(statement);
-            if (varDeclStatement->GetExpression())
-            {
-                EvaluateAndAssignDataTypeToExpression(
-                    varDeclStatement->GetExpression());
+            EvaluateAndAssignDataTypeToExpression(
+                varDeclStatement->GetExpression());
 
-                PrimaryExpression *varExpr =
-                    gZtoonArena.Allocate<PrimaryExpression>();
-                varExpr->primary = varDeclStatement->GetIdentifier();
-                varExpr->dataType = varDeclStatement->GetDataType()->GetType();
-                Expression *variableRawExpression = varExpr;
-                // check if types are compatible.
-                TokenType dataType = DecideDataType(
-                    &(variableRawExpression), &varDeclStatement->expression);
-                if (dataType == TokenType::UNKNOWN)
-                {
-                    ReportError(
-                        std::format(
-                            "Cannot assign value of type '{}' to variable "
+            PrimaryExpression *varExpr =
+                gZtoonArena.Allocate<PrimaryExpression>();
+            varExpr->primary = varDeclStatement->GetIdentifier();
+            varExpr->dataType = varDeclStatement->GetDataType()->GetType();
+            Expression *variableRawExpression = varExpr;
+            // check if types are compatible.
+            TokenType dataType = DecideDataType(&(variableRawExpression),
+                                                &varDeclStatement->expression);
+            if (dataType == TokenType::UNKNOWN)
+            {
+                ReportError(
+                    std::format("Cannot assign value of type '{}' to variable "
+                                "of type '{}'",
+                                TokenDataTypeToString(
+                                    varDeclStatement->expression->dataType),
+                                varDeclStatement->GetDataType()->GetLexeme()),
+                    varDeclStatement->GetIdentifier());
+            }
+        }
+        Variable *var = gZtoonArena.Allocate<Variable>(
+            varDeclStatement->GetIdentifier()->GetLexeme(),
+            varDeclStatement->GetDataType(), varDeclStatement->GetIdentifier());
+        globalScope.AddVariable(var);
+    }
+    else if (dynamic_cast<VarAssignmentStatement *>(statement))
+    {
+
+        VarAssignmentStatement *varAssignmentStatement =
+            dynamic_cast<VarAssignmentStatement *>(statement);
+
+        Variable const *var = globalScope.GetVariable(
+            varAssignmentStatement->GetIdentifier()->GetLexeme(),
+            varAssignmentStatement->GetIdentifier());
+
+        varAssignmentStatement->dataType = var->GetDataType();
+        EvaluateAndAssignDataTypeToExpression(
+            varAssignmentStatement->GetExpression());
+
+        PrimaryExpression *varExpr = gZtoonArena.Allocate<PrimaryExpression>();
+        varExpr->primary = varAssignmentStatement->GetIdentifier();
+        varExpr->dataType = varAssignmentStatement->GetDataType()->GetType();
+        Expression *variableRawExpression = varExpr;
+        // check if types are compatible.
+        TokenType dataType = DecideDataType(
+            &(variableRawExpression), &varAssignmentStatement->expression);
+        if (dataType == TokenType::UNKNOWN)
+        {
+            ReportError(
+                std::format("Cannot assign value of type '{}' to variable "
                             "of type '{}'",
                             TokenDataTypeToString(
-                                varDeclStatement->expression->dataType),
-                            varDeclStatement->GetDataType()->GetLexeme()),
-                        varDeclStatement->GetIdentifier());
-                }
-            }
-            Variable *var = gZtoonArena.Allocate<Variable>(
-                varDeclStatement->GetIdentifier()->GetLexeme(),
-                varDeclStatement->GetDataType(),
-                varDeclStatement->GetIdentifier());
-            globalScope.AddVariable(var);
-        }
-        else if (dynamic_cast<VarAssignmentStatement *>(statement))
-        {
-
-            VarAssignmentStatement *varAssignmentStatement =
-                dynamic_cast<VarAssignmentStatement *>(statement);
-
-            Variable const *var = globalScope.GetVariable(
-                varAssignmentStatement->GetIdentifier()->GetLexeme(),
+                                varAssignmentStatement->expression->dataType),
+                            varAssignmentStatement->GetDataType()->GetLexeme()),
                 varAssignmentStatement->GetIdentifier());
-
-            varAssignmentStatement->dataType = var->GetDataType();
-            EvaluateAndAssignDataTypeToExpression(
-                varAssignmentStatement->GetExpression());
-
-            PrimaryExpression *varExpr =
-                gZtoonArena.Allocate<PrimaryExpression>();
-            varExpr->primary = varAssignmentStatement->GetIdentifier();
-            varExpr->dataType =
-                varAssignmentStatement->GetDataType()->GetType();
-            Expression *variableRawExpression = varExpr;
-            // check if types are compatible.
-            TokenType dataType = DecideDataType(
-                &(variableRawExpression), &varAssignmentStatement->expression);
-            if (dataType == TokenType::UNKNOWN)
-            {
-                ReportError(
-                    std::format(
-                        "Cannot assign value of type '{}' to variable "
-                        "of type '{}'",
-                        TokenDataTypeToString(
-                            varAssignmentStatement->expression->dataType),
-                        varAssignmentStatement->GetDataType()->GetLexeme()),
-                    varAssignmentStatement->GetIdentifier());
-            }
         }
-        else if (dynamic_cast<VarCompoundAssignmentStatement *>(statement))
+    }
+    else if (dynamic_cast<VarCompoundAssignmentStatement *>(statement))
+    {
+
+        VarCompoundAssignmentStatement *varComAssignStatement =
+            dynamic_cast<VarCompoundAssignmentStatement *>(statement);
+
+        Variable const *var = globalScope.GetVariable(
+            varComAssignStatement->GetIdentifier()->GetLexeme(),
+            varComAssignStatement->GetIdentifier());
+        varComAssignStatement->dataType = var->GetDataType();
+
+        EvaluateAndAssignDataTypeToExpression(
+            varComAssignStatement->GetExpression());
+        PrimaryExpression *varExpr = gZtoonArena.Allocate<PrimaryExpression>();
+        varExpr->primary = varComAssignStatement->GetIdentifier();
+        varExpr->dataType = varComAssignStatement->GetDataType()->GetType();
+        Expression *variableRawExpression = varExpr;
+        // check if types are compatible.
+        TokenType dataType = DecideDataType(&(variableRawExpression),
+                                            &varComAssignStatement->expression);
+        if (dataType == TokenType::UNKNOWN)
         {
-
-            VarCompoundAssignmentStatement *varComAssignStatement =
-                dynamic_cast<VarCompoundAssignmentStatement *>(statement);
-
-            Variable const *var = globalScope.GetVariable(
-                varComAssignStatement->GetIdentifier()->GetLexeme(),
+            ReportError(
+                std::format("Cannot assign value of type '{}' to variable "
+                            "of type '{}'",
+                            TokenDataTypeToString(
+                                varComAssignStatement->expression->dataType),
+                            varComAssignStatement->GetDataType()->GetLexeme()),
                 varComAssignStatement->GetIdentifier());
-            varComAssignStatement->dataType = var->GetDataType();
+        }
+    }
+    else if (dynamic_cast<BlockStatement *>(statement))
+    {
 
-            EvaluateAndAssignDataTypeToExpression(
-                varComAssignStatement->GetExpression());
-            PrimaryExpression *varExpr =
-                gZtoonArena.Allocate<PrimaryExpression>();
-            varExpr->primary = varComAssignStatement->GetIdentifier();
-            varExpr->dataType = varComAssignStatement->GetDataType()->GetType();
-            Expression *variableRawExpression = varExpr;
-            // check if types are compatible.
-            TokenType dataType = DecideDataType(
-                &(variableRawExpression), &varComAssignStatement->expression);
-            if (dataType == TokenType::UNKNOWN)
-            {
-                ReportError(
-                    std::format(
-                        "Cannot assign value of type '{}' to variable "
-                        "of type '{}'",
-                        TokenDataTypeToString(
-                            varComAssignStatement->expression->dataType),
-                        varComAssignStatement->GetDataType()->GetLexeme()),
-                    varComAssignStatement->GetIdentifier());
-            }
-        }
-        else if (dynamic_cast<ExpressionStatement *>(statement))
+        BlockStatement *blockStatement =
+            dynamic_cast<BlockStatement *>(statement);
+        for (Statement *s : blockStatement->GetStatements())
         {
-            ExpressionStatement *exprStatement =
-                dynamic_cast<ExpressionStatement *>(statement);
-            EvaluateAndAssignDataTypeToExpression(
-                exprStatement->GetExpression());
+            AnalizeStatement(s);
         }
+    }
+    else if (dynamic_cast<IfStatement *>(statement))
+    {
+        IfStatement *ifStatement = dynamic_cast<IfStatement *>(statement);
+        EvaluateAndAssignDataTypeToExpression(ifStatement->GetExpression());
+
+        if (ifStatement->GetExpression()->GetDataType() != TokenType::BOOL)
+        {
+            ReportError(std::format("Expression after 'if' must be boolean."),
+                        ifStatement->ifToken);
+        }
+
+        AnalizeStatement(ifStatement->GetStatement());
+
+        for (Statement *s : ifStatement->GetNextElseIforElseStatements())
+        {
+            AnalizeStatement(s);
+        }
+    }
+    else if (dynamic_cast<ElseIfStatement *>(statement))
+    {
+        ElseIfStatement *elifStatement =
+            dynamic_cast<ElseIfStatement *>(statement);
+        EvaluateAndAssignDataTypeToExpression(elifStatement->GetExpression());
+
+        if (elifStatement->GetExpression()->GetDataType() != TokenType::BOOL)
+        {
+            ReportError(std::format("Expression after 'if' must be boolean."),
+                        elifStatement->ifToken);
+        }
+        AnalizeStatement(elifStatement->GetStatement());
+    }
+    else if (dynamic_cast<ElseStatement *>(statement))
+    {
+        ElseStatement *elseStatement = dynamic_cast<ElseStatement *>(statement);
+
+        AnalizeStatement(elseStatement->GetStatement());
+    }
+    else if (dynamic_cast<ExpressionStatement *>(statement))
+    {
+        ExpressionStatement *exprStatement =
+            dynamic_cast<ExpressionStatement *>(statement);
+        EvaluateAndAssignDataTypeToExpression(exprStatement->GetExpression());
     }
 }
 
@@ -288,7 +331,45 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                 binaryExpression->op);
             return;
         }
-        binaryExpression->dataType = dataType;
+
+        switch (binaryExpression->op->GetType())
+        {
+        case TokenType::EQUAL_EQUAL:
+        case TokenType::EXCLAMATION_EQUAL:
+        case TokenType::LESS:
+        case TokenType::LESS_EQUAL:
+        case TokenType::GREATER:
+        case TokenType::GREATER_EQUAL:
+        {
+            binaryExpression->dataType = TokenType::BOOL;
+            break;
+        }
+        case TokenType::OR:
+        case TokenType::AND:
+        {
+            if (binaryExpression->left->dataType != TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Left expression of '{}' must be boolean type",
+                                binaryExpression->op->GetLexeme()),
+                    binaryExpression->op);
+            }
+            else if (binaryExpression->right->dataType != TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Right expression of '{}' must be boolean type",
+                                binaryExpression->op->GetLexeme()),
+                    binaryExpression->op);
+            }
+            binaryExpression->dataType = TokenType::BOOL;
+            break;
+        }
+        default:
+        {
+            binaryExpression->dataType = dataType;
+            break;
+        }
+        }
     }
     else if (dynamic_cast<UnaryExpression *>(expression))
     {
@@ -307,10 +388,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             if (!IsNumerical(rightDataType) && !IsSigned(rightDataType))
             {
                 ReportError(
-                    std::format(
-                        "Cannot perform unary operator '{}' on datatype '{}'.",
-                        unaryExpression->GetOperator()->GetLexeme(),
-                        TokenDataTypeToString(rightDataType)),
+                    std::format("Cannot perform unary operator '{}' on "
+                                "datatype '{}'.",
+                                unaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(rightDataType)),
                     unaryExpression->GetOperator());
             }
             break;
@@ -320,10 +401,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             if (!IsInteger(rightDataType))
             {
                 ReportError(
-                    std::format(
-                        "Cannot perform unary operator '{}' on datatype '{}'.",
-                        unaryExpression->GetOperator()->GetLexeme(),
-                        TokenDataTypeToString(rightDataType)),
+                    std::format("Cannot perform unary operator '{}' on "
+                                "datatype '{}'.",
+                                unaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(rightDataType)),
                     unaryExpression->GetOperator());
             }
             break;
@@ -336,10 +417,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             if (!IsNumerical(rightDataType))
             {
                 ReportError(
-                    std::format(
-                        "Cannot perform unary operator '{}' on datatype '{}'.",
-                        unaryExpression->GetOperator()->GetLexeme(),
-                        TokenDataTypeToString(rightDataType)),
+                    std::format("Cannot perform unary operator '{}' on "
+                                "datatype '{}'.",
+                                unaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(rightDataType)),
                     unaryExpression->GetOperator());
             }
             break;
@@ -350,10 +431,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             if (rightDataType != TokenType::BOOL)
             {
                 ReportError(
-                    std::format(
-                        "Cannot perform unary operator '{}' on datatype '{}'.",
-                        unaryExpression->GetOperator()->GetLexeme(),
-                        TokenDataTypeToString(rightDataType)),
+                    std::format("Cannot perform unary operator '{}' on "
+                                "datatype '{}'.",
+                                unaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(rightDataType)),
                     unaryExpression->GetOperator());
             }
             break;
@@ -363,10 +444,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             if (rightDataType == TokenType::UNKNOWN)
             {
                 ReportError(
-                    std::format(
-                        "Cannot perform unary operator '{}' on datatype '{}'.",
-                        unaryExpression->GetOperator()->GetLexeme(),
-                        TokenDataTypeToString(rightDataType)),
+                    std::format("Cannot perform unary operator '{}' on "
+                                "datatype '{}'.",
+                                unaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(rightDataType)),
                     unaryExpression->GetOperator());
             }
             break;
@@ -399,9 +480,9 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         TokenType exprDataType = castExpression->GetExpression()->dataType;
         castExpression->dataType = castExpression->GetCastToType()->GetType();
         // TODO: is cast possible?
-        // boolean are only catable to int types. it is one directional thing.
-        // cannot cast int to bool.
-        // what types cannot be cast to another?
+        // boolean are only catable to int types. it is one directional
+        // thing. cannot cast int to bool. what types cannot be cast to
+        // another?
         //
 
         // Only allow bool to bool cast for now.

@@ -50,6 +50,7 @@ class SemanticAnalyzer
     void Analize();
 
   private:
+    void AnalizeStatement(Statement *statement);
     TokenType DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);
     Scope globalScope;

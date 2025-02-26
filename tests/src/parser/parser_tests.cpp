@@ -12,7 +12,7 @@ TEST(Parser_)
     lexer.Tokenize(source, "parser.ztoon");
     Parser parser(lexer.GetTokens());
     parser.Parse();
-    parser.PrettyPrintAST();
+    // parser.PrettyPrintAST();
 }
 
 //--------------------------------------------------------------------------
@@ -992,4 +992,163 @@ TEST(ParserEqualityOperatorsTest)
         ASSERT_EQ(binExpr->GetOperator()->GetLexeme(),
                   "!=", "Operator lexeme should be '!='");
     }
+}
+
+// Test 1: Simple While Loop
+// Source: while (x < 10) { x = x + 1; }
+TEST(ParserWhileLoopTest)
+{
+    std::string source = "while (x < 10) { x = x + 1; }";
+    Lexer lexer;
+    lexer.Tokenize(source, "while_test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+    // Expect one top-level statement
+    ASSERT_EQ(stmts.size(), 1,
+              "Expected one top-level statement for while loop");
+
+    // The top-level statement should be a WhileLoopStatement.
+    auto *whileStmt = dynamic_cast<WhileLoopStatement *>(stmts[0]);
+    ASSERT_NE(whileStmt, nullptr,
+              "Top-level statement should be a WhileLoopStatement");
+
+    // Check that the condition is parsed (it should be a binary expression for
+    // 'x < 10').
+    ASSERT_NE(whileStmt->GetCondition(), nullptr,
+              "While loop must have a condition");
+
+    // Check that the block exists and contains one statement (the assignment x
+    // = x + 1;)
+    auto *block =
+        dynamic_cast<BlockStatement *>(whileStmt->GetBlockStatement());
+    ASSERT_NE(block, nullptr, "While loop block must be a BlockStatement");
+    ASSERT_EQ(block->GetStatements().size(), 1,
+              "While loop block should contain one statement");
+
+    // Verify that the inner statement is a variable assignment.
+    auto *assignStmt =
+        dynamic_cast<VarAssignmentStatement *>(block->GetStatements()[0]);
+    ASSERT_NE(assignStmt, nullptr,
+              "Inner statement should be a VarAssignmentStatement");
+}
+
+// Test 2: Simple For Loop with all parts
+// Source: for (i: i32 = 0; i < 10; i = i + 1) { x = x + i; }
+TEST(ParserForLoopTest)
+{
+    std::string source = "for (i: i32 = 0; i < 10; i = i + 1) { x = x + i; }";
+    Lexer lexer;
+    lexer.Tokenize(source, "for_test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+    // The for-loop parser returns a BlockStatement that wraps the
+    // ForLoopStatement.
+    ASSERT_EQ(stmts.size(), 1, "Expected one top-level statement for for loop");
+
+    auto *block = dynamic_cast<BlockStatement *>(stmts[0]);
+    ASSERT_NE(
+        block, nullptr,
+        "Top-level statement should be a BlockStatement wrapping the for loop");
+    ASSERT_EQ(block->GetStatements().size(), 1,
+              "Block should contain one for loop statement");
+
+    auto *forStmt = dynamic_cast<ForLoopStatement *>(block->GetStatements()[0]);
+    ASSERT_NE(forStmt, nullptr, "Statement should be a ForLoopStatement");
+
+    // Check that init, condition, update, and block are present.
+    ASSERT_NE(forStmt->GetInit(), nullptr, "For loop init must be present");
+    ASSERT_NE(forStmt->GetCondition(), nullptr,
+              "For loop condition must be present");
+    ASSERT_NE(forStmt->GetUpdate(), nullptr, "For loop update must be present");
+    ASSERT_NE(forStmt->GetBlockStatement(), nullptr,
+              "For loop block must be present");
+}
+
+// Test 3: For Loop with Empty Init and Update
+// Source: for (; x < 10; ) { x = x + 1; }
+TEST(ParserForLoopEmptyPartsTest)
+{
+    std::string source = "for (; x < 10; ) { x = x + 1; }";
+    Lexer lexer;
+    lexer.Tokenize(source, "for_empty.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    auto *block = dynamic_cast<BlockStatement *>(stmts[0]);
+    ASSERT_NE(block, nullptr,
+              "Expected a BlockStatement wrapping the for loop");
+
+    auto *forStmt = dynamic_cast<ForLoopStatement *>(block->GetStatements()[0]);
+    ASSERT_NE(forStmt, nullptr, "Statement should be a ForLoopStatement");
+    // In this case, init and update might be null.
+    ASSERT_NE(forStmt->GetCondition(), nullptr, "Condition is not nullptr");
+    ASSERT_EQ(forStmt->GetInit(), nullptr, "Init is nullptr");
+    ASSERT_EQ(forStmt->GetUpdate(), nullptr, "Update is nullptr");
+    ASSERT_NE(forStmt->GetBlockStatement(), nullptr,
+              "For loop block must be present");
+}
+
+// Test 4: Nested Loops (While containing a For Loop)
+// Source:
+//   while (x < 5) {
+//       for (i: i32 = 0; i < 3; i = i + 1) {
+//           x = x + i;
+//       }
+//   }
+TEST(ParserNestedLoopsTest)
+{
+    std::string source = R"(
+        while (x < 5) {
+           for (i: i32 = 0; i < 3; i = i + 1) {
+              x = x + i;
+           }
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "nested_loops.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+    ASSERT_EQ(stmts.size(), 1,
+              "Expected one top-level statement for nested loops");
+
+    auto *whileStmt = dynamic_cast<WhileLoopStatement *>(stmts[0]);
+    ASSERT_NE(whileStmt, nullptr,
+              "Top-level statement should be a WhileLoopStatement");
+
+    auto *whileBlock =
+        dynamic_cast<BlockStatement *>(whileStmt->GetBlockStatement());
+    ASSERT_NE(whileBlock, nullptr,
+              "While loop block should be a BlockStatement");
+    ASSERT_EQ(whileBlock->GetStatements().size(), 1,
+              "While loop block should contain one statement");
+
+    auto *forStmtOuterBlock =
+        dynamic_cast<BlockStatement *>(whileBlock->GetStatements()[0]);
+    ASSERT_NE(
+        dynamic_cast<ForLoopStatement *>(forStmtOuterBlock->GetStatements()[0]),
+        nullptr, "Nested statement should be a ForLoopStatement");
+}
+
+// Test 5: While Loop with Empty Block
+// Source: while (x < 10) { }
+// This tests that the parser can handle an empty block.
+TEST(ParserWhileLoopEmptyBlockTest)
+{
+    std::string source = "while (x < 10) { }";
+    Lexer lexer;
+    lexer.Tokenize(source, "while_empty.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+    ASSERT_EQ(stmts.size(), 1,
+              "Expected one statement for while loop with empty block");
+
+    auto *whileStmt = dynamic_cast<WhileLoopStatement *>(stmts[0]);
+    ASSERT_NE(whileStmt, nullptr, "Statement should be a WhileLoopStatement");
+
+    auto *block =
+        dynamic_cast<BlockStatement *>(whileStmt->GetBlockStatement());
+    ASSERT_NE(block, nullptr, "While loop block should be a BlockStatement");
+    // The block might be empty.
+    ASSERT_EQ(block->GetStatements().size(), 0,
+              "Empty while loop block should contain 0 statements");
 }

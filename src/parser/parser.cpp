@@ -408,6 +408,7 @@ Statement *Parser::ParseForLoopStatement()
         ForLoopStatement *forLoopStatement =
             gZtoonArena.Allocate<ForLoopStatement>();
         forLoopStatement->forToken = Prev();
+        Consume(TokenType::LEFT_PAREN);
         forLoopStatement->init = ParseStatement();
         if (forLoopStatement->init)
         {
@@ -447,8 +448,8 @@ Statement *Parser::ParseForLoopStatement()
                     ? forLoopStatement->condition->GetCodeErrString()
                     : ces);
         }
-        forLoopStatement->update = ParseVarAssignmentStatement();
-
+        forLoopStatement->update = ParseVarDeclStatement();
+        Consume(TokenType::RIGHT_PAREN);
         if (forLoopStatement->update)
         {
             if (!dynamic_cast<VarAssignmentStatement *>(
@@ -460,9 +461,9 @@ Statement *Parser::ParseForLoopStatement()
                 ReportError(
                     std::format(
                         "Initialization statement must be one of the "
-                        "following types: Variable Declaration, Statement"
-                        "Variable Assignemnt Statement, Expression Statement."),
-                    forLoopStatement->init->GetCodeErrString());
+                        "following types: Variable Declaration Statement,"
+                        "Variable Assignemnt Statement, Expression Statement"),
+                    forLoopStatement->update->GetCodeErrString());
             }
         }
         forLoopStatement->blockStatement =

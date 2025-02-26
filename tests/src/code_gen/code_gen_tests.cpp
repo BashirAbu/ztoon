@@ -59,7 +59,7 @@ TEST(CodeGen)
     {
         llvm::errs() << "Error\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -1853,4 +1853,204 @@ TEST(CodeGenTernaryFloatTest)
     int rounded = static_cast<int>(result * 100);
     ASSERT_EQ(rounded, 314,
               "Ternary float: expected result approximately 3.14");
+}
+
+//--------------------------------------------------------------------------
+// Test 1: CodeGen While Loop
+// Source: x: i32 = 0; while (x < 5) { x = x + 1; }
+// Expected: x becomes 5.
+TEST(CodeGenWhileLoopTest)
+{
+    std::string source = "x: i32 = 0; while (x < 5) { x = x + 1; }";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "while_test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer semAnalyzer(stmts);
+    semAnalyzer.Analize();
+
+    CodeGen codeGen(semAnalyzer);
+
+    // Create a main function that returns the value of x.
+    llvm::FunctionType *funcType =
+        llvm::FunctionType::get(codeGen.irBuilder->getInt32Ty(), false);
+    llvm::Function *mainFunc = llvm::Function::Create(
+        funcType, llvm::Function::ExternalLinkage, "main", *codeGen.module);
+    llvm::BasicBlock *entry =
+        llvm::BasicBlock::Create(*codeGen.ctx, "entry", mainFunc);
+    codeGen.irBuilder->SetInsertPoint(entry);
+
+    codeGen.GenIR();
+
+    // Retrieve variable "x" and return its stored value.
+    IRVariable *xVar = codeGen.GetIRVariable("x");
+    llvm::Value *loadX =
+        codeGen.irBuilder->CreateLoad(xVar->irType.type, xVar->aInsta);
+    codeGen.irBuilder->CreateRet(loadX);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *mainFuncPtr = (int (*)())Sym.getValue();
+    int result = mainFuncPtr();
+
+    ASSERT_EQ(result, 5, "Expected while loop to increment x from 0 to 5");
+}
+
+//--------------------------------------------------------------------------
+// Test 2: CodeGen For Loop
+// Source: x: i32 = 0; for (i: i32 = 0; i < 5; i = i + 1) { x = x + i; }
+// Expected: The loop adds 0+1+2+3+4 = 10 to x.
+TEST(CodeGenForLoopTest)
+{
+    std::string source =
+        "x: i32 = 0; for i: i32 = 0; i < 5; i = i + 1 { x = x + i; }";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "for_test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer semAnalyzer(stmts);
+    semAnalyzer.Analize();
+
+    CodeGen codeGen(semAnalyzer);
+
+    llvm::FunctionType *funcType =
+        llvm::FunctionType::get(codeGen.irBuilder->getInt32Ty(), false);
+    llvm::Function *mainFunc = llvm::Function::Create(
+        funcType, llvm::Function::ExternalLinkage, "main", *codeGen.module);
+    llvm::BasicBlock *entry =
+        llvm::BasicBlock::Create(*codeGen.ctx, "entry", mainFunc);
+    codeGen.irBuilder->SetInsertPoint(entry);
+
+    codeGen.GenIR();
+
+    IRVariable *xVar = codeGen.GetIRVariable("x");
+    llvm::Value *loadX =
+        codeGen.irBuilder->CreateLoad(xVar->irType.type, xVar->aInsta);
+    codeGen.irBuilder->CreateRet(loadX);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *mainFuncPtr = (int (*)())Sym.getValue();
+    int result = mainFuncPtr();
+
+    ASSERT_EQ(result, 10, "Expected for loop to sum 0+1+2+3+4 = 10");
+}
+
+//--------------------------------------------------------------------------
+// Test 3: CodeGen Unary Postfix Increment (++)
+// Source:
+//   x: i32 = 5;
+//   y: i32 = x++;
+//   z: i32 = x;
+//   a: i32 = y + z;
+// Expected: Postfix ++ returns original value (5) and increments x to 6; a = 5
+// + 6 = 11.
+TEST(CodeGenPostfixIncrementTest)
+{
+    std::string source =
+        "x: i32 = 5; y: i32 = x++; z: i32 = x; a: i32 = y + z;";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "postfix_inc.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer semAnalyzer(stmts);
+    semAnalyzer.Analize();
+
+    CodeGen codeGen(semAnalyzer);
+
+    llvm::FunctionType *funcType =
+        llvm::FunctionType::get(codeGen.irBuilder->getInt32Ty(), false);
+    llvm::Function *mainFunc = llvm::Function::Create(
+        funcType, llvm::Function::ExternalLinkage, "main", *codeGen.module);
+    llvm::BasicBlock *entry =
+        llvm::BasicBlock::Create(*codeGen.ctx, "entry", mainFunc);
+    codeGen.irBuilder->SetInsertPoint(entry);
+
+    codeGen.GenIR();
+
+    // Return the value of a.
+    IRVariable *aVar = codeGen.GetIRVariable("a");
+    llvm::Value *loadA =
+        codeGen.irBuilder->CreateLoad(aVar->irType.type, aVar->aInsta);
+    codeGen.irBuilder->CreateRet(loadA);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *mainFuncPtr = (int (*)())Sym.getValue();
+    int result = mainFuncPtr();
+
+    ASSERT_EQ(
+        result, 11,
+        "Expected postfix ++: y should be 5 and x updated to 6 so a = 11");
+}
+
+//--------------------------------------------------------------------------
+// Test 4: CodeGen Unary Postfix Decrement (--)
+// Source:
+//   x: i32 = 10;
+//   y: i32 = x--;
+//   z: i32 = x;
+//   a: i32 = y + z;
+// Expected: Postfix -- returns original value (10) and decrements x to 9; a =
+// 10 + 9 = 19.
+TEST(CodeGenPostfixDecrementTest)
+{
+    std::string source =
+        "x: i32 = 10; y: i32 = x--; z: i32 = x; a: i32 = y + z;";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "postfix_dec.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer semAnalyzer(stmts);
+    semAnalyzer.Analize();
+
+    CodeGen codeGen(semAnalyzer);
+
+    llvm::FunctionType *funcType =
+        llvm::FunctionType::get(codeGen.irBuilder->getInt32Ty(), false);
+    llvm::Function *mainFunc = llvm::Function::Create(
+        funcType, llvm::Function::ExternalLinkage, "main", *codeGen.module);
+    llvm::BasicBlock *entry =
+        llvm::BasicBlock::Create(*codeGen.ctx, "entry", mainFunc);
+    codeGen.irBuilder->SetInsertPoint(entry);
+
+    codeGen.GenIR();
+
+    IRVariable *aVar = codeGen.GetIRVariable("a");
+    llvm::Value *loadA =
+        codeGen.irBuilder->CreateLoad(aVar->irType.type, aVar->aInsta);
+    codeGen.irBuilder->CreateRet(loadA);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *mainFuncPtr = (int (*)())Sym.getValue();
+    int result = mainFuncPtr();
+
+    ASSERT_EQ(
+        result, 19,
+        "Expected postfix --: y should be 10 and x updated to 9 so a = 19");
 }

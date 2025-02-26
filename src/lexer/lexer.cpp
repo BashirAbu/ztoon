@@ -1,5 +1,6 @@
 #include "error_report.h"
 #include "lexer.h"
+#include "parser/parser.h"
 #include "utils/memory_arean.h"
 #include <format>
 #include <iostream>
@@ -141,6 +142,8 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^sizeof\b)"), TokenType::SIZEOF});
     patterns.push_back({std::regex(R"(^if\b)"), TokenType::IF});
     patterns.push_back({std::regex(R"(^else\b)"), TokenType::ELSE});
+    patterns.push_back({std::regex(R"(^while\b)"), TokenType::WHILE});
+    patterns.push_back({std::regex(R"(^for\b)"), TokenType::FOR});
 
     patterns.push_back({std::regex(R"(^--)"), TokenType::DASH_DASH});
     patterns.push_back({std::regex(R"(^\+=)"), TokenType::PLUS_EQUAL});
@@ -285,7 +288,10 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                 if (pattern.type == TokenType::UNKNOWN)
                 {
                     token = gZtoonArena.Allocate<Token>(TokenType::UNKNOWN);
-                    ReportError("Unknown token.", token);
+                    CodeErrString ces = {};
+                    ces.firstToken = token;
+                    ces.str = token->lexeme;
+                    ReportError("Unknown token.", ces);
                 }
                 oldPos = pos;
                 pos += match.length();
@@ -297,7 +303,8 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
 
         if (!matched)
         {
-            ReportError("gg", nullptr);
+            CodeErrString ces = {};
+            ReportError("Unkown token.", ces);
         }
     }
 

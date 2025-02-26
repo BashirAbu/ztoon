@@ -3,6 +3,18 @@
 #include "ztest.h"
 #include <string>
 
+TEST(Parser_)
+{
+    std::string source = R"(
+        a: i32 = 0;
+        while false {}           )";
+    Lexer lexer;
+    lexer.Tokenize(source, "parser.ztoon");
+    Parser parser(lexer.GetTokens());
+    parser.Parse();
+    parser.PrettyPrintAST();
+}
+
 //--------------------------------------------------------------------------
 // Helper: parse source code and return AST statements.
 static const std::vector<Statement *> &

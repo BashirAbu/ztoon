@@ -30,10 +30,9 @@ class Variable
 class Scope
 {
   public:
-    Variable const *
-    GetVariable(std::string name,
-                Token const *tokenForErrorHandeling = nullptr) const;
-    void AddVariable(Variable *variable);
+    Variable const *GetVariable(std::string name,
+                                CodeErrString codeErrString) const;
+    void AddVariable(Variable *variable, CodeErrString codeErrString);
     Scope(Scope *parent = nullptr) { this->parent = parent; }
     Scope const *GetParent() const { return parent; }
 
@@ -46,16 +45,20 @@ class Scope
 class SemanticAnalyzer
 {
   public:
-    SemanticAnalyzer(const std::vector<Statement *> &statements);
+    SemanticAnalyzer(std::vector<Statement *> &statements);
     ~SemanticAnalyzer();
     void Analize();
 
   private:
     void AnalizeStatement(Statement *statement);
+    void PreAnalizeStatement(Statement *statement, size_t index);
     TokenType DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);
     Scope *currentScope = nullptr;
     std::unordered_map<BlockStatement *, Scope *> blockToScopeMap;
-    const std::vector<Statement *> statements;
+    std::vector<Statement *> &statements;
+    BlockStatement *currentBlockStatement = nullptr;
+    size_t statementCurrentIndex = 0;
+
     friend class CodeGen;
 };

@@ -81,7 +81,9 @@ enum class TokenType
     LEFT_CURLY_BRACKET,
     RIGHT_CURLY_BRACKET,
     IF,
-    ELSE
+    ELSE,
+    WHILE,
+    FOR,
 };
 
 std::string TokenDataTypeToString(TokenType type);
@@ -130,6 +132,7 @@ class Token
     std::string lineStr = "";
     friend class Lexer;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 
 template <typename T>
@@ -143,6 +146,7 @@ class TokenLiteral : public Token
 
   private:
     T value = {};
+    friend class SemanticAnalyzer;
 };
 
 class Lexer

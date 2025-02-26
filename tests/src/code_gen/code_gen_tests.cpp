@@ -17,15 +17,19 @@ TEST(CodeGen)
 
     std::string source =
         R"(
-          a: f32 = 0.0;
-
-          if a == 1.0 {
-              a = 1.0;
+        a: i32 = 0;
+          for i: i32 = 0; i < 10; i++
+          {
+                for i: i32 = 0; i < 10; ++i {
+                    for i: i32 = 0; i < 10; ++i {
+                        b: i32 = 1;
+                        while b < 123 {
+                            a += i * b++;
+                        }
+                   }
+               }
           }
-          else if a == 0.0 {
-              a = 2.0;
-          }
-        
+               
            )";
     Lexer lexer;
     lexer.Tokenize(source, "source.ztoon");
@@ -36,7 +40,7 @@ TEST(CodeGen)
 
     CodeGen codeGen(sa);
     llvm::FunctionType *funcType =
-        llvm::FunctionType::get(codeGen.irBuilder->getFloatTy(), false);
+        llvm::FunctionType::get(codeGen.irBuilder->getInt32Ty(), false);
 
     llvm::Function *mainFunc = llvm::Function::Create(
         funcType, llvm::Function::ExternalLinkage, "main", *codeGen.module);
@@ -55,7 +59,7 @@ TEST(CodeGen)
     {
         llvm::errs() << "Error\n";
     }
-    // codeGen.module->print(llvm::outs(), nullptr);
+    codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -65,9 +69,9 @@ TEST(CodeGen)
 
     auto Sym = err(JIT->lookup("main"));
 
-    auto *Fp = (float (*)())Sym.getValue();
+    auto *Fp = (int (*)())Sym.getValue();
 
-    float r = Fp();
+    int r = Fp();
 }
 
 // Test for integer arithmetic:
@@ -1077,7 +1081,8 @@ TEST(CodeGenUnaryDecrementTest)
     llvm::InitializeNativeTargetAsmParser();
 
     std::string source = R"(
-        x: i32 = --10;
+        x: i32 = 10;
+        x--;
     )";
     Lexer lexer;
     lexer.Tokenize(source, "unary_decrement.ztoon");
@@ -1124,7 +1129,9 @@ TEST(CodeGenUnaryIncrementTest)
     llvm::InitializeNativeTargetAsmParser();
 
     std::string source = R"(
-        x: i32 = ++10;
+        x: i32 = 10;
+        a: i32 = x++;
+        a = x;
     )";
     Lexer lexer;
     lexer.Tokenize(source, "unary_increment.ztoon");
@@ -1142,7 +1149,7 @@ TEST(CodeGenUnaryIncrementTest)
         llvm::BasicBlock::Create(*codeGen.ctx, "entry", mainFunc);
     codeGen.irBuilder->SetInsertPoint(entry);
     codeGen.GenIR();
-    auto *xVar = codeGen.GetIRVariable("x");
+    auto *xVar = codeGen.GetIRVariable("a");
     llvm::Value *loadX =
         codeGen.irBuilder->CreateLoad(xVar->irType.type, xVar->aInsta);
     codeGen.irBuilder->CreateRet(loadX);

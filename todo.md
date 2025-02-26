@@ -8,14 +8,9 @@
 - [ ] Pointer casting. no type pointer.
 - [ ] Packages
 - [ ] FFI
+- [ ] defer
 
 
-- [ ] add expression_text.
-
-
-
-- [ ] for loop
-- [ ] ? : ;
 - [ ] methods
 - [ ] generics
 - [ ] clousres

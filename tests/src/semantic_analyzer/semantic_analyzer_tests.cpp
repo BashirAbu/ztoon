@@ -82,7 +82,41 @@ TEST(SemanticAnalyzerTernaryExpression)
 
     std::string source = R"(
        cond: bool = true;
-       a: i32 = cond? (12 * 33) : (1.0 * 3.0) as i32;
+       a: i32 = cond? (12 * 33): (1.0 * 3.0) as i32;
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "scopes.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+}
+
+TEST(SemanticAnalyzerWhileLoopStatement)
+{
+    std::string source = R"(
+       while 1 + 2 == 3
+       {
+           a: i32 = 12;
+       }
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "scopes.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+}
+
+TEST(SemanticAnalyzerForLoopStatement)
+{
+    std::string source = R"(
+       for ; ;
+       {
+           ;
+       }
     )";
 
     Lexer lexer;

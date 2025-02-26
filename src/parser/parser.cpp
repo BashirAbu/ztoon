@@ -51,7 +51,7 @@ Parser::Parser(const std::vector<Token *> &tokens) : tokens(tokens) {}
 
 Parser::~Parser() {}
 
-const std::vector<Statement *> &Parser::Parse()
+std::vector<Statement *> &Parser::Parse()
 {
     while (Peek()->GetType() != TokenType::END_OF_FILE)
     {
@@ -64,11 +64,14 @@ Statement *Parser::ParseStatement()
 {
     Statement *statement = ParseBlockStatement();
     if (dynamic_cast<BlockStatement *>(statement) ||
-        dynamic_cast<IfStatement *>(statement) || Consume(TokenType::SEMICOLON))
+        dynamic_cast<IfStatement *>(statement) ||
+        dynamic_cast<WhileLoopStatement *>(statement) ||
+        dynamic_cast<ForLoopStatement *>(statement) ||
+        Consume(TokenType::SEMICOLON))
     {
         return statement;
     }
-    ReportError("Expected ';' after statement.", Peek());
+    ReportError("Expected ';' after statement.", statement->GetCodeErrString());
     return nullptr;
 }
 
@@ -109,7 +112,10 @@ Statement *Parser::ParseVarDeclStatement()
                     varDeclStatement->expression = ParseExpression();
                     if (!varDeclStatement->expression)
                     {
-                        ReportError("Expected expression after '='.", Peek());
+                        CodeErrString ces = {};
+                        ces.firstToken = varDeclStatement->identifier;
+                        ReportError("Expected expression after '='.",
+                                    varDeclStatement->GetCodeErrString());
                         return nullptr;
                     }
                 }
@@ -156,18 +162,28 @@ Statement *Parser::ParseVarCompundAssignmentStatement()
         statement->compoundAssignment = Prev();
         Expression *right = ParseExpression();
         if (!right)
+        {
+            CodeErrString ces = {};
+            ces.firstToken = Peek();
+            ces.str = " ";
             ReportError(std::format("Expect expression after '{}'",
                                     Peek()->GetLexeme()),
-                        Peek());
+                        ces);
+        }
         BinaryExpression *binaryExpression =
             gZtoonArena.Allocate<BinaryExpression>();
         binaryExpression->left = left;
         binaryExpression->right = right;
 
         if (!binaryExpression->right)
-            ReportError(std::format("Expect expression after '{}'",
-                                    binaryExpression->op->GetLexeme()),
-                        binaryExpression->op);
+        {
+
+            ReportError(
+                std::format("Expect expression after '{}'",
+                            binaryExpression->GetOperator()->GetLexeme()),
+                binaryExpression->GetCodeErrString());
+        }
+
         switch (statement->compoundAssignment->GetType())
         {
         case TokenType::PLUS_EQUAL:
@@ -285,9 +301,10 @@ Statement *Parser::ParseIfStatement()
         ifStatement->blockStatement =
             dynamic_cast<BlockStatement *>(ParseBlockStatement());
 
-        if (!ifStatement->blockStatement)
+        if (!dynamic_cast<BlockStatement *>(ifStatement->blockStatement))
         {
-            ReportError("Expect block statement after 'expression'", Prev());
+            ReportError("If statement's block is missing",
+                        ifStatement->expression->GetCodeErrString());
         }
         while (Peek()->GetType() == TokenType::ELSE &&
                PeekAhead(1)->GetType() == TokenType::IF)
@@ -306,7 +323,7 @@ Statement *Parser::ParseIfStatement()
 
         return ifStatement;
     }
-    return ParseExpressionStatement();
+    return ParseWhileLoopStatement();
 }
 
 Statement *Parser::ParseElseStatement()
@@ -315,9 +332,10 @@ Statement *Parser::ParseElseStatement()
     elseStatement->elseToken = Prev();
     elseStatement->blockStatement =
         dynamic_cast<BlockStatement *>(ParseBlockStatement());
-    if (!elseStatement->blockStatement)
+    if (!dynamic_cast<BlockStatement *>(elseStatement->blockStatement))
     {
-        ReportError("Expect block statement after 'else'", Prev());
+        ReportError("Else statement's block is missing",
+                    elseStatement->GetCodeErrString());
     }
 
     return elseStatement;
@@ -331,23 +349,156 @@ Statement *Parser::ParseElseIfStatement()
     elifStatement->expression = ParseExpression();
     if (!elifStatement->expression)
     {
-        ReportError("Expect expression after 'if else'", Prev());
+        CodeErrString ces = {};
+
+        ces.firstToken = Prev();
+        ces.str = "else";
+
+        ReportError("Expect expression after 'if else'", ces);
     }
     elifStatement->blockStatement =
         dynamic_cast<BlockStatement *>(ParseBlockStatement());
 
-    if (!elifStatement->blockStatement)
+    if (!dynamic_cast<BlockStatement *>(elifStatement->blockStatement))
     {
-        ReportError("Expect block statement after 'expression'", Prev());
+        ReportError("Else if statement's block is missing",
+                    elifStatement->expression->GetCodeErrString());
     }
 
     return elifStatement;
 }
+
+Statement *Parser::ParseWhileLoopStatement()
+{
+    if (Consume(TokenType::WHILE))
+    {
+        WhileLoopStatement *whileStatement =
+            gZtoonArena.Allocate<WhileLoopStatement>();
+        whileStatement->whileToken = Prev();
+        whileStatement->condition = ParseExpression();
+        if (!whileStatement->condition)
+        {
+            CodeErrString ces = {};
+            ces.firstToken = whileStatement->whileToken;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expect expression after 'while'", ces);
+        }
+
+        whileStatement->blockStatement =
+            dynamic_cast<BlockStatement *>(ParseBlockStatement());
+
+        if (!dynamic_cast<BlockStatement *>(whileStatement->blockStatement))
+        {
+            CodeErrString ces;
+            ces.firstToken = whileStatement->whileToken;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError(std::format("while statement's block is missing"), ces);
+        }
+
+        return whileStatement;
+    }
+
+    return ParseForLoopStatement();
+}
+
+Statement *Parser::ParseForLoopStatement()
+{
+    if (Consume(TokenType::FOR))
+    {
+        ForLoopStatement *forLoopStatement =
+            gZtoonArena.Allocate<ForLoopStatement>();
+        forLoopStatement->forToken = Prev();
+        forLoopStatement->init = ParseStatement();
+        if (forLoopStatement->init)
+        {
+            if (!dynamic_cast<VarDeclStatement *>(forLoopStatement->init) &&
+                !dynamic_cast<VarAssignmentStatement *>(
+                    forLoopStatement->init) &&
+                !dynamic_cast<VarCompoundAssignmentStatement *>(
+                    forLoopStatement->init) &&
+                !dynamic_cast<ExpressionStatement *>(forLoopStatement->init))
+            {
+                ReportError(
+                    std::format(
+                        "Initialization statement must be one of the "
+                        "following types: Variable Declaration, Statement"
+                        "Variable Assignemnt Statement, Expression Statement."),
+                    forLoopStatement->init->GetCodeErrString());
+            }
+        }
+
+        forLoopStatement->condition = ParseExpression();
+
+        if (Consume(TokenType::SEMICOLON))
+        {
+        }
+        else
+        {
+            CodeErrString ces = {};
+            ces.firstToken = Prev();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError(
+                std::format(
+                    "Expect ';' after expression '{}'",
+                    forLoopStatement->condition
+                        ? forLoopStatement->condition->GetCodeErrString().str
+                        : ""),
+                forLoopStatement->condition
+                    ? forLoopStatement->condition->GetCodeErrString()
+                    : ces);
+        }
+        forLoopStatement->update = ParseVarAssignmentStatement();
+
+        if (forLoopStatement->update)
+        {
+            if (!dynamic_cast<VarAssignmentStatement *>(
+                    forLoopStatement->update) &&
+                !dynamic_cast<VarCompoundAssignmentStatement *>(
+                    forLoopStatement->init) &&
+                !dynamic_cast<ExpressionStatement *>(forLoopStatement->update))
+            {
+                ReportError(
+                    std::format(
+                        "Initialization statement must be one of the "
+                        "following types: Variable Declaration, Statement"
+                        "Variable Assignemnt Statement, Expression Statement."),
+                    forLoopStatement->init->GetCodeErrString());
+            }
+        }
+        forLoopStatement->blockStatement =
+            dynamic_cast<BlockStatement *>(ParseBlockStatement());
+        if (!dynamic_cast<BlockStatement *>(forLoopStatement->blockStatement))
+        {
+            CodeErrString ces = {};
+            ces.firstToken = forLoopStatement->forToken;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError(std::format("For loop's block is missing"), ces);
+        }
+        // Update expression runs at the end of the for loop block.
+        if (forLoopStatement->GetUpdate())
+        {
+            forLoopStatement->blockStatement->statements.push_back(
+                forLoopStatement->GetUpdate());
+        }
+        BlockStatement *blockStatement = gZtoonArena.Allocate<BlockStatement>();
+        blockStatement->statements.push_back(forLoopStatement);
+
+        return blockStatement;
+    }
+
+    return ParseExpressionStatement();
+}
+
 Statement *Parser::ParseExpressionStatement()
 {
-    ExpressionStatement *es = gZtoonArena.Allocate<ExpressionStatement>();
-    es->expression = ParseExpression();
-    return es;
+    Expression *expr = ParseExpression();
+    if (expr)
+    {
+        ExpressionStatement *es = gZtoonArena.Allocate<ExpressionStatement>();
+        es->expression = expr;
+        return es;
+    }
+    return nullptr;
 }
 
 Expression *Parser::BuildBinaryExpression(Token const *op, Expression *left,
@@ -355,11 +506,22 @@ Expression *Parser::BuildBinaryExpression(Token const *op, Expression *left,
 {
     BinaryExpression *expr = gZtoonArena.Allocate<BinaryExpression>();
     if (!left)
+    {
+        CodeErrString ces = {};
+        ces.firstToken = op;
+        ces.str = op->GetLexeme();
         ReportError(
-            std::format("Expect expression before '{}'", op->GetLexeme()), op);
+            std::format("Expect expression before '{}'", op->GetLexeme()), ces);
+    }
+
     if (!right)
+    {
+        CodeErrString ces = {};
+        ces.firstToken = op;
+        ces.str = op->GetLexeme();
         ReportError(
-            std::format("Expect expression after '{}'", op->GetLexeme()), op);
+            std::format("Expect expression after '{}'", op->GetLexeme()), ces);
+    }
 
     expr->left = left;
     expr->right = right;
@@ -380,7 +542,10 @@ Expression *Parser::ParseTernaryExpression()
         ternaryExpr->trueExpr = ParseORExpression();
         if (!ternaryExpr->trueExpr)
         {
-            ReportError("Expect an epxression after '?'", Prev());
+            CodeErrString ces = {};
+            ces.firstToken = ternaryExpr->questionMarkToken;
+            ces.str = ternaryExpr->questionMarkToken->GetLexeme();
+            ReportError("Expect an epxression after '?'", ces);
         }
         if (Consume(TokenType::COLON))
         {
@@ -388,12 +553,17 @@ Expression *Parser::ParseTernaryExpression()
 
             if (!ternaryExpr->falseExpr)
             {
-                ReportError("Expect an epxression after ':'", Prev());
+
+                CodeErrString ces = {};
+                ces.firstToken = Prev();
+                ces.str = Prev()->GetLexeme();
+                ReportError("Expect an epxression after ':'", ces);
             }
         }
         else
         {
-            ReportError("Expect ':' after expression", Prev());
+            ReportError("Expect ':' after expression",
+                        ternaryExpr->condition->GetCodeErrString());
         }
 
         ternaryExpr->condition = expr;
@@ -527,7 +697,6 @@ Expression *Parser::ParseCastExpression()
     while (Consume(TokenType::AS))
     {
         CastExpression *castExpr = gZtoonArena.Allocate<CastExpression>();
-        castExpr->asToken = Prev();
         castExpr->expression = expr;
         if (IsDataType(Peek()->GetType()))
         {
@@ -537,7 +706,10 @@ Expression *Parser::ParseCastExpression()
         }
         else
         {
-            ReportError("Expect datatype after 'as'.", Peek());
+            CodeErrString ces = {};
+            ces.firstToken = Prev();
+            ces.str = Prev()->GetLexeme();
+            ReportError("Expect datatype after 'as'", ces);
         }
         expr = castExpr;
     }
@@ -558,16 +730,24 @@ Expression *Parser::ParseUnaryExpression()
         {
             unaryExpr->right = ParsePrimaryExpression();
             if (!unaryExpr->right)
+            {
+                CodeErrString ces = {};
+                ces.firstToken = unaryExpr->op;
+                ces.str = unaryExpr->op->GetLexeme();
                 ReportError(std::format("Expect expression after '{}'",
                                         unaryExpr->op->GetLexeme()),
-                            unaryExpr->op);
+                            ces);
+            }
+
             if (Consume(TokenType::RIGHT_PAREN))
             {
                 return unaryExpr;
             }
             else
             {
-                ReportError("Expect ')' after expression.", Prev());
+                ReportError(
+                    "Expect ')' after expression.",
+                    unaryExpr->GetRightExpression()->GetCodeErrString());
                 return nullptr;
             }
         }
@@ -584,6 +764,7 @@ Expression *Parser::ParseUnaryExpression()
         unaryExpr->op = Prev();
 
         unaryExpr->right = expr;
+        unaryExpr->postfix = true;
         return unaryExpr;
     }
     return expr;
@@ -663,7 +844,10 @@ Expression *Parser::ParsePrimaryExpression()
         }
         else
         {
-            ReportError("Expected ')' after expression.", Prev());
+            CodeErrString ces = {};
+            ces.firstToken = Prev();
+            ces.str = Prev()->GetLexeme();
+            ReportError("Expected ')' after expression.", ces);
         }
         break;
     }
@@ -808,6 +992,42 @@ std::string VarCompoundAssignmentStatement::PrettyString(std::string &prefix)
     return str;
 }
 
+std::string WhileLoopStatement::PrettyString(std::string &prefix)
+{
+
+    std::string str = prefix;
+    str += "|_(while)\n";
+    prefix += "    ";
+    str += condition->PrettyString(prefix, true);
+    str += blockStatement->PrettyString(prefix);
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    return str;
+}
+
+std::string ForLoopStatement::PrettyString(std::string &prefix)
+{
+
+    std::string str = prefix;
+    str += "|_(for)\n";
+    prefix += "    ";
+    str += init ? init->PrettyString(prefix) : prefix + "|-\n";
+    str += prefix;
+
+    str += condition ? condition->PrettyString(prefix, true)
+                     : prefix + "|-true(empty)\n";
+
+    str += prefix;
+    str += update ? update->PrettyString(prefix) : prefix + "|-\n";
+    str += blockStatement->PrettyString(prefix);
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    return str;
+}
 std::string ExpressionStatement::PrettyString(std::string &prefix)
 {
     std::string str = "";

@@ -3,29 +3,21 @@
 #include <format>
 #include <iostream>
 #include <stdlib.h>
-void ReportError(std::string errorMsg, Token const *token)
+void ReportError(std::string errorMsg, CodeErrString errStr)
 {
-    if (token)
+    std::cerr << std::format(
+        "Error at {}:{}\n{}\n", errStr.firstToken->GetFilename(),
+        errStr.firstToken->GetLineNumber(), errStr.firstToken->GetLineStr());
+    std::string errorPointer = "";
+    for (size_t i = 1; i < errStr.firstToken->GetColNumber(); i++)
     {
-        std::cerr << std::format("Error at {}:{}\n{}\n", token->GetFilename(),
-                                 token->GetLineNumber(), token->GetLineStr());
-        std::string errorPointer = "";
-        for (size_t i = 1; i < token->GetColNumber(); i++)
-        {
-            errorPointer += " ";
-        }
-
-        for (size_t i = 0; i < token->GetLexeme().length(); i++)
-        {
-            errorPointer += "^";
-        }
-
-        std::cerr << std::format("{}\n{}.", errorPointer, errorMsg);
+        errorPointer += " ";
     }
-    else
-    {
-        std::cerr << std::format("Error: {}", errorMsg);
-    }
+
+    errorPointer += "^";
+
+    std::cerr << std::format("{}\n{}.", errorPointer, errorMsg);
+
 #ifdef _DEBUG
     assert(0);
 #else

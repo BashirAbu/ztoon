@@ -83,10 +83,7 @@ IRType CodeGen::TokenTypeToLLVMType(TokenType type)
     }
     default:
     {
-        ReportError(
-            std::format("Type '{}' is not supported by the IR code genrator.",
-                        TokenDataTypeToString(type)),
-            nullptr);
+
         break;
     }
     }
@@ -239,7 +236,6 @@ IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
     }
     else
     {
-        ReportError("LLVM backend does not support this casting yet.", nullptr);
         return IRValue{};
     }
     //  int to float
@@ -279,7 +275,7 @@ void CodeGen::GenStatementIR(Statement *statement)
         irVariable->aInsta = inst;
         irVariable->variabel = semanticAnalyzer.currentScope->GetVariable(
             varDeclStatement->GetIdentifier()->GetLexeme(),
-            varDeclStatement->GetIdentifier());
+            varDeclStatement->GetCodeErrString());
         irVariable->irType =
             TokenTypeToLLVMType(varDeclStatement->GetDataType()->GetType());
         AddIRVariable(irVariable);
@@ -376,6 +372,49 @@ void CodeGen::GenStatementIR(Statement *statement)
         }
 
         irBuilder->SetInsertPoint(mergeBlock);
+    }
+    else if (dynamic_cast<WhileLoopStatement *>(statement))
+    {
+        WhileLoopStatement *whileStatement =
+            dynamic_cast<WhileLoopStatement *>(statement);
+        llvm::Function *currentFunction =
+            irBuilder->GetInsertBlock()->getParent();
+        llvm::BasicBlock *loopBlock =
+            llvm::BasicBlock::Create(*ctx, "loopBlock", currentFunction);
+        llvm::BasicBlock *exitBlock =
+            llvm::BasicBlock::Create(*ctx, "exitBlock", currentFunction);
+
+        IRValue cond = GenExpressionIR(whileStatement->GetCondition());
+        irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
+
+        irBuilder->SetInsertPoint(loopBlock);
+        GenStatementIR(whileStatement->GetBlockStatement());
+        cond = GenExpressionIR(whileStatement->GetCondition());
+        irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
+
+        irBuilder->SetInsertPoint(exitBlock);
+    }
+    else if (dynamic_cast<ForLoopStatement *>(statement))
+    {
+        ForLoopStatement *forLoopStatement =
+            dynamic_cast<ForLoopStatement *>(statement);
+        GenStatementIR(forLoopStatement->GetInit());
+        IRValue cond = GenExpressionIR(forLoopStatement->GetCondition());
+        llvm::Function *currentFunction =
+            irBuilder->GetInsertBlock()->getParent();
+        llvm::BasicBlock *loopBlock =
+            llvm::BasicBlock::Create(*ctx, "loopBlock", currentFunction);
+        llvm::BasicBlock *exitBlock =
+            llvm::BasicBlock::Create(*ctx, "exitBlock", currentFunction);
+
+        irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
+
+        irBuilder->SetInsertPoint(loopBlock);
+        GenStatementIR(forLoopStatement->GetBlockStatement());
+        cond = GenExpressionIR(forLoopStatement->GetCondition());
+        irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
+
+        irBuilder->SetInsertPoint(exitBlock);
     }
 }
 
@@ -795,7 +834,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                                 TokenDataTypeToString(
                                     binaryExpression->GetLeftExpression()
                                         ->GetDataType())),
-                    binaryExpression->GetOperator());
+                    binaryExpression->GetCodeErrString());
             }
             else if (!IsNumerical(binaryExpression->GetRightExpression()
                                       ->GetDataType()) &&
@@ -809,7 +848,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                                 TokenDataTypeToString(
                                     binaryExpression->GetRightExpression()
                                         ->GetDataType())),
-                    binaryExpression->GetOperator());
+                    binaryExpression->GetCodeErrString());
             }
             else
             {
@@ -838,7 +877,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                                 TokenDataTypeToString(
                                     binaryExpression->GetLeftExpression()
                                         ->GetDataType())),
-                    binaryExpression->GetOperator());
+                    binaryExpression->GetCodeErrString());
             }
             else if (!IsNumerical(binaryExpression->GetRightExpression()
                                       ->GetDataType()) &&
@@ -852,7 +891,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                                 TokenDataTypeToString(
                                     binaryExpression->GetRightExpression()
                                         ->GetDataType())),
-                    binaryExpression->GetOperator());
+                    binaryExpression->GetCodeErrString());
             }
             else
             {
@@ -878,7 +917,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                                 TokenDataTypeToString(
                                     binaryExpression->GetLeftExpression()
                                         ->GetDataType())),
-                    binaryExpression->GetOperator());
+                    binaryExpression->GetCodeErrString());
             }
             else if (!IsNumerical(binaryExpression->GetRightExpression()
                                       ->GetDataType()) &&
@@ -892,7 +931,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                                 TokenDataTypeToString(
                                     binaryExpression->GetRightExpression()
                                         ->GetDataType())),
-                    binaryExpression->GetOperator());
+                    binaryExpression->GetCodeErrString());
             }
             else
             {
@@ -909,7 +948,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
             ReportError(
                 std::format("Binary operator '{}' is not supported.",
                             binaryExpression->GetOperator()->GetLexeme()),
-                binaryExpression->GetOperator());
+                binaryExpression->GetCodeErrString());
             break;
         }
         }
@@ -964,8 +1003,14 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         }
         case TokenType::DASH_DASH:
         {
+            PrimaryExpression *primaryExpr = dynamic_cast<PrimaryExpression *>(
+                unaryExpression->GetRightExpression());
+            IRVariable *var =
+                GetIRVariable(primaryExpr->GetPrimary()->GetLexeme());
             if (IsInteger(unaryExpression->GetDataType()))
             {
+                // Get the variable
+
                 irValue.value = irBuilder->CreateSub(
                     rValue.value,
                     llvm::ConstantInt::get(rValue.value->getType(), 1),
@@ -980,6 +1025,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                     std::format("unary_op_{}",
                                 unaryExpression->GetOperator()->GetLexeme()));
             }
+            irBuilder->CreateStore(irValue.value, var->aInsta);
             break;
         }
         case TokenType::PLUS:
@@ -989,8 +1035,16 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         }
         case TokenType::PLUS_PLUS:
         {
+
+            PrimaryExpression *primaryExpr = dynamic_cast<PrimaryExpression *>(
+                unaryExpression->GetRightExpression());
+            IRVariable *var =
+                GetIRVariable(primaryExpr->GetPrimary()->GetLexeme());
+            irValue.value = irBuilder->CreateLoad(var->irType.type, var->aInsta,
+                                                  var->variabel->GetName());
             if (IsInteger(unaryExpression->GetDataType()))
             {
+
                 irValue.value = irBuilder->CreateAdd(
                     rValue.value,
                     llvm::ConstantInt::get(rValue.value->getType(), 1),
@@ -1005,6 +1059,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                     std::format("unary_op_{}",
                                 unaryExpression->GetOperator()->GetLexeme()));
             }
+            irBuilder->CreateStore(irValue.value, var->aInsta);
             break;
         }
         case TokenType::EXCLAMATION:
@@ -1030,7 +1085,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
             ReportError(
                 std::format("Unkown unary operator '{}'",
                             unaryExpression->GetOperator()->GetLexeme()),
-                unaryExpression->GetOperator());
+                unaryExpression->GetCodeErrString());
             break;
         }
         }
@@ -1114,14 +1169,15 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
             ReportError(
                 std::format("This primary type '{}'  is not supported",
                             primaryExpression->GetPrimary()->GetLexeme()),
-                primaryExpression->GetPrimary());
+                primaryExpression->GetCodeErrString());
             break;
         }
         }
     }
     else
     {
-        ReportError("This expression is not supported.", nullptr);
+        ReportError("This expression is not supported.",
+                    expression->GetCodeErrString());
     };
 
     return irValue;

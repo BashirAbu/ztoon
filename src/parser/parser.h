@@ -22,8 +22,13 @@
 
   statement_expr -> expression ;
 
-  expression -> or ;
 
+
+
+
+
+  expression -> ternary_expression ;
+  ternary_expression -> expression ? expression : expression ;
   or -> and ("||" and)* ;
 
   and -> bitwise_or ("&&" bitwise_or)* ;
@@ -179,9 +184,28 @@ class Expression
     virtual ~Expression() {}
     virtual std::string PrettyString(std::string &prefix, bool isLeft) = 0;
     TokenType GetDataType() const { return dataType; }
+    virtual Token const *GetToken() const = 0;
 
   protected:
     TokenType dataType = TokenType::UNKNOWN;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
+
+class TernaryExpression : public Expression
+{
+  public:
+    std::string PrettyString(std::string &prefix, bool isLeft) override;
+    Expression *GetTrueExpression() const { return trueExpr; }
+    Expression *GetFalseExpression() const { return falseExpr; }
+    Expression *GetCondition() const { return condition; }
+    Token const *GetToken() const override { return questionMarkToken; }
+
+  private:
+    Expression *trueExpr = nullptr;
+    Expression *falseExpr = nullptr;
+    Expression *condition = nullptr;
+    Token const *questionMarkToken = nullptr;
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -193,6 +217,8 @@ class BinaryExpression : public Expression
     Expression *GetLeftExpression() const { return left; }
     Expression *GetRightExpression() const { return right; }
     Token const *GetOperator() const { return op; }
+
+    Token const *GetToken() const override { return op; }
 
   private:
     Expression *left = nullptr;
@@ -209,6 +235,8 @@ class UnaryExpression : public Expression
     Expression *GetRightExpression() const { return right; }
     Token const *GetOperator() const { return op; }
 
+    Token const *GetToken() const override { return op; }
+
   private:
     Expression *right = nullptr;
     Token const *op = nullptr;
@@ -222,8 +250,11 @@ class GroupingExpression : public Expression
 
     class Expression *GetExpression() const { return expression; }
 
+    Token const *GetToken() const override { return expression->GetToken(); }
+
   private:
     Expression *expression = nullptr;
+    Token const *leftParen = nullptr;
     friend class Parser;
 };
 
@@ -235,9 +266,13 @@ class CastExpression : public Expression
     class Expression *GetExpression() const { return expression; }
     Token const *GetCastToType() { return castToType; }
 
+    Token const *GetToken() const override { return asToken; }
+
   private:
     Expression *expression = nullptr;
     Token const *castToType = nullptr;
+    Token const *asToken = nullptr;
+
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -247,6 +282,8 @@ class PrimaryExpression : public Expression
   public:
     std::string PrettyString(std::string &prefix, bool isLeft) override;
     Token const *GetPrimary() const { return primary; }
+
+    Token const *GetToken() const override { return primary; }
 
   private:
     Token const *primary = nullptr;
@@ -274,7 +311,7 @@ class Parser
     Statement *ParseElseStatement();
 
     Expression *ParseExpression();
-    Expression *ParseAssignmentExpression();
+    Expression *ParseTernaryExpression();
     Expression *ParseORExpression();
     Expression *ParseANDExpression();
     Expression *ParseBitwiseORExpression();
@@ -289,7 +326,6 @@ class Parser
     Expression *ParseCastExpression();
     Expression *ParseUnaryExpression();
     Expression *ParsePrimaryExpression();
-
     Expression *BuildBinaryExpression(Token const *op, Expression *left,
                                       Expression *right);
 

@@ -32,7 +32,7 @@ enum class TokenType
     CHARACTER_LITERAL,
     TRUE,
     FALSE,
-
+    QUESTION_MARK,
     COLON,
     SEMICOLON,
 

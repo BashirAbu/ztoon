@@ -182,6 +182,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^=)"), TokenType::EQUAL});
     patterns.push_back({std::regex(R"(^!)"), TokenType::EXCLAMATION});
     patterns.push_back({std::regex(R"(^~)"), TokenType::TILDE});
+    patterns.push_back({std::regex(R"(^\?)"), TokenType::QUESTION_MARK});
 
     patterns.push_back(
         {std::regex(R"(^(\d+\.\d+)|(\.\d+))"), TokenType::FLOAT_LITERAL});

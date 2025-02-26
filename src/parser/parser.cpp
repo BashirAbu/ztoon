@@ -367,8 +367,41 @@ Expression *Parser::BuildBinaryExpression(Token const *op, Expression *left,
     return expr;
 }
 
-Expression *Parser::ParseExpression() { return ParseORExpression(); }
+Expression *Parser::ParseExpression() { return ParseTernaryExpression(); }
+Expression *Parser::ParseTernaryExpression()
+{
+    Expression *expr = ParseORExpression();
 
+    if (Consume(TokenType::QUESTION_MARK))
+    {
+        TernaryExpression *ternaryExpr =
+            gZtoonArena.Allocate<TernaryExpression>();
+        ternaryExpr->questionMarkToken = Prev();
+        ternaryExpr->trueExpr = ParseORExpression();
+        if (!ternaryExpr->trueExpr)
+        {
+            ReportError("Expect an epxression after '?'", Prev());
+        }
+        if (Consume(TokenType::COLON))
+        {
+            ternaryExpr->falseExpr = ParseORExpression();
+
+            if (!ternaryExpr->falseExpr)
+            {
+                ReportError("Expect an epxression after ':'", Prev());
+            }
+        }
+        else
+        {
+            ReportError("Expect ':' after expression", Prev());
+        }
+
+        ternaryExpr->condition = expr;
+        expr = ternaryExpr;
+    }
+
+    return expr;
+}
 Expression *Parser::ParseORExpression()
 {
     Expression *expr = ParseANDExpression();
@@ -477,7 +510,8 @@ Expression *Parser::ParseFactorExpression()
 {
     Expression *expr = ParseCastExpression();
 
-    while (TokenMatch(Peek()->GetType(), TokenType::ASTERISK, TokenType::SLASH))
+    while (TokenMatch(Peek()->GetType(), TokenType::ASTERISK, TokenType::SLASH,
+                      TokenType::PERCENTAGE))
     {
         Advance();
         Token const *op = Prev();
@@ -493,6 +527,7 @@ Expression *Parser::ParseCastExpression()
     while (Consume(TokenType::AS))
     {
         CastExpression *castExpr = gZtoonArena.Allocate<CastExpression>();
+        castExpr->asToken = Prev();
         castExpr->expression = expr;
         if (IsDataType(Peek()->GetType()))
         {
@@ -620,6 +655,7 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Consume(TokenType::LEFT_PAREN);
         GroupingExpression *gExpr = gZtoonArena.Allocate<GroupingExpression>();
+        gExpr->leftParen = Prev();
         gExpr->expression = ParseExpression();
         if (Consume(TokenType::RIGHT_PAREN))
         {
@@ -776,6 +812,23 @@ std::string ExpressionStatement::PrettyString(std::string &prefix)
 {
     std::string str = "";
     str += expression ? expression->PrettyString(prefix, false) : "";
+    return str;
+}
+
+std::string TernaryExpression::PrettyString(std::string &prefix, bool isLeft)
+{
+    std::string str = "";
+    str += prefix;
+    str += isLeft ? "|-" : "|_";
+    str += (std::string) "Ternary\n";
+    prefix += isLeft ? "|   " : "    ";
+    str += condition->PrettyString(prefix, true);
+    str += trueExpr->PrettyString(prefix, true);
+    str += falseExpr->PrettyString(prefix, false);
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
+    prefix.pop_back();
     return str;
 }
 

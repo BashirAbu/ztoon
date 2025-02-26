@@ -327,7 +327,7 @@ TokenType SemanticAnalyzer::DecideDataType(Expression **left,
         }
         else
         {
-            return leftDataType;
+            return TokenType::UNKNOWN;
         }
     }
     return leftDataType;
@@ -336,7 +336,38 @@ TokenType SemanticAnalyzer::DecideDataType(Expression **left,
 void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
     Expression *expression)
 {
-    if (dynamic_cast<BinaryExpression *>(expression))
+
+    if (dynamic_cast<TernaryExpression *>(expression))
+    {
+        TernaryExpression *ternaryExpr =
+            dynamic_cast<TernaryExpression *>(expression);
+
+        EvaluateAndAssignDataTypeToExpression(ternaryExpr->condition);
+        EvaluateAndAssignDataTypeToExpression(ternaryExpr->trueExpr);
+        EvaluateAndAssignDataTypeToExpression(ternaryExpr->falseExpr);
+
+        if (ternaryExpr->condition->dataType != TokenType::BOOL)
+        {
+            ReportError("Expected expression to be boolean type",
+                        ternaryExpr->condition->GetToken());
+        }
+
+        TokenType type =
+            DecideDataType(&ternaryExpr->trueExpr, &ternaryExpr->falseExpr);
+
+        if (type == TokenType::UNKNOWN)
+        {
+            ReportError(
+                std::format(
+                    "Expression '{}' and '{}' must be of the same type.",
+                    ternaryExpr->trueExpr->GetToken()->GetLexeme(),
+                    ternaryExpr->falseExpr->GetToken()->GetLexeme()),
+                ternaryExpr->GetToken());
+        }
+
+        ternaryExpr->dataType = ternaryExpr->trueExpr->dataType;
+    }
+    else if (dynamic_cast<BinaryExpression *>(expression))
     {
         BinaryExpression *binaryExpression =
             dynamic_cast<BinaryExpression *>(expression);
@@ -360,6 +391,52 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
 
         switch (binaryExpression->op->GetType())
         {
+        case TokenType::PLUS:
+        case TokenType::DASH:
+        case TokenType::ASTERISK:
+        case TokenType::SLASH:
+        case TokenType::PERCENTAGE:
+        {
+            if (!IsNumerical(binaryExpression->left->dataType))
+            {
+                ReportError(std::format("Left expression of '{}' must be "
+                                        "numerical type",
+                                        binaryExpression->op->GetLexeme()),
+                            binaryExpression->op);
+            }
+            else if (!IsNumerical(binaryExpression->right->dataType))
+            {
+                ReportError(std::format("Right expression of '{}' must be "
+                                        "numerical type",
+                                        binaryExpression->op->GetLexeme()),
+                            binaryExpression->op);
+            }
+            binaryExpression->dataType = dataType;
+            break;
+        }
+        case TokenType::BITWISE_AND:
+        case TokenType::BITWISE_OR:
+        case TokenType::BITWISE_XOR:
+        case TokenType::SHIFT_LEFT:
+        case TokenType::SHIFT_RIGHT:
+        {
+            if (!IsInteger(binaryExpression->left->dataType))
+            {
+                ReportError(std::format("Left expression of '{}' must be "
+                                        "integer type",
+                                        binaryExpression->op->GetLexeme()),
+                            binaryExpression->op);
+            }
+            else if (!IsInteger(binaryExpression->right->dataType))
+            {
+                ReportError(std::format("Right expression of '{}' must be "
+                                        "integer type",
+                                        binaryExpression->op->GetLexeme()),
+                            binaryExpression->op);
+            }
+            binaryExpression->dataType = dataType;
+            break;
+        }
         case TokenType::EQUAL_EQUAL:
         case TokenType::EXCLAMATION_EQUAL:
         case TokenType::LESS:
@@ -367,6 +444,23 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::GREATER:
         case TokenType::GREATER_EQUAL:
         {
+
+            if (!IsNumerical(binaryExpression->left->dataType) &&
+                binaryExpression->left->dataType != TokenType::BOOL)
+            {
+                ReportError(std::format("Left expression of '{}' must be "
+                                        "boolean or numerical type",
+                                        binaryExpression->op->GetLexeme()),
+                            binaryExpression->op);
+            }
+            else if (!IsNumerical(binaryExpression->right->dataType) &&
+                     binaryExpression->right->dataType != TokenType::BOOL)
+            {
+                ReportError(std::format("Right expression of '{}' must be "
+                                        "boolean or numerical type",
+                                        binaryExpression->op->GetLexeme()),
+                            binaryExpression->op);
+            }
             binaryExpression->dataType = TokenType::BOOL;
             break;
         }

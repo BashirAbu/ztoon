@@ -1,15 +1,16 @@
 ##Todo
-
-- [ ] if statement
 - [ ] While loop
 - [ ] Funcitons
-- [ ] Pointers
 - [ ] Arrays
 - [ ] Srructs
 - [ ] Enums
 - [ ] Unions
+- [ ] Pointer casting. no type pointer.
 - [ ] Packages
 - [ ] FFI
+
+
+- [ ] add expression_text.
 
 
 

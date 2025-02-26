@@ -15,29 +15,18 @@ parseSource(const std::string &source,
     return parser.Parse();
 }
 
-TEST(ParserIFstatement)
+TEST(Parser)
 {
     std::string source = R"(
-        a: bool = true;
-        b: i32 = 1;
-        if a
-        {
-            b++;
-        }
-        else
-        {
-            b--;
-        }
+        cond: bool = true;
+        a: i32 = cond? 0 : 1 ;
     )";
 
     Lexer lexer;
     lexer.Tokenize(source, "if_statement.ztoon");
 
-    lexer.DebugPrint();
-
     Parser parser(lexer.GetTokens());
-    auto stmt = parser.Parse();
-
+    parser.Parse();
     parser.PrettyPrintAST();
 }
 

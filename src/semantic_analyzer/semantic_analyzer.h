@@ -34,7 +34,8 @@ class Scope
     GetVariable(std::string name,
                 Token const *tokenForErrorHandeling = nullptr) const;
     void AddVariable(Variable *variable);
-    Scope(Scope *parent = nullptr) : parent(parent) {}
+    Scope(Scope *parent = nullptr) { this->parent = parent; }
+    Scope const *GetParent() const { return parent; }
 
   private:
     Scope *parent = nullptr;

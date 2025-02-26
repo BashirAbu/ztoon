@@ -2,13 +2,18 @@
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
-#include "llvm/Support/TypeSize.h"
+#include "llvm/Support/Casting.h"
 #include <format>
 #include <memory>
 IRType CodeGen::TokenTypeToLLVMType(TokenType type)
@@ -92,18 +97,34 @@ IRType CodeGen::TokenTypeToLLVMType(TokenType type)
 void CodeGen::AddIRVariable(IRVariable *irVariable)
 {
     assert(irVariable);
-    irVariablesMap[irVariable->variabel->GetName()] = irVariable;
+    if (!scopeToIRVariablesMap.contains(semanticAnalyzer.currentScope))
+    {
+        scopeToIRVariablesMap[semanticAnalyzer.currentScope] = {};
+    }
+
+    (scopeToIRVariablesMap[semanticAnalyzer.currentScope])[irVariable->variabel
+                                                               ->GetName()] =
+        irVariable;
 }
 
 IRVariable *CodeGen::GetIRVariable(std::string name)
 {
-    // just for checking if variable is accessible here.
-    // auto ignore = semanticAnalyzer.currentScope->GetVariable(name);
-
-    if (irVariablesMap.contains(name))
+    IRVariable *ret = nullptr;
+    Scope const *scope = semanticAnalyzer.currentScope;
+    while (!ret)
     {
-        return irVariablesMap[name];
+        if ((scopeToIRVariablesMap[scope]).contains(name))
+        {
+            IRVariable *ret = (scopeToIRVariablesMap[scope])[name];
+            return ret;
+        }
+        scope = scope->GetParent();
+        if (!scope)
+        {
+            break;
+        }
     }
+
     assert(0);
     return nullptr;
 }
@@ -225,7 +246,7 @@ IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
     // pointer casting stuff later.
 }
 
-CodeGen::CodeGen(const SemanticAnalyzer &semanticAnalyzer)
+CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer)
     : semanticAnalyzer(semanticAnalyzer)
 {
     ctx = std::make_unique<llvm::LLVMContext>();
@@ -234,74 +255,356 @@ CodeGen::CodeGen(const SemanticAnalyzer &semanticAnalyzer)
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
 }
 CodeGen::~CodeGen() {}
-
 void CodeGen::GenIR()
 {
+
     for (Statement *statement : semanticAnalyzer.statements)
     {
-        if (dynamic_cast<VarDeclStatement *>(statement))
-        {
-            VarDeclStatement *varDeclStatement =
-                dynamic_cast<VarDeclStatement *>(statement);
-            // Define variable. stack variable.
-            llvm::AllocaInst *inst = irBuilder->CreateAlloca(
-                TokenTypeToLLVMType(varDeclStatement->GetDataType()->GetType())
-                    .type,
-                nullptr, varDeclStatement->GetIdentifier()->GetLexeme());
-            IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
-            irVariable->aInsta = inst;
-            irVariable->variabel = semanticAnalyzer.currentScope->GetVariable(
-                varDeclStatement->GetIdentifier()->GetLexeme(),
-                varDeclStatement->GetIdentifier());
-            irVariable->irType =
-                TokenTypeToLLVMType(varDeclStatement->GetDataType()->GetType());
-            AddIRVariable(irVariable);
+        GenStatementIR(statement);
+    }
+}
+void CodeGen::GenStatementIR(Statement *statement)
+{
 
-            if (varDeclStatement->GetExpression())
+    if (dynamic_cast<VarDeclStatement *>(statement))
+    {
+        VarDeclStatement *varDeclStatement =
+            dynamic_cast<VarDeclStatement *>(statement);
+        // Define variable. stack variable.
+        llvm::AllocaInst *inst = irBuilder->CreateAlloca(
+            TokenTypeToLLVMType(varDeclStatement->GetDataType()->GetType())
+                .type,
+            nullptr, varDeclStatement->GetIdentifier()->GetLexeme());
+        IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
+        irVariable->aInsta = inst;
+        irVariable->variabel = semanticAnalyzer.currentScope->GetVariable(
+            varDeclStatement->GetIdentifier()->GetLexeme(),
+            varDeclStatement->GetIdentifier());
+        irVariable->irType =
+            TokenTypeToLLVMType(varDeclStatement->GetDataType()->GetType());
+        AddIRVariable(irVariable);
+
+        if (varDeclStatement->GetExpression())
+        {
+            // evaluate expression;
+            IRValue value = GenExpressionIR(varDeclStatement->GetExpression());
+            irBuilder->CreateStore(value.value, inst);
+        }
+    }
+    else if (dynamic_cast<VarAssignmentStatement *>(statement))
+    {
+        VarAssignmentStatement *varAssignmentStatement =
+            dynamic_cast<VarAssignmentStatement *>(statement);
+        // Assign value to predefined variable.
+        IRValue value =
+            GenExpressionIR(varAssignmentStatement->GetExpression());
+        IRVariable *irVar =
+            GetIRVariable(varAssignmentStatement->GetIdentifier()->GetLexeme());
+        irBuilder->CreateStore(value.value, irVar->aInsta);
+    }
+    else if (dynamic_cast<VarCompoundAssignmentStatement *>(statement))
+    {
+        VarCompoundAssignmentStatement *varComAssignStatement =
+            dynamic_cast<VarCompoundAssignmentStatement *>(statement);
+        // similar to assign statement.
+        IRValue value = GenExpressionIR(varComAssignStatement->GetExpression());
+        IRVariable *irVar =
+            GetIRVariable(varComAssignStatement->GetIdentifier()->GetLexeme());
+        irBuilder->CreateStore(value.value, irVar->aInsta);
+    }
+    else if (dynamic_cast<ExpressionStatement *>(statement))
+    {
+        ExpressionStatement *exprStatement =
+            dynamic_cast<ExpressionStatement *>(statement);
+        // just evaluate the expression.
+        IRValue ignore = GenExpressionIR(exprStatement->GetExpression());
+    }
+    else if (dynamic_cast<BlockStatement *>(statement))
+    {
+        BlockStatement *blockStatement =
+            dynamic_cast<BlockStatement *>(statement);
+        Scope *temp = semanticAnalyzer.currentScope;
+        semanticAnalyzer.currentScope =
+            semanticAnalyzer.blockToScopeMap[blockStatement];
+        for (Statement *s : blockStatement->GetStatements())
+        {
+            GenStatementIR(s);
+        }
+        semanticAnalyzer.currentScope = temp;
+    }
+    else if (dynamic_cast<IfStatement *>(statement))
+    {
+        IfStatement *ifStatement = dynamic_cast<IfStatement *>(statement);
+        IRValue expression = GenExpressionIR(ifStatement->GetExpression());
+
+        llvm::BasicBlock *currentBlock = irBuilder->GetInsertBlock();
+        llvm::Function *currentFunction = currentBlock->getParent();
+
+        llvm::BasicBlock *trueBlock =
+            llvm::BasicBlock::Create(*ctx, "trueBlock", currentFunction);
+        llvm::BasicBlock *falseBlock =
+            llvm::BasicBlock::Create(*ctx, "falseBlock", currentFunction);
+        llvm::BasicBlock *mergeBlock =
+            llvm::BasicBlock::Create(*ctx, "mergeBlock", currentFunction);
+        irBuilder->CreateCondBr(expression.value, trueBlock, falseBlock);
+        irBuilder->SetInsertPoint(trueBlock);
+
+        GenStatementIR(ifStatement->GetBlockStatement());
+        irBuilder->CreateBr(mergeBlock);
+
+        IfStatementData ifData = {};
+        ifData.falseBlock = falseBlock;
+        ifData.mergeBlock = mergeBlock;
+        ifData.currentFunction = currentFunction;
+        if (ifStatement->GetNextElseIforElseStatements().size() != 0)
+        {
+            for (Statement *s : ifStatement->GetNextElseIforElseStatements())
             {
-                // evaluate expression;
-                IRValue value =
-                    GenExpressionIR(varDeclStatement->GetExpression());
-                irBuilder->CreateStore(value.value, inst);
+                GenIfStatementIR(s, &ifData);
             }
         }
-        else if (dynamic_cast<VarAssignmentStatement *>(statement))
+        else
         {
-            VarAssignmentStatement *varAssignmentStatement =
-                dynamic_cast<VarAssignmentStatement *>(statement);
-            // Assign value to predefined variable.
-            IRValue value =
-                GenExpressionIR(varAssignmentStatement->GetExpression());
-            IRVariable *irVar = GetIRVariable(
-                varAssignmentStatement->GetIdentifier()->GetLexeme());
-            irBuilder->CreateStore(value.value, irVar->aInsta);
+
+            irBuilder->SetInsertPoint(falseBlock);
+            irBuilder->CreateBr(mergeBlock);
         }
-        else if (dynamic_cast<VarCompoundAssignmentStatement *>(statement))
+        if (ifData.falseBlock)
         {
-            VarCompoundAssignmentStatement *varComAssignStatement =
-                dynamic_cast<VarCompoundAssignmentStatement *>(statement);
-            // similar to assign statement.
-            IRValue value =
-                GenExpressionIR(varComAssignStatement->GetExpression());
-            IRVariable *irVar = GetIRVariable(
-                varComAssignStatement->GetIdentifier()->GetLexeme());
-            irBuilder->CreateStore(value.value, irVar->aInsta);
+            irBuilder->SetInsertPoint(ifData.falseBlock);
+            irBuilder->CreateBr(mergeBlock);
         }
-        else if (dynamic_cast<ExpressionStatement *>(statement))
-        {
-            ExpressionStatement *exprStatement =
-                dynamic_cast<ExpressionStatement *>(statement);
-            // just evaluate the expression.
-            IRValue ignore = GenExpressionIR(exprStatement->GetExpression());
-        }
+
+        irBuilder->SetInsertPoint(mergeBlock);
     }
 }
 
+void CodeGen::GenIfStatementIR(Statement *statement, IfStatementData *ifData)
+{
+    /*
+        if true {
+
+        }
+        else if true {
+
+        }
+        else if true {
+
+        }
+        else {
+
+        }
+
+
+        br cnd, ifTrueBlock, ifFalseBlock
+
+        ifTrueBlock:
+            ....
+            br mergeBlock
+        ifFalseBlock:
+            br elif_cnd, elifTrueBlock, elifFalseBlock
+        elifTrueBLock:
+            ....
+            br mergeBlock
+        elifFalseBlock:
+            ; maybe another elif or else or nothing
+            br cnd, elifTrueBlock2, elifFalseBlock2
+        elifTrueBlock2:
+            ...
+            br mergeBlock
+        elIfFalseBlock3:
+            br elseBlock
+        elseBlock:
+            ....
+            br mergeBlock
+        mergeBlock:
+        ... cont.
+    */
+    if (dynamic_cast<ElseIfStatement *>(statement))
+    {
+        ElseIfStatement *elifStatement =
+            dynamic_cast<ElseIfStatement *>(statement);
+        assert(ifData != nullptr);
+
+        irBuilder->SetInsertPoint(ifData->falseBlock);
+
+        IRValue expression = GenExpressionIR(elifStatement->GetExpression());
+        llvm::BasicBlock *trueBlock = llvm::BasicBlock::Create(
+            *ctx, "trueBlock", ifData->currentFunction);
+        llvm::BasicBlock *falseBlock = llvm::BasicBlock::Create(
+            *ctx, "falseBlock", ifData->currentFunction);
+        irBuilder->CreateCondBr(expression.value, trueBlock, falseBlock);
+        irBuilder->SetInsertPoint(trueBlock);
+
+        GenStatementIR(elifStatement->GetBlockStatement());
+
+        irBuilder->CreateBr(ifData->mergeBlock);
+
+        // Prepare for next else if or else
+        ifData->falseBlock = falseBlock;
+    }
+    else if (dynamic_cast<ElseStatement *>(statement))
+    {
+        ElseStatement *elseStatement = dynamic_cast<ElseStatement *>(statement);
+        assert(ifData != nullptr);
+
+        llvm::BasicBlock *trueBlock = llvm::BasicBlock::Create(
+            *ctx, "trueBlock", ifData->currentFunction);
+        irBuilder->SetInsertPoint(ifData->falseBlock);
+        irBuilder->CreateBr(trueBlock);
+
+        irBuilder->SetInsertPoint(trueBlock);
+
+        GenStatementIR(elseStatement->GetBlockStatement());
+
+        irBuilder->CreateBr(ifData->mergeBlock);
+
+        // exit
+        ifData->falseBlock = nullptr;
+    }
+}
+
+bool CodeGen::IsNaN(llvm::Value *value)
+{
+    if (value->getType()->isFloatingPointTy())
+    {
+        llvm::ConstantFP *fp = llvm::dyn_cast<llvm::ConstantFP>(value);
+        if (fp)
+        {
+            return fp->isNaN();
+        }
+    }
+    return false;
+}
+llvm::CmpInst::Predicate CodeGen::CMPTokenToCMPLLVM(TokenType cmpOp,
+                                                    IRValue value, bool isNaN)
+{
+    bool isSigned = value.type.isSigned;
+    bool isInteger = value.type.type->isIntegerTy();
+    switch (cmpOp)
+    {
+    case TokenType::EQUAL_EQUAL:
+    {
+        if (isInteger)
+        {
+            return llvm::CmpInst::Predicate::ICMP_EQ;
+        }
+        else
+        {
+            return isNaN ? llvm::CmpInst::Predicate::FCMP_UEQ
+                         : llvm::CmpInst::Predicate::FCMP_OEQ;
+        }
+    }
+    case TokenType::EXCLAMATION_EQUAL:
+    {
+        if (isInteger)
+        {
+            return llvm::CmpInst::Predicate::ICMP_NE;
+        }
+        else
+        {
+            return isNaN ? llvm::CmpInst::Predicate::FCMP_UNE
+                         : llvm::CmpInst::Predicate::FCMP_ONE;
+        }
+    }
+    case TokenType::LESS:
+    {
+        if (isInteger)
+        {
+            return isSigned ? llvm::CmpInst::Predicate::ICMP_SLT
+                            : llvm::CmpInst::Predicate::ICMP_ULT;
+        }
+        else
+        {
+            return isNaN ? llvm::CmpInst::Predicate::FCMP_ULT
+                         : llvm::CmpInst::Predicate::FCMP_OLT;
+        }
+    }
+    case TokenType::LESS_EQUAL:
+    {
+        if (isInteger)
+        {
+            return isSigned ? llvm::CmpInst::Predicate::ICMP_SLE
+                            : llvm::CmpInst::Predicate::ICMP_ULE;
+        }
+        else
+        {
+            return isNaN ? llvm::CmpInst::Predicate::FCMP_ULE
+                         : llvm::CmpInst::Predicate::FCMP_OLE;
+        }
+    }
+    case TokenType::GREATER:
+    {
+        if (isInteger)
+        {
+            return isSigned ? llvm::CmpInst::Predicate::ICMP_SGT
+                            : llvm::CmpInst::Predicate::ICMP_UGT;
+        }
+        else
+        {
+            return isNaN ? llvm::CmpInst::Predicate::FCMP_UGT
+                         : llvm::CmpInst::Predicate::FCMP_OGT;
+        }
+    }
+    case TokenType::GREATER_EQUAL:
+    {
+        if (isInteger)
+        {
+            return isSigned ? llvm::CmpInst::Predicate::ICMP_SGE
+                            : llvm::CmpInst::Predicate::ICMP_UGE;
+        }
+        else
+        {
+            return isNaN ? llvm::CmpInst::Predicate::FCMP_UGE
+                         : llvm::CmpInst::Predicate::FCMP_OGE;
+        }
+    }
+    default:
+        return llvm::CmpInst::Predicate::FCMP_FALSE;
+    }
+}
 IRValue CodeGen::GenExpressionIR(Expression *expression)
 {
     IRValue irValue = {};
 
-    if (dynamic_cast<BinaryExpression *>(expression))
+    if (dynamic_cast<TernaryExpression *>(expression))
+    {
+        TernaryExpression *ternaryExpr =
+            dynamic_cast<TernaryExpression *>(expression);
+
+        IRValue condition = GenExpressionIR(ternaryExpr->GetCondition());
+
+        llvm::Function *currentFunction =
+            irBuilder->GetInsertBlock()->getParent();
+        llvm::BasicBlock *trueBlock =
+            llvm::BasicBlock::Create(*ctx, "trueBlock", currentFunction);
+        llvm::BasicBlock *falseBlock =
+            llvm::BasicBlock::Create(*ctx, "falseBlock", currentFunction);
+        llvm::BasicBlock *mergeBlock =
+            llvm::BasicBlock::Create(*ctx, "mergeBlock", currentFunction);
+
+        irBuilder->CreateCondBr(condition.value, trueBlock, falseBlock);
+
+        irBuilder->SetInsertPoint(trueBlock);
+
+        IRValue trueValue = GenExpressionIR(ternaryExpr->GetTrueExpression());
+        irBuilder->CreateBr(mergeBlock);
+
+        irBuilder->SetInsertPoint(falseBlock);
+
+        IRValue falseValue = GenExpressionIR(ternaryExpr->GetFalseExpression());
+
+        irBuilder->CreateBr(mergeBlock);
+
+        irBuilder->SetInsertPoint(mergeBlock);
+        llvm::PHINode *phi =
+            irBuilder->CreatePHI(trueValue.type.type, 2, "result");
+        phi->addIncoming(trueValue.value, trueBlock);
+        phi->addIncoming(falseValue.value, falseBlock);
+        irValue.value = phi;
+        irValue.type = trueValue.type;
+    }
+    else if (dynamic_cast<BinaryExpression *>(expression))
     {
         BinaryExpression *binaryExpression =
             dynamic_cast<BinaryExpression *>(expression);
@@ -394,6 +697,210 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                     lValue.value, rValue.value,
                     std::format("bin_op_{}",
                                 binaryExpression->GetOperator()->GetLexeme()));
+            }
+            break;
+        }
+        case TokenType::PERCENTAGE:
+        {
+
+            if (IsInteger(binaryExpression->GetDataType()))
+            {
+                irValue.value =
+                    lValue.type.isSigned
+                        ? irBuilder->CreateSRem(
+                              lValue.value, rValue.value,
+                              std::format(
+                                  "bin_op_{}",
+                                  binaryExpression->GetOperator()->GetLexeme()))
+                        : irBuilder->CreateURem(
+                              lValue.value, rValue.value,
+                              std::format("bin_op_{}",
+                                          binaryExpression->GetOperator()
+                                              ->GetLexeme()));
+            }
+            else if (IsFloat(binaryExpression->GetDataType()))
+            {
+                irValue.value = irBuilder->CreateFRem(
+                    lValue.value, rValue.value,
+                    std::format("bin_op_{}",
+                                binaryExpression->GetOperator()->GetLexeme()));
+            }
+            break;
+        }
+        case TokenType::BITWISE_AND:
+        {
+            irValue.value = irBuilder->CreateAnd(
+                lValue.value, rValue.value,
+                std::format("bin_op_{}",
+                            binaryExpression->GetOperator()->GetLexeme()));
+            break;
+        }
+        case TokenType::BITWISE_OR:
+        {
+            irValue.value = irBuilder->CreateOr(
+                lValue.value, rValue.value,
+                std::format("bin_op_{}",
+                            binaryExpression->GetOperator()->GetLexeme()));
+            break;
+        }
+        case TokenType::BITWISE_XOR:
+        {
+            irValue.value = irBuilder->CreateXor(
+                lValue.value, rValue.value,
+                std::format("bin_op_{}",
+                            binaryExpression->GetOperator()->GetLexeme()));
+            break;
+        }
+        case TokenType::SHIFT_LEFT:
+        {
+
+            irValue.value = irBuilder->CreateShl(
+                lValue.value, rValue.value,
+                std::format("bin_op_{}",
+                            binaryExpression->GetOperator()->GetLexeme()));
+            break;
+        }
+        case TokenType::SHIFT_RIGHT:
+        {
+            irValue.value =
+                lValue.type.isSigned
+                    ? irBuilder->CreateAShr(
+                          lValue.value, rValue.value,
+                          std::format(
+                              "bin_op_{}",
+                              binaryExpression->GetOperator()->GetLexeme()))
+                    : irBuilder->CreateLShr(
+                          lValue.value, rValue.value,
+                          std::format(
+                              "bin_op_{}",
+                              binaryExpression->GetOperator()->GetLexeme()));
+            break;
+        }
+        case TokenType::EQUAL_EQUAL:
+        case TokenType::EXCLAMATION_EQUAL:
+        case TokenType::LESS:
+        case TokenType::LESS_EQUAL:
+        case TokenType::GREATER:
+        case TokenType::GREATER_EQUAL:
+        {
+            if (!IsNumerical(
+                    binaryExpression->GetLeftExpression()->GetDataType()) &&
+                binaryExpression->GetLeftExpression()->GetDataType() !=
+                    TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Left expression of binary operator '{}' "
+                                "cannot be of type '{}'",
+                                binaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(
+                                    binaryExpression->GetLeftExpression()
+                                        ->GetDataType())),
+                    binaryExpression->GetOperator());
+            }
+            else if (!IsNumerical(binaryExpression->GetRightExpression()
+                                      ->GetDataType()) &&
+                     binaryExpression->GetRightExpression()->GetDataType() !=
+                         TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Right expression of binary operator '{}' "
+                                "cannot be of type '{}'",
+                                binaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(
+                                    binaryExpression->GetRightExpression()
+                                        ->GetDataType())),
+                    binaryExpression->GetOperator());
+            }
+            else
+            {
+                irValue.value = irBuilder->CreateCmp(
+                    CMPTokenToCMPLLVM(
+                        binaryExpression->GetOperator()->GetType(), lValue,
+                        IsNaN(lValue.value) || IsNaN(rValue.value)),
+                    lValue.value, rValue.value,
+                    std::format("bin_op_{}",
+                                binaryExpression->GetOperator()->GetLexeme()));
+
+                break;
+            }
+        }
+        case TokenType::OR:
+        {
+            if (!IsNumerical(
+                    binaryExpression->GetLeftExpression()->GetDataType()) &&
+                binaryExpression->GetLeftExpression()->GetDataType() !=
+                    TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Left expression of binary operator '{}' "
+                                "cannot be of type '{}'",
+                                binaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(
+                                    binaryExpression->GetLeftExpression()
+                                        ->GetDataType())),
+                    binaryExpression->GetOperator());
+            }
+            else if (!IsNumerical(binaryExpression->GetRightExpression()
+                                      ->GetDataType()) &&
+                     binaryExpression->GetRightExpression()->GetDataType() !=
+                         TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Right expression of binary operator '{}' "
+                                "cannot be of type '{}'",
+                                binaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(
+                                    binaryExpression->GetRightExpression()
+                                        ->GetDataType())),
+                    binaryExpression->GetOperator());
+            }
+            else
+            {
+                irValue.value = irBuilder->CreateOr(
+                    lValue.value, rValue.value,
+                    std::format("bin_op_{}",
+                                binaryExpression->GetOperator()->GetLexeme()));
+                break;
+            }
+            break;
+        }
+        case TokenType::AND:
+        {
+            if (!IsNumerical(
+                    binaryExpression->GetLeftExpression()->GetDataType()) &&
+                binaryExpression->GetLeftExpression()->GetDataType() !=
+                    TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Left expression of binary operator '{}' "
+                                "cannot be of type '{}'",
+                                binaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(
+                                    binaryExpression->GetLeftExpression()
+                                        ->GetDataType())),
+                    binaryExpression->GetOperator());
+            }
+            else if (!IsNumerical(binaryExpression->GetRightExpression()
+                                      ->GetDataType()) &&
+                     binaryExpression->GetRightExpression()->GetDataType() !=
+                         TokenType::BOOL)
+            {
+                ReportError(
+                    std::format("Right expression of binary operator '{}' "
+                                "cannot be of type '{}'",
+                                binaryExpression->GetOperator()->GetLexeme(),
+                                TokenDataTypeToString(
+                                    binaryExpression->GetRightExpression()
+                                        ->GetDataType())),
+                    binaryExpression->GetOperator());
+            }
+            else
+            {
+                irValue.value = irBuilder->CreateAnd(
+                    lValue.value, rValue.value,
+                    std::format("bin_op_{}",
+                                binaryExpression->GetOperator()->GetLexeme()));
+                break;
             }
             break;
         }

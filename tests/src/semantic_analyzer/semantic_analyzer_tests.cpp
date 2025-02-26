@@ -10,7 +10,6 @@ TEST(SemanticTesting)
         area: f32 = pi * r as f32;
         a: u8 = 22;
         f: f64 = .324343434;
-        ff : f32 = f as f32;
         big: u64 = (f as i32 * 12) as u64 - ( 5 < 2 || 1> 0  + 1.0 as i32 ) as u64;
     )";
     Lexer lexer;
@@ -74,7 +73,22 @@ TEST(SemanticAnalyzerScope)
     lexer.Tokenize(source, "scopes.ztoon");
     Parser parser(lexer.GetTokens());
     auto stmts = parser.Parse();
-    parser.PrettyPrintAST();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+}
+
+TEST(SemanticAnalyzerTernaryExpression)
+{
+
+    std::string source = R"(
+       cond: bool = true;
+       a: i32 = cond? (12 * 33) : (1.0 * 3.0) as i32;
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "scopes.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
 }

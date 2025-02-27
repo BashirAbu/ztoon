@@ -1,6 +1,9 @@
 ##Todo
-- [ ] While loop
 - [ ] Funcitons
+
+- [ ] Add Debug info???
+
+- [ ] Strings
 - [ ] Arrays
 - [ ] Srructs
 - [ ] Enums

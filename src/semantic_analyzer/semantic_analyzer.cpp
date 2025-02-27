@@ -4,6 +4,7 @@
 #include "semantic_analyzer.h"
 #include "llvm/IR/Analysis.h"
 #include <format>
+#include <functional>
 #include <iterator>
 Variable const *Scope::GetVariable(std::string name,
                                    CodeErrString codeErrString) const
@@ -32,9 +33,8 @@ Variable const *Scope::GetVariable(std::string name,
     }
     else
     {
-        ReportError(
-            std::format("Variable '{}' is not defined in this scope.", name),
-            codeErrString);
+        ReportError(std::format("'{}' is not defined in this scope.", name),
+                    codeErrString);
     }
     return nullptr;
 }
@@ -44,8 +44,11 @@ void Scope::AddVariable(Variable *variable, CodeErrString codeErrString)
     if (variablesMap.contains(variable->GetName()))
     {
         Variable *alreadyDefinedVar = variablesMap[variable->GetName()];
+        std::string placeHolder = dynamic_cast<FnPointer *>(alreadyDefinedVar)
+                                      ? "Function"
+                                      : "Variable";
         ReportError(
-            std::format("Variable '{}' already defined at {}:{}.",
+            std::format("{} '{}' already defined at {}:{}.", placeHolder,
                         variable->GetName(),
                         alreadyDefinedVar->GetIdToken()->GetFilename(),
                         alreadyDefinedVar->GetIdToken()->GetLineNumber()),
@@ -69,6 +72,8 @@ void SemanticAnalyzer::Analize()
     for (size_t i = 0; i < statements.size(); i++)
     {
         AnalizeStatement(statements[i]);
+
+        statementCurrentIndex++;
     }
 }
 
@@ -288,15 +293,51 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             }
         }
 
-        // if (forLoopStatement->GetUpdate() != nullptr)
-        // {
-        //     AnalizeStatement(forLoopStatement->GetUpdate());
-        // }
-
         AnalizeStatement(forLoopStatement->GetBlockStatement());
     }
+    else if (dynamic_cast<RetStatement *>(statement))
+    {
+        RetStatement *retStmt = dynamic_cast<RetStatement *>(statement);
+        if (retStmt->expression)
+        {
+            EvaluateAndAssignDataTypeToExpression(retStmt->GetExpression());
+            Expression *fn = (Expression *)currentFunction;
+            TokenType type = DecideDataType(&fn, &retStmt->expression);
 
-    statementCurrentIndex++;
+            if (type == TokenType::UNKNOWN)
+            {
+                ReportError(
+                    std::format(
+                        "Return expression '{}' is not compatible with "
+                        "function return type '{}'",
+                        retStmt->GetExpression()->GetCodeErrString().str,
+                        TokenDataTypeToString(currentFunction->GetDataType())),
+                    retStmt->GetCodeErrString());
+            }
+        }
+        else
+        {
+            TokenType type = TokenType::NOTYPE;
+            if (type != currentFunction->GetDataType())
+            {
+                ReportError(
+                    std::format(
+                        "Return expression '{}' is not compatible with "
+                        "function return type '{}'",
+                        retStmt->GetExpression()->GetCodeErrString().str,
+                        TokenDataTypeToString(currentFunction->GetDataType())),
+                    retStmt->GetCodeErrString());
+            }
+            else if (retStmt->expression)
+            {
+
+                ReportError(
+                    std::format("Function '{}' does not return a value.",
+                                currentFunction->GetCodeErrString().str),
+                    retStmt->GetCodeErrString());
+            }
+        }
+    }
 }
 
 TokenType SemanticAnalyzer::DecideDataType(Expression **left,
@@ -408,7 +449,180 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
     Expression *expression)
 {
 
-    if (dynamic_cast<TernaryExpression *>(expression))
+    if (dynamic_cast<FnExpression *>(expression))
+    {
+        FnExpression *fnExpr = dynamic_cast<FnExpression *>(expression);
+
+        fnExpr->dataType = fnExpr->returnDataType
+                               ? fnExpr->returnDataType->GetType()
+                               : TokenType::NOTYPE;
+
+        // this should be handled by the function block.
+        //  for (Statement *p : fnExpr->parameters)
+        //  {
+        //      AnalizeStatement(p);
+        //  }
+        FnExpression *temp = currentFunction;
+        currentFunction = fnExpr;
+        AnalizeStatement(fnExpr->blockStatement);
+        currentFunction = temp;
+        // check for ret statement;
+        if (!fnExpr->IsPrototype())
+        {
+            std::function<bool(BlockStatement * bStmt)> checkRet =
+                [&](BlockStatement *bStmt) -> bool
+            {
+                bool retFound = false;
+                for (Statement *s : bStmt->statements)
+                {
+                    BlockStatement *blockStmt =
+                        dynamic_cast<BlockStatement *>(s);
+                    if (blockStmt)
+                    {
+                        checkRet(blockStmt);
+                    }
+                    // if stmt? or loops?
+                    IfStatement *ifStmt = dynamic_cast<IfStatement *>(s);
+                    RetStatement *retStmt = dynamic_cast<RetStatement *>(s);
+
+                    if (ifStmt)
+                    {
+
+                        for (Statement *stmt :
+                             ifStmt->GetBlockStatement()->statements)
+                        {
+                            RetStatement *retStmt =
+                                dynamic_cast<RetStatement *>(stmt);
+                            if (retStmt)
+                            {
+                                retFound = true;
+                                break;
+                            }
+                        }
+
+                        if (!retFound)
+                        {
+                            retFound = checkRet(ifStmt->GetBlockStatement());
+                        }
+                        if (retFound)
+                        {
+                            if (ifStmt->GetNextElseIforElseStatements().empty())
+                            {
+                                retFound = false;
+                            }
+                            bool foundInOtherPaths = false;
+                            for (Statement *stmt :
+                                 ifStmt->GetNextElseIforElseStatements())
+                            {
+                                auto elIfStmt =
+                                    dynamic_cast<ElseIfStatement *>(stmt);
+                                auto elseStmt =
+                                    dynamic_cast<ElseStatement *>(stmt);
+                                if (elIfStmt)
+                                {
+                                    foundInOtherPaths =
+                                        checkRet(elIfStmt->GetBlockStatement());
+                                }
+                                else if (elseStmt)
+                                {
+                                    foundInOtherPaths =
+                                        checkRet(elseStmt->GetBlockStatement());
+                                }
+                                if (!foundInOtherPaths)
+                                {
+                                    ReportError("Not all paths return.",
+                                                fnExpr->GetCodeErrString());
+                                }
+                            }
+
+                            retFound = foundInOtherPaths;
+                            if (!retFound)
+                            {
+                                ReportError("Not all paths return.",
+                                            fnExpr->GetCodeErrString());
+                            }
+                        }
+                    }
+                    else if (retStmt)
+                    {
+                        return true;
+                    }
+                }
+                return retFound;
+            };
+            if (fnExpr->returnDataType->type != TokenType::NOTYPE)
+            {
+                // see if function ends with return statement.
+                RetStatement *retStmt = dynamic_cast<RetStatement *>(
+                    fnExpr->GetBlockStatement()->statements.back());
+                if (!retStmt)
+                {
+                    bool retFoundInMainBlock = false;
+                    for (size_t i;
+                         i < fnExpr->GetBlockStatement()->statements.size();
+                         i++)
+                    {
+                        RetStatement *ret = dynamic_cast<RetStatement *>(
+                            fnExpr->GetBlockStatement()->statements[i]);
+                        if (ret)
+                        {
+                            retFoundInMainBlock = true;
+                        }
+                    }
+                    if (!retFoundInMainBlock)
+                    {
+
+                        if (!checkRet(fnExpr->GetBlockStatement()))
+                        {
+                            ReportError("Not all paths return.",
+                                        fnExpr->GetCodeErrString());
+                        }
+                    }
+                }
+            }
+        }
+        FnPointer *fp = gZtoonArena.Allocate<FnPointer>(
+            fnExpr->identifier->GetLexeme(), fnExpr->returnDataType,
+            fnExpr->GetIdentifier());
+        fp->fnExpr = fnExpr;
+        currentScope->AddVariable(fp, fnExpr->GetCodeErrString());
+    }
+    else if (dynamic_cast<FnCallExpression *>(expression))
+    {
+        FnCallExpression *fnCallExpr =
+            dynamic_cast<FnCallExpression *>(expression);
+        FnPointer *fp = (FnPointer *)currentScope->GetVariable(
+            fnCallExpr->identifier->GetLexeme(),
+            fnCallExpr->GetCodeErrString());
+        for (Expression *arg : fnCallExpr->args)
+        {
+            EvaluateAndAssignDataTypeToExpression(arg);
+        }
+        size_t index = 0;
+        for (VarDeclStatement *p : fp->GetFnExpression()->parameters)
+        {
+            PrimaryExpression *id = gZtoonArena.Allocate<PrimaryExpression>();
+            id->primary = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            id->dataType = p->dataType->GetType();
+            Expression *exprId = id;
+            if (DecideDataType(&exprId, &fnCallExpr->args[index]) ==
+                TokenType::UNKNOWN)
+            {
+                ReportError(
+                    std::format(
+                        "Argument '{}' of type '{}' is not compatible "
+                        "with paramter '{}' of type '{}'",
+                        fnCallExpr->args[index]->GetCodeErrString().str,
+                        TokenDataTypeToString(
+                            fnCallExpr->args[index]->GetDataType()),
+                        p->GetCodeErrString().str,
+                        TokenDataTypeToString(p->GetDataType()->GetType())),
+                    fnCallExpr->args[index]->GetCodeErrString());
+            }
+            index++;
+        }
+    }
+    else if (dynamic_cast<TernaryExpression *>(expression))
     {
         TernaryExpression *ternaryExpr =
             dynamic_cast<TernaryExpression *>(expression);
@@ -613,7 +827,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     ReportError(
                         std::format(
                             "Cannot perform unary operator '{}' on "
-                            "non variables",
+                            "non l-value expression",
                             unaryExpression->GetOperator()->GetLexeme()),
                         unaryExpression->GetCodeErrString());
                 }
@@ -688,6 +902,13 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     unaryExpression->op =
                         gZtoonArena.Allocate<Token>(TokenType::PLUS);
                 }
+            }
+            else
+            {
+                ReportError(
+                    std::format("Expression '{}' must be l-value",
+                                unaryExpression->right->GetCodeErrString().str),
+                    unaryExpression->right->GetCodeErrString());
             }
             break;
         }

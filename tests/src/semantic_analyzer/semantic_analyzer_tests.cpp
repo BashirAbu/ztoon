@@ -286,3 +286,295 @@ TEST(SemanticPostfixDecrementValidTest)
     ASSERT_NE(assignStmt, nullptr,
               "Expected an extra VarAssignmentStatement for postfix --");
 }
+
+TEST(SemanticAnalyzerFunction)
+{
+    std::string source = R"(
+        fn add (a: i32, b: i32) -> i32
+        {
+            ret 2;
+            if(false)
+            {
+                ret 1;
+            }
+            else if false
+            {
+            }
+            else
+            {
+            }
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "postfix_dec_valid.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+// Test 1: Function Prototype Analysis
+// Input: a function prototype with no parameters.
+TEST(SemanticAnalyzerFunctionPrototypeTest)
+{
+    std::string source = "fn proto() -> i32;";
+    Lexer lexer;
+    lexer.Tokenize(source, "func_proto.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    // Expect one top–level statement.
+    ASSERT_EQ(stmts.size(), 1,
+              "Expected one top–level statement for a function prototype");
+
+    // The statement should be an ExpressionStatement wrapping a FnExpression.
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
+    ASSERT_NE(exprStmt, nullptr,
+              "Top–level statement should be an ExpressionStatement");
+    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(fnExpr, nullptr, "Expression should be a FnExpression");
+
+    // A prototype should have no parameters, a return type of "i32", and be
+    // marked as a prototype.
+    ASSERT_EQ(fnExpr->GetParameters().size(), 0,
+              "Function prototype should have zero parameters");
+    ASSERT_NE(fnExpr->GetReturnDatatype(), nullptr,
+              "Function prototype should have a return type");
+    ASSERT_EQ(fnExpr->GetReturnDatatype()->GetLexeme(), std::string("i32"),
+              "Return type should be 'i32'");
+    ASSERT_EQ(fnExpr->IsPrototype(), true,
+              "FnExpression should be marked as a prototype");
+}
+
+// Test 2: Function Definition Analysis
+// Input: a function with parameters, a return type and a block containing a
+// return statement.
+TEST(SemanticAnalyzerFunctionDefinitionTest)
+{
+    std::string source = "fn add(a: i32, b: i32) -> i32 { ret a + b; }";
+    Lexer lexer;
+    lexer.Tokenize(source, "func_def.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    ASSERT_EQ(stmts.size(), 1,
+              "Expected one top–level statement for a function definition");
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
+    ASSERT_NE(exprStmt, nullptr,
+              "Top–level statement should be an ExpressionStatement");
+    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(fnExpr, nullptr, "Expression should be a FnExpression");
+
+    // This is a full definition so it should NOT be marked as a prototype.
+    ASSERT_EQ(fnExpr->IsPrototype(), false,
+              "Function definition should not be a prototype");
+    ASSERT_EQ(fnExpr->GetParameters().size(), 2,
+              "Function 'add' should have 2 parameters");
+
+    // Verify parameter names and types.
+    auto *paramA = fnExpr->GetParameters()[0];
+    ASSERT_EQ(paramA->GetIdentifier()->GetLexeme(), std::string("a"),
+              "First parameter should be 'a'");
+    ASSERT_EQ(paramA->GetDataType()->GetLexeme(), std::string("i32"),
+              "Type of 'a' should be 'i32'");
+    auto *paramB = fnExpr->GetParameters()[1];
+    ASSERT_EQ(paramB->GetIdentifier()->GetLexeme(), std::string("b"),
+              "Second parameter should be 'b'");
+    ASSERT_EQ(paramB->GetDataType()->GetLexeme(), std::string("i32"),
+              "Type of 'b' should be 'i32'");
+
+    // Check that a block statement exists and contains a return statement.
+    ASSERT_NE(fnExpr->GetBlockStatement(), nullptr,
+              "Function definition must have a block statement");
+    bool foundRet = false;
+    for (auto stmt : fnExpr->GetBlockStatement()->GetStatements())
+    {
+        if (dynamic_cast<RetStatement *>(stmt))
+        {
+            foundRet = true;
+            break;
+        }
+    }
+    ASSERT_EQ(foundRet, true,
+              "Function block should contain a return statement");
+}
+
+// Test 3: Function Call Analysis
+// Input: a function definition and a variable assignment that calls it.
+TEST(SemanticAnalyzerFunctionCallTest)
+{
+    std::string source =
+        "fn square(x: i32) -> i32 { ret x * x; } x: i32 = square(5);";
+    Lexer lexer;
+    lexer.Tokenize(source, "func_call.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    // Expect two top–level statements: function definition and a variable
+    // assignment.
+    ASSERT_EQ(stmts.size(), 2,
+              "Expected two top–level statements for function call test");
+
+    // Check the function definition.
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
+    ASSERT_NE(exprStmt, nullptr,
+              "First statement should be an ExpressionStatement");
+    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(
+        fnExpr, nullptr,
+        "First statement should be a FnExpression for function definition");
+
+    // Check the variable assignment; its expression should be a function call.
+    auto *varAssign = dynamic_cast<VarDeclStatement *>(stmts[1]);
+    ASSERT_NE(varAssign, nullptr,
+              "Second statement should be a VarAssignmentStatement");
+    auto *fnCall = dynamic_cast<FnCallExpression *>(varAssign->GetExpression());
+    ASSERT_NE(fnCall, nullptr,
+              "Variable assignment expression should be a FnCallExpression");
+    ASSERT_EQ(fnCall->GetIdentifier()->GetLexeme(), std::string("square"),
+              "Function call should be to 'square'");
+    ASSERT_EQ(fnCall->GetArgs().size(), 1,
+              "Function call should have one argument");
+
+    auto *arg = dynamic_cast<PrimaryExpression *>(fnCall->GetArgs()[0]);
+    ASSERT_NE(arg, nullptr, "Argument should be a PrimaryExpression");
+    ASSERT_EQ(arg->GetPrimary()->GetLexeme(), std::string("5"),
+              "Argument should be '5'");
+}
+
+// Test 4: Recursive Function Analysis
+// Input: a recursive function and a function call.
+TEST(SemanticAnalyzerRecursiveFunctionTest)
+{
+    std::string source = "fn fact(n: i32) -> i32 { if n <= 1 { ret 1; } else { "
+                         "ret n * fact(n - 1); } }"
+                         " x: i32 = fact(5);";
+    Lexer lexer;
+    lexer.Tokenize(source, "recursive_fn.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    ASSERT_EQ(stmts.size(), 2,
+              "Expected two top–level statements for recursive function test");
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
+    ASSERT_NE(exprStmt, nullptr,
+              "First statement should be an ExpressionStatement for function "
+              "definition");
+    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(fnExpr, nullptr, "Function definition should be a FnExpression");
+    ASSERT_EQ(fnExpr->GetIdentifier()->GetLexeme(), std::string("fact"),
+              "Function name should be 'fact'");
+
+    // Check that the function has one parameter.
+    ASSERT_EQ(fnExpr->GetParameters().size(), 1,
+              "Function 'fact' should have 1 parameter");
+
+    // Check the variable assignment calling 'fact'.
+    auto *varAssign = dynamic_cast<VarDeclStatement *>(stmts[1]);
+    ASSERT_NE(varAssign, nullptr,
+              "Second statement should be a VarAssignmentStatement");
+    auto *fnCall = dynamic_cast<FnCallExpression *>(varAssign->GetExpression());
+    ASSERT_NE(fnCall, nullptr, "Function call should be a FnCallExpression");
+    ASSERT_EQ(fnCall->GetIdentifier()->GetLexeme(), std::string("fact"),
+              "Function call should be to 'fact'");
+}
+
+// Test 5: Function with While Loop Analysis
+// Input: a function containing a while loop and a return statement.
+TEST(SemanticAnalyzerWhileLoopFunctionTest)
+{
+    std::string source = "fn loopFunc(n: i32) -> i32 { "
+                         "   while n > 0 { n = n - 1; } "
+                         "   ret n; "
+                         "}";
+    Lexer lexer;
+    lexer.Tokenize(source, "while_fn.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+    ASSERT_EQ(stmts.size(), 1,
+              "Expected one top–level statement for while loop function");
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
+    ASSERT_NE(exprStmt, nullptr,
+              "Top–level statement should be an ExpressionStatement");
+    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(fnExpr, nullptr, "Function definition should be a FnExpression");
+
+    // Check that the function block contains a while loop.
+    bool foundWhile = false;
+    for (auto stmt : fnExpr->GetBlockStatement()->GetStatements())
+    {
+        if (dynamic_cast<WhileLoopStatement *>(stmt))
+        {
+            foundWhile = true;
+            break;
+        }
+    }
+    ASSERT_EQ(foundWhile, true,
+              "Function block should contain a while loop statement");
+}
+
+// Test 6: Function Analysis with Unary Postfix ++ and --
+// Input: functions that use postfix increment and decrement operators.
+TEST(SemanticAnalyzerUnaryPostfixTest)
+{
+    std::string source = "fn inc(x: i32) -> i32 { x++; ret x; }"
+                         "fn dec(x: i32) -> i32 { x--; ret x; }";
+    Lexer lexer;
+    lexer.Tokenize(source, "unary_postfix_fn.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+    ASSERT_EQ(stmts.size(), 2,
+              "Expected two top–level statements for unary postfix functions");
+
+    // Check the 'inc' function.
+    auto *exprStmtInc = dynamic_cast<ExpressionStatement *>(stmts[0]);
+    ASSERT_NE(exprStmtInc, nullptr,
+              "First statement should be an ExpressionStatement for 'inc'");
+    auto *fnExprInc =
+        dynamic_cast<FnExpression *>(exprStmtInc->GetExpression());
+    ASSERT_NE(fnExprInc, nullptr,
+              "Function definition for 'inc' should be a FnExpression");
+
+    bool foundPostfixInc = false;
+    for (auto stmt : fnExprInc->GetBlockStatement()->GetStatements())
+    {
+        auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmt);
+        if (exprStmt)
+        {
+            auto *unaryExpr =
+                dynamic_cast<UnaryExpression *>(exprStmt->GetExpression());
+            if (unaryExpr && unaryExpr->IsPostfix())
+            {
+                foundPostfixInc = true;
+                break;
+            }
+        }
+    }
+    ASSERT_EQ(foundPostfixInc, true,
+              "Function 'inc' should contain a unary postfix expression");
+
+    // Check the 'dec' function.
+    auto *exprStmtDec = dynamic_cast<ExpressionStatement *>(stmts[1]);
+    ASSERT_NE(exprStmtDec, nullptr,
+              "Second statement should be an ExpressionStatement for 'dec'");
+    auto *fnExprDec =
+        dynamic_cast<FnExpression *>(exprStmtDec->GetExpression());
+    ASSERT_NE(fnExprDec, nullptr,
+              "Function definition for 'dec' should be a FnExpression");
+    bool foundPostfixDec = false;
+    for (auto stmt : fnExprDec->GetBlockStatement()->GetStatements())
+    {
+        auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmt);
+        if (exprStmt)
+        {
+            auto *unaryExpr =
+                dynamic_cast<UnaryExpression *>(exprStmt->GetExpression());
+            if (unaryExpr && unaryExpr->IsPostfix())
+            {
+                foundPostfixDec = true;
+                break;
+            }
+        }
+    }
+    ASSERT_EQ(foundPostfixDec, true,
+              "Function 'dec' should contain a unary postfix expression");
+}

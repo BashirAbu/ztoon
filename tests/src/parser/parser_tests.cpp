@@ -6,13 +6,16 @@
 TEST(Parser_)
 {
     std::string source = R"(
-        a: i32 = 0;
-        while false {}           )";
+        fn add (a:i32, b:i32) -> i32
+        {
+            i : i32 = add(1,3);
+            ret a + b;
+        }          )";
     Lexer lexer;
     lexer.Tokenize(source, "parser.ztoon");
     Parser parser(lexer.GetTokens());
     parser.Parse();
-    // parser.PrettyPrintAST();
+    parser.PrettyPrintAST();
 }
 
 //--------------------------------------------------------------------------
@@ -1082,7 +1085,9 @@ TEST(ParserForLoopEmptyPartsTest)
     ASSERT_NE(forStmt, nullptr, "Statement should be a ForLoopStatement");
     // In this case, init and update might be null.
     ASSERT_NE(forStmt->GetCondition(), nullptr, "Condition is not nullptr");
-    ASSERT_EQ(forStmt->GetInit(), nullptr, "Init is nullptr");
+
+    ASSERT_NE(dynamic_cast<EmptyStatement *>(forStmt->GetInit()), nullptr,
+              "Init is EmptyStatement");
     ASSERT_EQ(forStmt->GetUpdate(), nullptr, "Update is nullptr");
     ASSERT_NE(forStmt->GetBlockStatement(), nullptr,
               "For loop block must be present");
@@ -1151,4 +1156,192 @@ TEST(ParserWhileLoopEmptyBlockTest)
     // The block might be empty.
     ASSERT_EQ(block->GetStatements().size(), 0,
               "Empty while loop block should contain 0 statements");
+}
+
+// Test 1: Function Prototype Parsing
+// Source: fn myFunc() -> i32;
+TEST(ParserFunctionPrototypeTest)
+{
+    std::string source = "fn myFunc() -> i32;";
+    Lexer lexer;
+    lexer.Tokenize(source, "fn_proto.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    // Expect one top-level statement.
+    ASSERT_EQ(stmts.size(), 1,
+              "Expected one top-level statement for a function prototype");
+
+    // The statement should be an expression statement wrapping a FnExpression.
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
+    ASSERT_NE(exprStmt, nullptr,
+              "Top-level statement should be an ExpressionStatement");
+    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(fnExpr, nullptr, "Expression should be a FnExpression");
+
+    // Check that the function identifier is "myFunc".
+    ASSERT_EQ(fnExpr->GetIdentifier()->GetLexeme(), std::string("myFunc"),
+              "Function name should be 'myFunc'");
+
+    // Check that there are no GetParameters().
+    ASSERT_EQ(fnExpr->GetParameters().size(), 0,
+              "Function prototype should have zero GetParameters()");
+
+    // Check that the return type is "i32".
+    ASSERT_EQ(fnExpr->GetReturnDatatype()->GetLexeme(), std::string("i32"),
+              "Return type should be 'i32'");
+
+    // The prototype flag should be set.
+    ASSERT_EQ(fnExpr->IsPrototype(), true,
+              "FnExpression should be marked as a prototype");
+}
+
+// Test 2: Function Definition Parsing
+// Source: fn add(a: i32, b: i32) -> i32 { a + b; }
+TEST(ParserFunctionDefinitionTest)
+{
+    std::string source = "fn add(a: i32, b: i32) -> i32 { a + b; }";
+    Lexer lexer;
+    lexer.Tokenize(source, "fn_def.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    ASSERT_EQ(stmts.size(), 1,
+              "Expected one top-level statement for a function definition");
+
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
+    ASSERT_NE(exprStmt, nullptr,
+              "Top-level statement should be an ExpressionStatement");
+    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(fnExpr, nullptr, "Expression should be a FnExpression");
+
+    // Verify function name.
+    ASSERT_EQ(fnExpr->GetIdentifier()->GetLexeme(), std::string("add"),
+              "Function name should be 'add'");
+
+    // Verify parameter list.
+    ASSERT_EQ(fnExpr->GetParameters().size(), 2,
+              "Function 'add' should have 2 GetParameters()");
+    auto *paramA = fnExpr->GetParameters()[0];
+    ASSERT_EQ(paramA->GetIdentifier()->GetLexeme(), std::string("a"),
+              "First parameter should be 'a'");
+    ASSERT_EQ(paramA->GetDataType()->GetLexeme(), std::string("i32"),
+              "Type of 'a' should be 'i32'");
+    auto *paramB = fnExpr->GetParameters()[1];
+    ASSERT_EQ(paramB->GetIdentifier()->GetLexeme(), std::string("b"),
+              "Second parameter should be 'b'");
+    ASSERT_EQ(paramB->GetDataType()->GetLexeme(), std::string("i32"),
+              "Type of 'b' should be 'i32'");
+
+    // Verify return type.
+    ASSERT_EQ(fnExpr->GetReturnDatatype()->GetLexeme(), std::string("i32"),
+              "Return type should be 'i32'");
+
+    // This is a full definition so it should not be marked as a prototype.
+    ASSERT_EQ(fnExpr->IsPrototype(), false,
+              "Function definition should not be a prototype");
+
+    // Verify that a block statement is present.
+    ASSERT_NE(fnExpr->GetBlockStatement(), nullptr,
+              "Function definition must have a block statement");
+    ASSERT_NE(fnExpr->GetBlockStatement()->GetStatements().size(), 0,
+              "Function block should contain at least one statement");
+}
+
+// Test 3: Function Call Parsing
+// Source: fn mul(a: i32, b: i32) -> i32 { a * b; } x: i32 = mul(3, 4);
+TEST(ParserFunctionCallTest)
+{
+    std::string source =
+        "fn mul(a: i32, b: i32) -> i32 { a * b; } x: i32 = mul(3, 4);";
+    Lexer lexer;
+    lexer.Tokenize(source, "fn_call.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    // Expect two top-level statements: function definition and a variable
+    // assignment.
+    ASSERT_EQ(stmts.size(), 2,
+              "Expected two top-level statements (function definition and "
+              "variable assignment)");
+
+    // Check the variable assignment; its expression should be a function call.
+    auto *varAssign = dynamic_cast<VarDeclStatement *>(stmts[1]);
+    ASSERT_NE(varAssign, nullptr,
+              "Second statement should be a VarAssignmentStatement");
+    auto *fnCallExpr =
+        dynamic_cast<FnCallExpression *>(varAssign->GetExpression());
+    ASSERT_NE(fnCallExpr, nullptr,
+              "The assignment expression should be a FnCallExpression");
+
+    // Verify that the function call identifier is "mul".
+    ASSERT_EQ(fnCallExpr->GetIdentifier()->GetLexeme(), std::string("mul"),
+              "Function call should be to 'mul'");
+
+    // Verify that there are exactly two arguments.
+    ASSERT_EQ(fnCallExpr->GetArgs().size(), 2,
+              "Function call should have two arguments");
+
+    // Check that the first and second arguments are primary expressions with
+    // integer literals "3" and "4".
+    auto *arg0 = dynamic_cast<PrimaryExpression *>(fnCallExpr->GetArgs()[0]);
+    ASSERT_NE(arg0, nullptr, "First argument should be a PrimaryExpression");
+    ASSERT_EQ(arg0->GetPrimary()->GetLexeme(), std::string("3"),
+              "First argument should be '3'");
+    auto *arg1 = dynamic_cast<PrimaryExpression *>(fnCallExpr->GetArgs()[1]);
+    ASSERT_NE(arg1, nullptr, "Second argument should be a PrimaryExpression");
+    ASSERT_EQ(arg1->GetPrimary()->GetLexeme(), std::string("4"),
+              "Second argument should be '4'");
+}
+
+// Test 4: Complex Function Parsing with Nested Function Call
+// Source:
+//   fn complex(a: i32, b: i32, c: i32) -> i32 { a + b * c; }
+//   fn wrapper() -> i32 { complex(2, 3, 4); }
+//   x: i32 = wrapper();
+TEST(ParserComplexFunctionTest)
+{
+    std::string source =
+        "fn complex(a: i32, b: i32, c: i32) -> i32 { a + b * c; } "
+        "fn wrapper() -> i32 { complex(2, 3, 4); } "
+        "x: i32 = wrapper();";
+    Lexer lexer;
+    lexer.Tokenize(source, "complex_fn.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    // Expect three top-level statements.
+    ASSERT_EQ(stmts.size(), 3,
+              "Expected three top-level statements (2 function definitions and "
+              "one variable assignment)");
+
+    // Check the first function: "complex"
+    auto *fnExpr1 = dynamic_cast<FnExpression *>(
+        dynamic_cast<ExpressionStatement *>(stmts[0])->GetExpression());
+    ASSERT_NE(fnExpr1, nullptr,
+              "First statement should be a FnExpression for 'complex'");
+    ASSERT_EQ(fnExpr1->GetIdentifier()->GetLexeme(), std::string("complex"),
+              "Function name should be 'complex'");
+    ASSERT_EQ(fnExpr1->GetParameters().size(), 3,
+              "Function 'complex' should have 3 GetParameters()");
+
+    // Check the second function: "wrapper"
+    auto *fnExpr2 = dynamic_cast<FnExpression *>(
+        dynamic_cast<ExpressionStatement *>(stmts[1])->GetExpression());
+    ASSERT_NE(fnExpr2, nullptr,
+              "Second statement should be a FnExpression for 'wrapper'");
+    ASSERT_EQ(fnExpr2->GetIdentifier()->GetLexeme(), std::string("wrapper"),
+              "Function name should be 'wrapper'");
+    ASSERT_EQ(fnExpr2->GetParameters().size(), 0,
+              "Function 'wrapper' should have 0 GetParameters()");
+
+    // Check the third statement: variable assignment with a function call.
+    auto *varAssign = dynamic_cast<VarDeclStatement *>(stmts[2]);
+    ASSERT_NE(varAssign, nullptr,
+              "Third statement should be a VarAssignmentStatement");
+    auto *fnCall = dynamic_cast<FnCallExpression *>(varAssign->GetExpression());
+    ASSERT_NE(fnCall, nullptr,
+              "Variable assignment should contain a FnCallExpression");
+    ASSERT_EQ(fnCall->GetIdentifier()->GetLexeme(), std::string("wrapper"),
+              "Function call should be to 'wrapper'");
 }

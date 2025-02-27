@@ -25,7 +25,7 @@ enum class TokenType
     F32,
     F64,
     BOOL,
-
+    NOTYPE,
     INTEGER_LITERAL,
     FLOAT_LITERAL,
     STRING_LITERAL,
@@ -35,9 +35,11 @@ enum class TokenType
     QUESTION_MARK,
     COLON,
     SEMICOLON,
-
+    ARROW,
     IDENTIFIER,
     EQUAL,
+    COMMA,
+
     PLUS_EQUAL,
     DASH_EQUAL,
     ASTERISK_EQUAL,
@@ -84,6 +86,8 @@ enum class TokenType
     ELSE,
     WHILE,
     FOR,
+    FN,
+    RET,
 };
 
 std::string TokenDataTypeToString(TokenType type);

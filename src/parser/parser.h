@@ -15,6 +15,7 @@
   "/=", "%=", "&=", "^=", "|=", "<<=", ">>=") expression ;
 
 
+
   while_loop_statement -> "while" expression block ;
 
   for_loop_statement -> "for" ( var_decl_statement | var_assignment_statment |
@@ -31,6 +32,8 @@
   statement_expr -> expression ;
 
 
+  fn_expression -> "fn" IDENTIFIER "("  (var_decl_statement ","?)*  ")" "->"
+  DATATYPE block ;
 
 
 
@@ -52,6 +55,9 @@
   cast -> primary ("as" DATATYPE)*;
   unary -> ("-" | "--" | "+" | "++" | "!" | "~" | ( "sizeof" "(" expression ")"
   ) ) expression | cast ;
+
+   fn_call_expression -> IDENTIFIER "("  expression*  ")" ;
+
    primary -> INTEGER_LITERAL
   | FLOAT_LITERAL | STRING_LITERAL
   | CHARACTER_LITERAL | IDENTIFIER | "(" expression ")" ;
@@ -86,7 +92,18 @@ class Statement
     virtual std::string PrettyString(std::string &prefix) = 0;
     virtual CodeErrString GetCodeErrString() = 0;
 };
+class EmptyStatement : public Statement
+{
 
+  public:
+    ~EmptyStatement() {}
+    std::string PrettyString(std::string &prefix) { return ""; }
+    CodeErrString GetCodeErrString()
+    {
+        CodeErrString err = {};
+        return err;
+    }
+};
 class VarDeclStatement : public Statement
 {
   public:
@@ -344,6 +361,106 @@ class ForLoopStatement : public Statement
     BlockStatement *blockStatement = nullptr;
     friend class Parser;
 };
+
+class RetStatement : public Statement
+{
+
+  public:
+    virtual std::string PrettyString(std::string &prefix) override;
+    class Expression *GetExpression() const { return expression; }
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString ces = {};
+        ces.firstToken = retToken;
+
+        ces.str = std::format(
+            "ret {}", expression ? expression->GetCodeErrString().str : "");
+        return ces;
+    }
+
+  private:
+    Token const *retToken = nullptr;
+    class Expression *expression = nullptr;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
+
+class FnExpression : public Expression
+{
+  public:
+    std::string PrettyString(std::string &prefix, bool isLeft) override;
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = GetFirstToken();
+        es.str = std::format("fn {} (", identifier->GetLexeme());
+        for (VarDeclStatement *s : parameters)
+        {
+            es.str += std::format("{}, ", s->GetCodeErrString().str);
+        }
+        if (es.str.ends_with(','))
+        {
+            es.str.pop_back();
+        }
+        es.str += std::format(")");
+        if (returnDataType)
+        {
+            es.str += " -> " + returnDataType->GetLexeme();
+        }
+        return es;
+    }
+    Token const *GetFirstToken() const override { return fnToken; }
+    Token const *GetIdentifier() const { return identifier; }
+    Token const *GetReturnDatatype() const { return returnDataType; }
+    bool IsPrototype() { return isPrototype; }
+    BlockStatement *GetBlockStatement() { return blockStatement; };
+    std::vector<VarDeclStatement *> &GetParameters() { return parameters; }
+
+  private:
+    Token const *fnToken = nullptr;
+    Token const *identifier = nullptr;
+    Token const *returnDataType = nullptr;
+    std::vector<VarDeclStatement *> parameters;
+    BlockStatement *blockStatement = nullptr;
+    bool isPrototype = false;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
+
+class FnCallExpression : public Expression
+{
+  public:
+    std::string PrettyString(std::string &prefix, bool isLeft) override;
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = GetFirstToken();
+
+        es.str = std::format("{}(", identifier->GetLexeme());
+        for (Expression *expr : args)
+        {
+            es.str += std::format("{},", expr->GetCodeErrString().str);
+        }
+        if (es.str.ends_with(','))
+        {
+            es.str.pop_back();
+        }
+        es.str += std::format(")");
+        return es;
+    }
+    Token const *GetFirstToken() const override { return identifier; }
+
+    Token const *GetIdentifier() const { return identifier; }
+
+    std::vector<Expression *> &GetArgs() { return args; }
+
+  private:
+    Token const *identifier = nullptr;
+    std::vector<Expression *> args;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
+
 class TernaryExpression : public Expression
 {
   public:
@@ -523,6 +640,7 @@ class Parser
     ~Parser();
     void PrettyPrintAST();
     std::vector<Statement *> &Parse();
+    bool IsDataType(TokenType type);
 
   private:
     Statement *ParseStatement();
@@ -536,8 +654,9 @@ class Parser
     Statement *ParseElseStatement();
     Statement *ParseWhileLoopStatement();
     Statement *ParseForLoopStatement();
-
+    Statement *ParseRetStatement();
     Expression *ParseExpression();
+    Expression *ParseFnExpression();
     Expression *ParseTernaryExpression();
     Expression *ParseORExpression();
     Expression *ParseANDExpression();
@@ -552,7 +671,9 @@ class Parser
     Expression *ParseFactorExpression();
     Expression *ParseCastExpression();
     Expression *ParseUnaryExpression();
+    Expression *ParseFnCallExpression();
     Expression *ParsePrimaryExpression();
+
     Expression *BuildBinaryExpression(Token const *op, Expression *left,
                                       Expression *right);
 

@@ -14,17 +14,30 @@ class Variable
     {
         isSigned = ::IsSigned(dataType->GetType());
     }
-    ~Variable() {}
+    virtual ~Variable() {}
     std::string GetName() const { return name; }
     Token const *GetDataType() const { return dataType; }
     Token const *GetIdToken() const { return idToken; }
     bool IsSigned() { return isSigned; }
 
-  private:
+  protected:
     std::string name = "";
     Token const *dataType = nullptr;
     Token const *idToken = nullptr;
     bool isSigned = false;
+};
+
+class FnPointer : public Variable
+{
+  public:
+    FnPointer(std::string name, Token const *dataType, Token const *idToken)
+        : Variable(name, dataType, idToken) {};
+    ~FnPointer() {};
+    class FnExpression *GetFnExpression() { return fnExpr; }
+
+  private:
+    class FnExpression *fnExpr = nullptr;
+    friend class SemanticAnalyzer;
 };
 
 class Scope
@@ -58,6 +71,7 @@ class SemanticAnalyzer
     std::unordered_map<BlockStatement *, Scope *> blockToScopeMap;
     std::vector<Statement *> &statements;
     BlockStatement *currentBlockStatement = nullptr;
+    FnExpression *currentFunction = nullptr;
     size_t statementCurrentIndex = 0;
 
     friend class CodeGen;

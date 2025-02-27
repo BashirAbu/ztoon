@@ -71,6 +71,8 @@ std::string TokenDataTypeToString(TokenType type)
         return "f64";
     case TokenType::BOOL:
         return "bool";
+    case TokenType::NOTYPE:
+        return "notype";
     default:
         return "Unknown type";
     }
@@ -144,7 +146,10 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^else\b)"), TokenType::ELSE});
     patterns.push_back({std::regex(R"(^while\b)"), TokenType::WHILE});
     patterns.push_back({std::regex(R"(^for\b)"), TokenType::FOR});
+    patterns.push_back({std::regex(R"(^fn\b)"), TokenType::FN});
+    patterns.push_back({std::regex(R"(^ret\b)"), TokenType::RET});
 
+    patterns.push_back({std::regex(R"(^->)"), TokenType::ARROW});
     patterns.push_back({std::regex(R"(^--)"), TokenType::DASH_DASH});
     patterns.push_back({std::regex(R"(^\+=)"), TokenType::PLUS_EQUAL});
     patterns.push_back({std::regex(R"(^-=)"), TokenType::DASH_EQUAL});
@@ -185,6 +190,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^=)"), TokenType::EQUAL});
     patterns.push_back({std::regex(R"(^!)"), TokenType::EXCLAMATION});
     patterns.push_back({std::regex(R"(^~)"), TokenType::TILDE});
+    patterns.push_back({std::regex(R"(^,)"), TokenType::COMMA});
     patterns.push_back({std::regex(R"(^\?)"), TokenType::QUESTION_MARK});
 
     patterns.push_back(

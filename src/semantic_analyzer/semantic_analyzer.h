@@ -188,11 +188,11 @@ class Scope
 
   private:
     Scope *parent = nullptr;
-    BlockStatement *currentBlockStatement = nullptr;
     std::unordered_map<std::string, Variable *> variablesMap;
     std::unordered_map<std::string, Function *> functionsMap;
     std::unordered_map<std::string, DataType *> datatypesMap;
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class SemanticAnalyzer
@@ -212,6 +212,7 @@ class SemanticAnalyzer
     std::unordered_map<Expression *, DataType *> exprToDataTypeMap;
     std::unordered_map<Statement *, DataType *> stmtToDataTypeMap;
     std::vector<Statement *> &statements;
+    BlockStatement *currentBlockStatement = nullptr;
     Function *currentFunction = nullptr;
     size_t statementCurrentIndex = 0;
     friend class CodeGen;

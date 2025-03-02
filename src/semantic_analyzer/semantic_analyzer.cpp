@@ -469,8 +469,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         Scope *scope = gZtoonArena.Allocate<Scope>(currentScope);
         Scope *temp = currentScope;
 
-        BlockStatement *blockTemp = currentScope->currentBlockStatement;
-        currentScope->currentBlockStatement = blockStatement;
+        BlockStatement *blockTemp = currentBlockStatement;
+        currentBlockStatement = blockStatement;
 
         currentScope = scope;
         blockToScopeMap[blockStatement] = scope;
@@ -481,7 +481,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             blockStatement->index = i;
         }
         currentScope = temp;
-        currentScope->currentBlockStatement = blockTemp;
+        currentBlockStatement = blockTemp;
     }
     else if (dynamic_cast<IfStatement *>(statement))
     {
@@ -1208,15 +1208,13 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     // need to know if inside block statement or no.
                     // if inside, need to get block statement.
 
-                    if (currentScope->currentBlockStatement)
+                    if (currentBlockStatement)
                     {
                         // inside
-                        size_t s = currentScope->currentBlockStatement
-                                       ->statements.size();
-                        currentScope->currentBlockStatement->statements.insert(
-                            currentScope->currentBlockStatement->statements
-                                    .begin() +
-                                currentScope->currentBlockStatement->index + 1,
+                        size_t s = currentBlockStatement->statements.size();
+                        currentBlockStatement->statements.insert(
+                            currentBlockStatement->statements.begin() +
+                                currentBlockStatement->index + 1,
                             varAssignStatement);
                     }
                     else
@@ -1258,7 +1256,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::EXCLAMATION:
         {
             // numerical
-            if (rightDataType->type == DataType::Type::BOOL)
+            if (rightDataType->type != DataType::Type::BOOL)
             {
                 ReportError(
                     std::format("Cannot perform unary operator '{}' on "

@@ -557,8 +557,10 @@ Statement *Parser::ParseForLoopStatement()
                 ReportError(
                     std::format(
                         "Initialization statement must be one of the "
-                        "following types: Variable Declaration, Statement"
-                        "Variable Assignemnt Statement, Expression Statement."),
+                        "following types: Variable Declaration Statement"
+                        "Variable Assignemnt Statement,Variable Compound "
+                        "Assignemnt "
+                        "Statement, Expression Statement."),
                     forLoopStatement->init->GetCodeErrString());
             }
         }
@@ -601,14 +603,15 @@ Statement *Parser::ParseForLoopStatement()
             if (!dynamic_cast<VarAssignmentStatement *>(
                     forLoopStatement->update) &&
                 !dynamic_cast<VarCompoundAssignmentStatement *>(
-                    forLoopStatement->init) &&
+                    forLoopStatement->update) &&
                 !dynamic_cast<ExpressionStatement *>(forLoopStatement->update))
             {
                 ReportError(
-                    std::format(
-                        "Initialization statement must be one of the "
-                        "following types: Variable Declaration Statement,"
-                        "Variable Assignemnt Statement, Expression Statement"),
+                    std::format("Update statement must be one of the "
+                                "following types: "
+                                "Variable Assignemnt Statement,Variable "
+                                "Compound Assignemnt "
+                                "Statement, Expression Statement."),
                     forLoopStatement->update->GetCodeErrString());
             }
         }

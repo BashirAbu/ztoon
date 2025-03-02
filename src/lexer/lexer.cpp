@@ -71,6 +71,8 @@ std::string TokenDataTypeToString(TokenType type)
         return "f64";
     case TokenType::BOOL:
         return "bool";
+    case TokenType::STR:
+        return "str";
     case TokenType::NOTYPE:
         return "notype";
     default:
@@ -112,7 +114,7 @@ bool IsDataType(TokenType type)
     return TokenMatch(type, TokenType::I8, TokenType::I16, TokenType::I32,
                       TokenType::I64, TokenType::U8, TokenType::U16,
                       TokenType::U32, TokenType::U64, TokenType::F32,
-                      TokenType::F64, TokenType::BOOL);
+                      TokenType::F64, TokenType::BOOL, TokenType::STR);
 }
 bool IsCompoundAssignment(TokenType type)
 {
@@ -140,8 +142,9 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^u64\b)"), TokenType::U64});
     patterns.push_back({std::regex(R"(^f32\b)"), TokenType::F32});
     patterns.push_back({std::regex(R"(^f64\b)"), TokenType::F64});
-    patterns.push_back({std::regex(R"(^bool\b)"), TokenType::BOOL});
     patterns.push_back({std::regex(R"(^sizeof\b)"), TokenType::SIZEOF});
+    patterns.push_back({std::regex(R"(^bool\b)"), TokenType::BOOL});
+    patterns.push_back({std::regex(R"(^str\b)"), TokenType::STR});
     patterns.push_back({std::regex(R"(^if\b)"), TokenType::IF});
     patterns.push_back({std::regex(R"(^else\b)"), TokenType::ELSE});
     patterns.push_back({std::regex(R"(^while\b)"), TokenType::WHILE});

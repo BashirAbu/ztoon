@@ -2,12 +2,228 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "semantic_analyzer.h"
-#include "llvm/IR/Analysis.h"
+#include "llvm/IR/Metadata.h"
 #include <format>
 #include <functional>
-#include <iterator>
-Variable const *Scope::GetVariable(std::string name,
-                                   CodeErrString codeErrString) const
+#include <utility>
+
+std::string DataType::ToString()
+{
+    switch (type)
+    {
+    case DataType::Type::I8:
+        return "i8";
+    case DataType::Type::I16:
+        return "i16";
+    case DataType::Type::I32:
+        return "i32";
+    case DataType::Type::I64:
+        return "i64";
+    case DataType::Type::U8:
+        return "u8";
+    case DataType::Type::U16:
+        return "u16";
+    case DataType::Type::U32:
+        return "u32";
+    case DataType::Type::U64:
+        return "u64";
+    case DataType::Type::F32:
+        return "f32";
+    case DataType::Type::F64:
+        return "f64";
+    case DataType::Type::BOOL:
+        return "bool";
+    case DataType::Type::NOTYPE:
+        return "notype";
+    case DataType::Type::STRING:
+        return "string";
+    case DataType::Type::STRUCT:
+    case DataType::Type::ENUM:
+    case DataType::Type::UNION:
+        return AggregateTypeToString();
+    default:
+        return "Unknown type";
+    }
+}
+
+std::string FnPointerDataTypeToStringKey(FnPointerDataType *fnDataType)
+{
+
+    std::string fpDatatypeStringKey = "fn ";
+    for (DataType *paramDatatype : fnDataType->GetParameters())
+    {
+        fpDatatypeStringKey += std::format("{} ", paramDatatype->ToString());
+    }
+    fpDatatypeStringKey += fnDataType->GetReturnDataType()->ToString();
+    return fpDatatypeStringKey;
+}
+Scope::Scope(Scope *parent)
+{
+    this->parent = parent;
+
+    datatypesMap["i8"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["i8"]->type = DataType::Type::I8;
+    datatypesMap["i8"]->typeWidth = 8;
+    datatypesMap["i8"]->alignment = 4;
+
+    datatypesMap["i16"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["i16"]->type = DataType::Type::I16;
+    datatypesMap["i16"]->typeWidth = 16;
+    datatypesMap["i16"]->alignment = 4;
+
+    datatypesMap["i32"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["i32"]->type = DataType::Type::I32;
+    datatypesMap["i32"]->typeWidth = 32;
+    datatypesMap["i32"]->alignment = 4;
+
+    datatypesMap["i64"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["i64"]->type = DataType::Type::I64;
+    datatypesMap["i64"]->typeWidth = 64;
+    datatypesMap["i64"]->alignment = 4;
+
+    datatypesMap["u8"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["u8"]->type = DataType::Type::U8;
+    datatypesMap["u8"]->typeWidth = 8;
+    datatypesMap["u8"]->alignment = 4;
+
+    datatypesMap["u16"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["u16"]->type = DataType::Type::U16;
+    datatypesMap["u16"]->typeWidth = 16;
+    datatypesMap["u16"]->alignment = 4;
+
+    datatypesMap["u32"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["u32"]->type = DataType::Type::U32;
+    datatypesMap["u32"]->typeWidth = 32;
+    datatypesMap["u32"]->alignment = 4;
+
+    datatypesMap["u64"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["u64"]->type = DataType::Type::U64;
+    datatypesMap["u64"]->typeWidth = 64;
+    datatypesMap["u64"]->alignment = 4;
+
+    datatypesMap["f32"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["f32"]->type = DataType::Type::F32;
+    datatypesMap["f32"]->typeWidth = 32;
+    datatypesMap["f32"]->alignment = 4;
+
+    datatypesMap["f64"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["f64"]->type = DataType::Type::F64;
+    datatypesMap["f64"]->typeWidth = 64;
+    datatypesMap["f64"]->alignment = 4;
+
+    datatypesMap["bool"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["bool"]->type = DataType::Type::BOOL;
+    datatypesMap["bool"]->typeWidth = 1;
+    datatypesMap["bool"]->alignment = 4;
+
+    datatypesMap["notype"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["notype"]->type = DataType::Type::NOTYPE;
+    datatypesMap["notype"]->typeWidth = 1;
+    datatypesMap["notype"]->alignment = 4;
+}
+
+bool DataType::IsNumerical()
+{
+    switch (type)
+    {
+    case Type::I8:
+    case Type::I16:
+    case Type::I32:
+    case Type::I64:
+    case Type::U8:
+    case Type::U16:
+    case Type::U32:
+    case Type::U64:
+    case Type::F32:
+    case Type::F64:
+        return true;
+    default:
+        return false;
+    }
+}
+bool DataType::IsInteger()
+{
+    switch (type)
+    {
+    case Type::I8:
+    case Type::I16:
+    case Type::I32:
+    case Type::I64:
+    case Type::U8:
+    case Type::U16:
+    case Type::U32:
+    case Type::U64:
+        return true;
+    default:
+        return false;
+    }
+}
+bool DataType::IsFloat()
+{
+    switch (type)
+    {
+    case Type::F64:
+    case Type::F32:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool DataType::IsSigned()
+{
+    switch (type)
+    {
+    case Type::I8:
+    case Type::I16:
+    case Type::I32:
+    case Type::I64:
+        return true;
+    default:
+        return false;
+    }
+}
+
+TokenType DataType::ToTokenType()
+{
+    switch (type)
+    {
+    case DataType::Type::I8:
+        return TokenType::I8;
+    case DataType::Type::I16:
+        return TokenType::I16;
+    case DataType::Type::I32:
+        return TokenType::I32;
+    case DataType::Type::I64:
+        return TokenType::I64;
+    case DataType::Type::U8:
+        return TokenType::U8;
+    case DataType::Type::U16:
+        return TokenType::U16;
+    case DataType::Type::U32:
+        return TokenType::U32;
+    case DataType::Type::U64:
+        return TokenType::U64;
+    case DataType::Type::F32:
+        return TokenType::F32;
+    case DataType::Type::F64:
+        return TokenType::F64;
+    case DataType::Type::BOOL:
+        return TokenType::BOOL;
+    case DataType::Type::NOTYPE:
+        return TokenType::NOTYPE;
+    case DataType::Type::STRING:
+        return TokenType::STR;
+    case DataType::Type::STRUCT:
+    case DataType::Type::ENUM:
+    case DataType::Type::UNION:
+        return TokenType::IDENTIFIER;
+    default:
+        return TokenType::UNKNOWN;
+    }
+}
+
+Variable *Scope::GetVariable(std::string name, CodeErrString codeErrString)
 {
     Variable *var = nullptr;
 
@@ -33,8 +249,9 @@ Variable const *Scope::GetVariable(std::string name,
     }
     else
     {
-        ReportError(std::format("'{}' is not defined in this scope.", name),
-                    codeErrString);
+        ReportError(
+            std::format("Variable '{}' is not defined in this scope.", name),
+            codeErrString);
     }
     return nullptr;
 }
@@ -44,15 +261,11 @@ void Scope::AddVariable(Variable *variable, CodeErrString codeErrString)
     if (variablesMap.contains(variable->GetName()))
     {
         Variable *alreadyDefinedVar = variablesMap[variable->GetName()];
-        std::string placeHolder = dynamic_cast<FnPointer *>(alreadyDefinedVar)
-                                      ? "Function"
-                                      : "Variable";
-        ReportError(
-            std::format("{} '{}' already defined at {}:{}.", placeHolder,
-                        variable->GetName(),
-                        alreadyDefinedVar->GetIdToken()->GetFilename(),
-                        alreadyDefinedVar->GetIdToken()->GetLineNumber()),
-            codeErrString);
+        ReportError(std::format("Variable '{}' already defined at {}:{}.",
+                                variable->GetName(),
+                                alreadyDefinedVar->GetToken()->GetFilename(),
+                                alreadyDefinedVar->GetToken()->GetLineNumber()),
+                    codeErrString);
     }
     else
     {
@@ -60,6 +273,60 @@ void Scope::AddVariable(Variable *variable, CodeErrString codeErrString)
     }
 }
 
+void Scope::AddFunction(Function *function, CodeErrString codeErrString)
+{
+
+    if (functionsMap.contains(function->GetName()))
+    {
+        Function *alreadyDefinedVar = functionsMap[function->GetName()];
+        ReportError(std::format("function '{}' already defined at {}:{}.",
+                                function->GetName(),
+                                alreadyDefinedVar->GetFnStatement()
+                                    ->GetIdentifier()
+                                    ->GetFilename(),
+                                alreadyDefinedVar->GetFnStatement()
+                                    ->GetIdentifier()
+                                    ->GetLineNumber()),
+                    codeErrString);
+    }
+    else
+    {
+        functionsMap[function->GetName()] = function;
+    }
+}
+Function *Scope::GetFunction(std::string name, CodeErrString codeErrString)
+{
+
+    Function *fn = nullptr;
+
+    Scope const *current = this;
+    while (!fn)
+    {
+        if (current->functionsMap.contains(name))
+        {
+            fn = current->functionsMap.at(name);
+        }
+        // go up one level;
+        if (!current->parent)
+        {
+            // no more scopes.
+            break;
+        }
+        current = current->parent;
+    }
+
+    if (fn)
+    {
+        return fn;
+    }
+    else
+    {
+        ReportError(
+            std::format("Function '{}' is not declared in this scope.", name),
+            codeErrString);
+    }
+    return nullptr;
+}
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Statement *> &statements)
     : statements(statements)
 {
@@ -97,29 +364,34 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         {
             EvaluateAndAssignDataTypeToExpression(
                 varDeclStatement->GetExpression());
+            stmtToDataTypeMap[varDeclStatement] =
+                exprToDataTypeMap[varDeclStatement->expression];
 
             PrimaryExpression *varExpr =
                 gZtoonArena.Allocate<PrimaryExpression>();
             varExpr->primary = varDeclStatement->GetIdentifier();
-            varExpr->dataType = varDeclStatement->GetDataType()->GetType();
             Expression *variableRawExpression = varExpr;
+            exprToDataTypeMap[varExpr] = stmtToDataTypeMap[varDeclStatement];
             // check if types are compatible.
-            TokenType dataType = DecideDataType(&(variableRawExpression),
-                                                &varDeclStatement->expression);
-            if (dataType == TokenType::UNKNOWN)
+            DataType::Type dataType = DecideDataType(
+                &(variableRawExpression), &varDeclStatement->expression);
+            if (dataType == DataType::Type::UNKNOWN)
             {
                 ReportError(
-                    std::format("Cannot assign value of type '{}' to variable "
-                                "of type '{}'",
-                                TokenDataTypeToString(
-                                    varDeclStatement->expression->dataType),
-                                varDeclStatement->GetDataType()->GetLexeme()),
+                    std::format(
+                        "Cannot assign value of type '{}' to variable "
+                        "of type '{}'",
+                        stmtToDataTypeMap[varDeclStatement]->ToString(),
+                        stmtToDataTypeMap[varDeclStatement]->ToString()),
                     varDeclStatement->GetCodeErrString());
             }
         }
         Variable *var = gZtoonArena.Allocate<Variable>(
-            varDeclStatement->GetIdentifier()->GetLexeme(),
-            varDeclStatement->GetDataType(), varDeclStatement->GetIdentifier());
+            varDeclStatement->GetIdentifier()->GetLexeme());
+        var->token = varDeclStatement->GetIdentifier();
+        var->dataType =
+            currentScope
+                ->datatypesMap[stmtToDataTypeMap[varDeclStatement]->ToString()];
         currentScope->AddVariable(var, varDeclStatement->GetCodeErrString());
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
@@ -132,25 +404,26 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             varAssignmentStatement->GetIdentifier()->GetLexeme(),
             varAssignmentStatement->GetCodeErrString());
 
-        varAssignmentStatement->dataType = var->GetDataType();
+        stmtToDataTypeMap[varAssignmentStatement] = var->dataType;
         EvaluateAndAssignDataTypeToExpression(
             varAssignmentStatement->GetExpression());
 
         PrimaryExpression *varExpr = gZtoonArena.Allocate<PrimaryExpression>();
         varExpr->primary = varAssignmentStatement->GetIdentifier();
-        varExpr->dataType = varAssignmentStatement->GetDataType()->GetType();
         Expression *variableRawExpression = varExpr;
-        // check if types are compatible.
-        TokenType dataType = DecideDataType(
+        exprToDataTypeMap[varExpr] =
+            stmtToDataTypeMap[varAssignmentStatement]; // check if types are
+                                                       // compatible.
+        DataType::Type dataType = DecideDataType(
             &(variableRawExpression), &varAssignmentStatement->expression);
-        if (dataType == TokenType::UNKNOWN)
+        if (dataType == DataType::Type::UNKNOWN)
         {
             ReportError(
-                std::format("Cannot assign value of type '{}' to variable "
-                            "of type '{}'",
-                            TokenDataTypeToString(
-                                varAssignmentStatement->expression->dataType),
-                            varAssignmentStatement->GetDataType()->GetLexeme()),
+                std::format(
+                    "Cannot assign value of type '{}' to variable "
+                    "of type '{}'",
+                    stmtToDataTypeMap[varAssignmentStatement]->ToString(),
+                    stmtToDataTypeMap[varAssignmentStatement]->ToString()),
                 varAssignmentStatement->GetCodeErrString());
         }
     }
@@ -163,25 +436,27 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         Variable const *var = currentScope->GetVariable(
             varComAssignStatement->GetIdentifier()->GetLexeme(),
             varComAssignStatement->GetCodeErrString());
-        varComAssignStatement->dataType = var->GetDataType();
+        stmtToDataTypeMap[varComAssignStatement] = var->dataType;
 
         EvaluateAndAssignDataTypeToExpression(
             varComAssignStatement->GetExpression());
         PrimaryExpression *varExpr = gZtoonArena.Allocate<PrimaryExpression>();
         varExpr->primary = varComAssignStatement->GetIdentifier();
-        varExpr->dataType = varComAssignStatement->GetDataType()->GetType();
         Expression *variableRawExpression = varExpr;
-        // check if types are compatible.
-        TokenType dataType = DecideDataType(&(variableRawExpression),
-                                            &varComAssignStatement->expression);
-        if (dataType == TokenType::UNKNOWN)
+
+        exprToDataTypeMap[varExpr] =
+            stmtToDataTypeMap[varComAssignStatement]; // check if types are
+                                                      // compatible.
+        DataType::Type dataType = DecideDataType(
+            &(variableRawExpression), &varComAssignStatement->expression);
+        if (dataType == DataType::Type::UNKNOWN)
         {
             ReportError(
-                std::format("Cannot assign value of type '{}' to variable "
-                            "of type '{}'",
-                            TokenDataTypeToString(
-                                varComAssignStatement->expression->dataType),
-                            varComAssignStatement->GetDataType()->GetLexeme()),
+                std::format(
+                    "Cannot assign value of type '{}' to variable "
+                    "of type '{}'",
+                    stmtToDataTypeMap[varComAssignStatement]->ToString(),
+                    stmtToDataTypeMap[varComAssignStatement]->ToString()),
                 varComAssignStatement->GetCodeErrString());
         }
     }
@@ -194,8 +469,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         Scope *scope = gZtoonArena.Allocate<Scope>(currentScope);
         Scope *temp = currentScope;
 
-        BlockStatement *blockTemp = currentBlockStatement;
-        currentBlockStatement = blockStatement;
+        BlockStatement *blockTemp = currentScope->currentBlockStatement;
+        currentScope->currentBlockStatement = blockStatement;
 
         currentScope = scope;
         blockToScopeMap[blockStatement] = scope;
@@ -206,14 +481,15 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             blockStatement->index = i;
         }
         currentScope = temp;
-        currentBlockStatement = blockTemp;
+        currentScope->currentBlockStatement = blockTemp;
     }
     else if (dynamic_cast<IfStatement *>(statement))
     {
         IfStatement *ifStatement = dynamic_cast<IfStatement *>(statement);
         EvaluateAndAssignDataTypeToExpression(ifStatement->GetExpression());
 
-        if (ifStatement->GetExpression()->GetDataType() != TokenType::BOOL)
+        if (exprToDataTypeMap[ifStatement->GetExpression()]->GetType() !=
+            DataType::Type::BOOL)
         {
             ReportError(std::format("Expression after 'if' must be boolean."),
                         ifStatement->GetCodeErrString());
@@ -232,7 +508,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             dynamic_cast<ElseIfStatement *>(statement);
         EvaluateAndAssignDataTypeToExpression(elifStatement->GetExpression());
 
-        if (elifStatement->GetExpression()->GetDataType() != TokenType::BOOL)
+        if (exprToDataTypeMap[elifStatement->GetExpression()]->GetType() !=
+            DataType::Type::BOOL)
         {
             ReportError(std::format("Expression after 'if' must be boolean."),
                         elifStatement->GetCodeErrString());
@@ -250,6 +527,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         ExpressionStatement *exprStatement =
             dynamic_cast<ExpressionStatement *>(statement);
         EvaluateAndAssignDataTypeToExpression(exprStatement->GetExpression());
+        stmtToDataTypeMap[exprStatement] =
+            exprToDataTypeMap[exprStatement->GetExpression()];
     }
     else if (dynamic_cast<WhileLoopStatement *>(statement))
     {
@@ -258,7 +537,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
         EvaluateAndAssignDataTypeToExpression(whileStatement->GetCondition());
 
-        if (whileStatement->GetCondition()->GetDataType() != TokenType::BOOL)
+        if (exprToDataTypeMap[whileStatement->GetCondition()]->GetType() !=
+            DataType::Type::BOOL)
         {
             ReportError(
                 std::format(
@@ -281,8 +561,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             EvaluateAndAssignDataTypeToExpression(
                 forLoopStatement->GetCondition());
 
-            if (forLoopStatement->GetCondition()->GetDataType() !=
-                TokenType::BOOL)
+            if (exprToDataTypeMap[forLoopStatement->GetCondition()]
+                    ->GetType() != DataType::Type::BOOL)
             {
                 ReportError(
                     std::format("Expect expression '{}' to be boolean",
@@ -301,173 +581,86 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         if (retStmt->expression)
         {
             EvaluateAndAssignDataTypeToExpression(retStmt->GetExpression());
-            Expression *fn = (Expression *)currentFunction;
-            TokenType type = DecideDataType(&fn, &retStmt->expression);
+            Function *fn = (Function *)currentFunction;
+            PrimaryExpression *primaryExpr =
+                gZtoonArena.Allocate<PrimaryExpression>();
+            primaryExpr->primary = gZtoonArena.Allocate<Token>(
+                fn->fnPointer->GetReturnDataType()->ToTokenType());
+            Expression *expr = primaryExpr;
+            exprToDataTypeMap[expr] = fn->fnPointer->GetReturnDataType();
+            stmtToDataTypeMap[retStmt] = fn->fnPointer->GetReturnDataType();
+            DataType::Type type = DecideDataType(&expr, &retStmt->expression);
 
-            if (type == TokenType::UNKNOWN)
+            if (type == DataType::Type::UNKNOWN)
             {
                 ReportError(
                     std::format(
                         "Return expression '{}' is not compatible with "
                         "function return type '{}'",
                         retStmt->GetExpression()->GetCodeErrString().str,
-                        TokenDataTypeToString(currentFunction->GetDataType())),
+                        currentFunction->fnPointer->returnDataType->ToString()),
                     retStmt->GetCodeErrString());
             }
         }
         else
         {
-            TokenType type = TokenType::NOTYPE;
-            if (type != currentFunction->GetDataType())
+            DataType::Type type = DataType::Type::NOTYPE;
+            if (type !=
+                currentFunction->fnPointer->GetReturnDataType()->GetType())
             {
                 ReportError(
                     std::format(
                         "Return expression '{}' is not compatible with "
                         "function return type '{}'",
-                        retStmt->GetExpression()->GetCodeErrString().str,
-                        TokenDataTypeToString(currentFunction->GetDataType())),
+                        retStmt->GetExpression()
+                            ? retStmt->GetCodeErrString().str
+                            : TokenDataTypeToString(TokenType::NOTYPE),
+                        currentFunction->fnPointer->returnDataType->ToString()),
                     retStmt->GetCodeErrString());
             }
             else if (retStmt->expression)
             {
 
                 ReportError(
-                    std::format("Function '{}' does not return a value.",
-                                currentFunction->GetCodeErrString().str),
+                    std::format(
+                        "Function '{}' does not return a value.",
+                        currentFunction->fnPointer->returnDataType->ToString()),
                     retStmt->GetCodeErrString());
             }
         }
     }
-}
-
-TokenType SemanticAnalyzer::DecideDataType(Expression **left,
-                                           Expression **right)
-{
-    TokenType leftDataType = (*left)->GetDataType();
-    TokenType rightDataType = (*right)->GetDataType();
-    bool isLeftPrimary = dynamic_cast<PrimaryExpression *>((*left));
-    bool isRightPrimary = dynamic_cast<PrimaryExpression *>((*right));
-    if (leftDataType != rightDataType)
+    else if (dynamic_cast<FnStatement *>(statement))
     {
-        if (isLeftPrimary && isRightPrimary)
+        if (currentScope->parent)
         {
-            PrimaryExpression *leftPrimaryExpr =
-                dynamic_cast<PrimaryExpression *>((*left));
-
-            PrimaryExpression *rightPrimaryExpr =
-                dynamic_cast<PrimaryExpression *>((*right));
-
-            if (leftPrimaryExpr->GetPrimary()->GetType() ==
-                    TokenType::IDENTIFIER &&
-                rightPrimaryExpr->GetPrimary()->GetType() !=
-                    TokenType::IDENTIFIER &&
-                (::IsInteger(rightPrimaryExpr->dataType) ||
-                 ::IsFloat(rightPrimaryExpr->dataType)))
-            {
-                TokenType leftVarDataType = leftDataType;
-                TokenType rightLiteralDataType = rightDataType;
-                if (IsInteger(leftVarDataType) &&
-                    IsInteger(rightLiteralDataType))
-                {
-                    // cast
-                    CastExpression *castExpr =
-                        gZtoonArena.Allocate<CastExpression>();
-                    castExpr->expression = *right;
-                    castExpr->dataType = (*left)->GetDataType();
-                    *right = castExpr;
-                }
-                else if (IsFloat(leftVarDataType) &&
-                         IsFloat(rightLiteralDataType))
-                {
-                    // cast
-                    CastExpression *castExpr =
-                        gZtoonArena.Allocate<CastExpression>();
-                    castExpr->expression = *right;
-                    castExpr->dataType = (*left)->GetDataType();
-                    *right = castExpr;
-                    return castExpr->dataType;
-                }
-                else
-                {
-                    // error
-                    return TokenType::UNKNOWN;
-                }
-            }
-            else if (rightPrimaryExpr->GetPrimary()->GetType() ==
-                         TokenType::IDENTIFIER &&
-                     leftPrimaryExpr->GetPrimary()->GetType() !=
-                         TokenType::IDENTIFIER &&
-                     (::IsInteger(leftPrimaryExpr->dataType) ||
-                      ::IsFloat(leftPrimaryExpr->dataType)))
-            {
-
-                TokenType leftLiteralDataType = leftDataType;
-                TokenType rightVarDataType = rightDataType;
-                if (IsInteger(leftLiteralDataType) &&
-                    IsInteger(rightVarDataType))
-                {
-                    // cast
-                    CastExpression *castExpr =
-                        gZtoonArena.Allocate<CastExpression>();
-                    castExpr->expression = *left;
-                    castExpr->dataType = (*right)->GetDataType();
-                    *right = castExpr;
-                    return castExpr->dataType;
-                }
-                else if (IsFloat(leftLiteralDataType) &&
-                         IsFloat(rightVarDataType))
-                {
-                    // cast
-                    CastExpression *castExpr =
-                        gZtoonArena.Allocate<CastExpression>();
-                    castExpr->expression = *left;
-                    castExpr->dataType = (*right)->GetDataType();
-                    *right = castExpr;
-                    return castExpr->dataType;
-                }
-                else
-                {
-                    // error
-                    return TokenType::UNKNOWN;
-                }
-            }
-            else
-            {
-                // error
-                return TokenType::UNKNOWN;
-            }
+            ReportError("Functions can only be declared in global scope.",
+                        statement->GetCodeErrString());
         }
-        else
-        {
-            return TokenType::UNKNOWN;
-        }
-    }
-    return leftDataType;
-}
+        FnStatement *fnStmt = dynamic_cast<FnStatement *>(statement);
 
-void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
-    Expression *expression)
-{
+        Function *fp = gZtoonArena.Allocate<Function>();
+        fp->name = fnStmt->identifier->GetLexeme();
+        FnPointerDataType *fpDataType =
+            gZtoonArena.Allocate<FnPointerDataType>();
+        fpDataType->type = DataType::Type::FNPOINTER;
+        fpDataType->returnDataType =
+            currentScope->datatypesMap[fnStmt->returnDataType->GetLexeme()];
 
-    if (dynamic_cast<FnExpression *>(expression))
-    {
-        FnExpression *fnExpr = dynamic_cast<FnExpression *>(expression);
-
-        fnExpr->dataType = fnExpr->returnDataType
-                               ? fnExpr->returnDataType->GetType()
-                               : TokenType::NOTYPE;
-
-        // this should be handled by the function block.
-        //  for (Statement *p : fnExpr->parameters)
+        fp->fnStmt = fnStmt;
+        fp->fnPointer = fpDataType;
+        currentScope->AddFunction(fp, fnStmt->GetCodeErrString());
+        // this should be handled by the
+        // function block.
+        //  for (Statement *p : fnStmt->parameters)
         //  {
         //      AnalizeStatement(p);
         //  }
-        FnExpression *temp = currentFunction;
-        currentFunction = fnExpr;
-        AnalizeStatement(fnExpr->blockStatement);
+        Function *temp = currentFunction;
+        currentFunction = fp;
+        AnalizeStatement(fnStmt->blockStatement);
         currentFunction = temp;
         // check for ret statement;
-        if (!fnExpr->IsPrototype())
+        if (!fnStmt->IsPrototype())
         {
             std::function<bool(BlockStatement * bStmt)> checkRet =
                 [&](BlockStatement *bStmt) -> bool
@@ -531,7 +724,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                                 if (!foundInOtherPaths)
                                 {
                                     ReportError("Not all paths return.",
-                                                fnExpr->GetCodeErrString());
+                                                fnStmt->GetCodeErrString());
                                 }
                             }
 
@@ -539,7 +732,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                             if (!retFound)
                             {
                                 ReportError("Not all paths return.",
-                                            fnExpr->GetCodeErrString());
+                                            fnStmt->GetCodeErrString());
                             }
                         }
                     }
@@ -550,20 +743,28 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                 }
                 return retFound;
             };
-            if (fnExpr->returnDataType->type != TokenType::NOTYPE)
+            if (fnStmt->returnDataType->type != TokenType::NOTYPE)
             {
+                if (fnStmt->GetBlockStatement()->statements.empty())
+                {
+                    ReportError(
+                        std::format(
+                            "Function '{}' does not return an expression.",
+                            fnStmt->GetIdentifier()->GetLexeme()),
+                        fnStmt->GetCodeErrString());
+                }
                 // see if function ends with return statement.
                 RetStatement *retStmt = dynamic_cast<RetStatement *>(
-                    fnExpr->GetBlockStatement()->statements.back());
+                    fnStmt->GetBlockStatement()->statements.back());
                 if (!retStmt)
                 {
                     bool retFoundInMainBlock = false;
                     for (size_t i;
-                         i < fnExpr->GetBlockStatement()->statements.size();
+                         i < fnStmt->GetBlockStatement()->statements.size();
                          i++)
                     {
                         RetStatement *ret = dynamic_cast<RetStatement *>(
-                            fnExpr->GetBlockStatement()->statements[i]);
+                            fnStmt->GetBlockStatement()->statements[i]);
                         if (ret)
                         {
                             retFoundInMainBlock = true;
@@ -572,51 +773,172 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     if (!retFoundInMainBlock)
                     {
 
-                        if (!checkRet(fnExpr->GetBlockStatement()))
+                        if (!checkRet(fnStmt->GetBlockStatement()))
                         {
                             ReportError("Not all paths return.",
-                                        fnExpr->GetCodeErrString());
+                                        fnStmt->GetCodeErrString());
                         }
                     }
                 }
             }
         }
-        FnPointer *fp = gZtoonArena.Allocate<FnPointer>(
-            fnExpr->identifier->GetLexeme(), fnExpr->returnDataType,
-            fnExpr->GetIdentifier());
-        fp->fnExpr = fnExpr;
-        currentScope->AddVariable(fp, fnExpr->GetCodeErrString());
+
+        for (VarDeclStatement *p : fnStmt->GetParameters())
+        {
+            fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
+        }
+
+        currentScope->datatypesMap[FnPointerDataTypeToStringKey(fpDataType)] =
+            fpDataType;
     }
-    else if (dynamic_cast<FnCallExpression *>(expression))
+}
+
+DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
+                                                Expression **right)
+{
+    DataType *leftDataType = exprToDataTypeMap[*left];
+    DataType *rightDataType = exprToDataTypeMap[*right];
+    bool isLeftPrimary = dynamic_cast<PrimaryExpression *>((*left));
+    bool isRightPrimary = dynamic_cast<PrimaryExpression *>((*right));
+    if (leftDataType->ToString() != rightDataType->ToString())
+    {
+        if (isLeftPrimary && isRightPrimary)
+        {
+            PrimaryExpression *leftPrimaryExpr =
+                dynamic_cast<PrimaryExpression *>((*left));
+
+            PrimaryExpression *rightPrimaryExpr =
+                dynamic_cast<PrimaryExpression *>((*right));
+
+            if (leftPrimaryExpr->GetPrimary()->GetType() ==
+                        TokenType::IDENTIFIER &&
+                    rightPrimaryExpr->GetPrimary()->GetType() !=
+                        TokenType::IDENTIFIER &&
+                    (rightDataType->IsInteger()) ||
+                rightDataType->IsFloat())
+            {
+                TokenType leftVarDataType = leftDataType->ToTokenType();
+                TokenType rightLiteralDataType = rightDataType->ToTokenType();
+                if (IsInteger(leftVarDataType) &&
+                    IsInteger(rightLiteralDataType))
+                {
+                    // cast
+                    CastExpression *castExpr =
+                        gZtoonArena.Allocate<CastExpression>();
+                    castExpr->expression = *right;
+                    castExpr->castToType = gZtoonArena.Allocate<Token>(
+                        leftDataType->ToTokenType());
+                    exprToDataTypeMap[castExpr] = leftDataType;
+                    *right = castExpr;
+                    return leftDataType->type;
+                }
+                else if (IsFloat(leftVarDataType) &&
+                         IsFloat(rightLiteralDataType))
+                {
+                    // cast
+                    CastExpression *castExpr =
+                        gZtoonArena.Allocate<CastExpression>();
+                    castExpr->expression = *right;
+                    castExpr->castToType = gZtoonArena.Allocate<Token>(
+                        leftDataType->ToTokenType());
+                    exprToDataTypeMap[castExpr] = leftDataType;
+                    *right = castExpr;
+                    return leftDataType->type;
+                }
+                else
+                {
+                    // error
+                    return DataType::Type::UNKNOWN;
+                }
+            }
+            else if (rightPrimaryExpr->GetPrimary()->GetType() ==
+                         TokenType::IDENTIFIER &&
+                     leftPrimaryExpr->GetPrimary()->GetType() !=
+                         TokenType::IDENTIFIER &&
+                     (leftDataType->IsInteger() || leftDataType->IsFloat()))
+            {
+
+                TokenType leftLiteralDataType = leftDataType->ToTokenType();
+                TokenType rightVarDataType = rightDataType->ToTokenType();
+                if (IsInteger(leftLiteralDataType) &&
+                    IsInteger(rightVarDataType))
+                {
+                    // cast
+                    CastExpression *castExpr =
+                        gZtoonArena.Allocate<CastExpression>();
+                    castExpr->expression = *left;
+                    exprToDataTypeMap[castExpr] = rightDataType;
+                    castExpr->castToType = gZtoonArena.Allocate<Token>(
+                        rightDataType->ToTokenType());
+                    *left = castExpr;
+                    return rightDataType->type;
+                }
+                else if (IsFloat(leftLiteralDataType) &&
+                         IsFloat(rightVarDataType))
+                {
+                    // cast
+                    CastExpression *castExpr =
+                        gZtoonArena.Allocate<CastExpression>();
+                    castExpr->expression = *left;
+                    exprToDataTypeMap[castExpr] = leftDataType;
+                    *left = castExpr;
+                    return rightDataType->type;
+                }
+                else
+                {
+                    // error
+                    return DataType::Type::UNKNOWN;
+                }
+            }
+            else
+            {
+                // error
+                return DataType::Type::UNKNOWN;
+            }
+        }
+        else
+        {
+            return DataType::Type::UNKNOWN;
+        }
+    }
+    return leftDataType->type;
+}
+
+void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
+    Expression *expression)
+{
+
+    if (dynamic_cast<FnCallExpression *>(expression))
     {
         FnCallExpression *fnCallExpr =
             dynamic_cast<FnCallExpression *>(expression);
-        FnPointer *fp = (FnPointer *)currentScope->GetVariable(
+        Function *fp = (Function *)currentScope->GetFunction(
             fnCallExpr->identifier->GetLexeme(),
             fnCallExpr->GetCodeErrString());
+        exprToDataTypeMap[fnCallExpr] = fp->fnPointer->returnDataType;
         for (Expression *arg : fnCallExpr->args)
         {
             EvaluateAndAssignDataTypeToExpression(arg);
         }
         size_t index = 0;
-        for (VarDeclStatement *p : fp->GetFnExpression()->parameters)
+        for (VarDeclStatement *p : fp->GetFnStatement()->parameters)
         {
             PrimaryExpression *id = gZtoonArena.Allocate<PrimaryExpression>();
             id->primary = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
-            id->dataType = p->dataType->GetType();
+            exprToDataTypeMap[id] = stmtToDataTypeMap[p];
             Expression *exprId = id;
             if (DecideDataType(&exprId, &fnCallExpr->args[index]) ==
-                TokenType::UNKNOWN)
+                DataType::Type::UNKNOWN)
             {
                 ReportError(
                     std::format(
                         "Argument '{}' of type '{}' is not compatible "
                         "with paramter '{}' of type '{}'",
                         fnCallExpr->args[index]->GetCodeErrString().str,
-                        TokenDataTypeToString(
-                            fnCallExpr->args[index]->GetDataType()),
+
+                        exprToDataTypeMap[fnCallExpr->args[index]]->ToString(),
                         p->GetCodeErrString().str,
-                        TokenDataTypeToString(p->GetDataType()->GetType())),
+                        stmtToDataTypeMap[p]->ToString()),
                     fnCallExpr->args[index]->GetCodeErrString());
             }
             index++;
@@ -631,16 +953,17 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         EvaluateAndAssignDataTypeToExpression(ternaryExpr->trueExpr);
         EvaluateAndAssignDataTypeToExpression(ternaryExpr->falseExpr);
 
-        if (ternaryExpr->condition->dataType != TokenType::BOOL)
+        if (exprToDataTypeMap[ternaryExpr->condition]->GetType() !=
+            DataType::Type::BOOL)
         {
             ReportError("Expected expression to be boolean type",
                         ternaryExpr->GetCodeErrString());
         }
 
-        TokenType type =
+        DataType::Type type =
             DecideDataType(&ternaryExpr->trueExpr, &ternaryExpr->falseExpr);
 
-        if (type == TokenType::UNKNOWN)
+        if (type == DataType::Type::UNKNOWN)
         {
             ReportError(
                 std::format(
@@ -650,7 +973,8 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                 ternaryExpr->GetCodeErrString());
         }
 
-        ternaryExpr->dataType = ternaryExpr->trueExpr->dataType;
+        exprToDataTypeMap[ternaryExpr] =
+            exprToDataTypeMap[ternaryExpr->trueExpr];
     }
     else if (dynamic_cast<BinaryExpression *>(expression))
     {
@@ -660,16 +984,20 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             binaryExpression->GetLeftExpression());
         EvaluateAndAssignDataTypeToExpression(
             binaryExpression->GetRightExpression());
-        TokenType dataType =
+
+        DataType *left = exprToDataTypeMap[binaryExpression->left];
+        DataType *right = exprToDataTypeMap[binaryExpression->right];
+
+        DataType::Type dataType =
             DecideDataType(&binaryExpression->left, &binaryExpression->right);
-        if (dataType == TokenType::UNKNOWN)
+
+        exprToDataTypeMap[binaryExpression] = left;
+        if (dataType == DataType::Type::UNKNOWN)
         {
             ReportError(
-                std::format(
-                    "Cannot perform '{}' on datatypes '{}' and '{}'",
-                    binaryExpression->op->GetLexeme(),
-                    TokenDataTypeToString(binaryExpression->left->dataType),
-                    TokenDataTypeToString(binaryExpression->right->dataType)),
+                std::format("Cannot perform '{}' on datatypes '{}' and '{}'",
+                            binaryExpression->op->GetLexeme(), left->ToString(),
+                            right->ToString()),
                 binaryExpression->GetCodeErrString());
             return;
         }
@@ -682,21 +1010,20 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::SLASH:
         case TokenType::PERCENTAGE:
         {
-            if (!IsNumerical(binaryExpression->left->dataType))
+            if (!left->IsNumerical())
             {
                 ReportError(std::format("Left expression of '{}' must be "
                                         "numerical type",
                                         binaryExpression->op->GetLexeme()),
                             binaryExpression->GetCodeErrString());
             }
-            else if (!IsNumerical(binaryExpression->right->dataType))
+            else if (!right->IsNumerical())
             {
                 ReportError(std::format("Right expression of '{}' must be "
                                         "numerical type",
                                         binaryExpression->op->GetLexeme()),
                             binaryExpression->GetCodeErrString());
             }
-            binaryExpression->dataType = dataType;
             break;
         }
         case TokenType::BITWISE_AND:
@@ -705,21 +1032,20 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::SHIFT_LEFT:
         case TokenType::SHIFT_RIGHT:
         {
-            if (!IsInteger(binaryExpression->left->dataType))
+            if (!left->IsInteger())
             {
                 ReportError(std::format("Left expression of '{}' must be "
                                         "integer type",
                                         binaryExpression->op->GetLexeme()),
                             binaryExpression->GetCodeErrString());
             }
-            else if (!IsInteger(binaryExpression->right->dataType))
+            else if (!right->IsInteger())
             {
                 ReportError(std::format("Right expression of '{}' must be "
                                         "integer type",
                                         binaryExpression->op->GetLexeme()),
                             binaryExpression->GetCodeErrString());
             }
-            binaryExpression->dataType = dataType;
             break;
         }
         case TokenType::EQUAL_EQUAL:
@@ -730,48 +1056,48 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::GREATER_EQUAL:
         {
 
-            if (!IsNumerical(binaryExpression->left->dataType) &&
-                binaryExpression->left->dataType != TokenType::BOOL)
+            if (!left->IsNumerical() && left->type != DataType::Type::BOOL)
             {
                 ReportError(std::format("Left expression of '{}' must be "
                                         "boolean or numerical type",
                                         binaryExpression->op->GetLexeme()),
                             binaryExpression->GetCodeErrString());
             }
-            else if (!IsNumerical(binaryExpression->right->dataType) &&
-                     binaryExpression->right->dataType != TokenType::BOOL)
+            else if (!right->IsNumerical() &&
+                     right->type != DataType::Type::BOOL)
             {
                 ReportError(std::format("Right expression of '{}' must be "
                                         "boolean or numerical type",
                                         binaryExpression->op->GetLexeme()),
                             binaryExpression->GetCodeErrString());
             }
-            binaryExpression->dataType = TokenType::BOOL;
+            exprToDataTypeMap[binaryExpression] =
+                currentScope->datatypesMap["bool"];
             break;
         }
         case TokenType::OR:
         case TokenType::AND:
         {
-            if (binaryExpression->left->dataType != TokenType::BOOL)
+            if (left->type != DataType::Type::BOOL)
             {
                 ReportError(
                     std::format("Left expression of '{}' must be boolean type",
                                 binaryExpression->op->GetLexeme()),
                     binaryExpression->GetCodeErrString());
             }
-            else if (binaryExpression->right->dataType != TokenType::BOOL)
+            else if (right->type != DataType::Type::BOOL)
             {
                 ReportError(
                     std::format("Right expression of '{}' must be boolean type",
                                 binaryExpression->op->GetLexeme()),
                     binaryExpression->GetCodeErrString());
             }
-            binaryExpression->dataType = TokenType::BOOL;
+            exprToDataTypeMap[binaryExpression] =
+                currentScope->datatypesMap["bool"];
             break;
         }
         default:
         {
-            binaryExpression->dataType = dataType;
             break;
         }
         }
@@ -782,34 +1108,33 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             dynamic_cast<UnaryExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(
             unaryExpression->GetRightExpression());
-        TokenType rightDataType =
-            unaryExpression->GetRightExpression()->dataType;
-
+        DataType *rightDataType = exprToDataTypeMap[unaryExpression->right];
+        exprToDataTypeMap[unaryExpression] = rightDataType;
         switch (unaryExpression->GetOperator()->GetType())
         {
         case TokenType::DASH:
         {
             // numerical
-            if (!IsNumerical(rightDataType) && !IsSigned(rightDataType))
+            if (!rightDataType->IsNumerical() && !rightDataType->IsSigned())
             {
                 ReportError(
                     std::format("Cannot perform unary operator '{}' on "
                                 "datatype '{}'.",
                                 unaryExpression->GetOperator()->GetLexeme(),
-                                TokenDataTypeToString(rightDataType)),
+                                rightDataType->ToString()),
                     unaryExpression->GetCodeErrString());
             }
             break;
         }
         case TokenType::TILDE:
         {
-            if (!IsInteger(rightDataType))
+            if (!rightDataType->IsInteger())
             {
                 ReportError(
                     std::format("Cannot perform unary operator '{}' on "
                                 "datatype '{}'.",
                                 unaryExpression->GetOperator()->GetLexeme(),
-                                TokenDataTypeToString(rightDataType)),
+                                rightDataType->ToString()),
                     unaryExpression->GetCodeErrString());
             }
             break;
@@ -822,7 +1147,9 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                 unaryExpression->GetRightExpression());
             if (primaryExpr)
             {
-                if (primaryExpr->primary->GetType() != TokenType::IDENTIFIER)
+                if (!currentScope->GetVariable(
+                        primaryExpr->primary->GetLexeme(),
+                        primaryExpr->GetCodeErrString()))
                 {
                     ReportError(
                         std::format(
@@ -831,13 +1158,13 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                             unaryExpression->GetOperator()->GetLexeme()),
                         unaryExpression->GetCodeErrString());
                 }
-                if (!IsNumerical(rightDataType))
+                if (!rightDataType->IsNumerical())
                 {
                     ReportError(
                         std::format("Cannot perform unary operator '{}' on "
                                     "datatype '{}'.",
                                     unaryExpression->GetOperator()->GetLexeme(),
-                                    TokenDataTypeToString(rightDataType)),
+                                    rightDataType->ToString()),
                         unaryExpression->GetCodeErrString());
                 }
                 if (unaryExpression->IsPostfix())
@@ -845,8 +1172,8 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     // Insert new variable assign statement with binary
                     VarAssignmentStatement *varAssignStatement =
                         gZtoonArena.Allocate<VarAssignmentStatement>();
-                    Token *typeToken =
-                        gZtoonArena.Allocate<Token>(rightDataType);
+                    Token *typeToken = gZtoonArena.Allocate<Token>(
+                        rightDataType->ToTokenType());
                     varAssignStatement->dataType = typeToken;
                     varAssignStatement->identifier = primaryExpr->GetPrimary();
 
@@ -855,22 +1182,22 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     binaryExpr->left = primaryExpr;
                     PrimaryExpression *oneExpr =
                         gZtoonArena.Allocate<PrimaryExpression>();
-                    oneExpr->dataType = rightDataType;
+                    exprToDataTypeMap[oneExpr] = rightDataType;
 
                     Token *oneToken = nullptr;
-                    if (::IsInteger(rightDataType))
+                    if (rightDataType->IsInteger())
                     {
                         oneToken = gZtoonArena.Allocate<TokenLiteral<int32_t>>(
                             TokenType::INTEGER_LITERAL, 1);
                     }
-                    else if (::IsFloat(rightDataType))
+                    else if (rightDataType->IsFloat())
                     {
                         oneToken = gZtoonArena.Allocate<TokenLiteral<float>>(
                             TokenType::FLOAT_LITERAL, 1.0);
                     }
                     oneExpr->primary = oneToken;
                     binaryExpr->right = oneExpr;
-                    binaryExpr->dataType = rightDataType;
+                    exprToDataTypeMap[binaryExpr] = rightDataType;
                     binaryExpr->op =
                         unaryExpression->GetOperator()->type ==
                                 TokenType::PLUS_PLUS
@@ -881,13 +1208,15 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     // need to know if inside block statement or no.
                     // if inside, need to get block statement.
 
-                    if (currentBlockStatement)
+                    if (currentScope->currentBlockStatement)
                     {
                         // inside
-                        size_t s = currentBlockStatement->statements.size();
-                        currentBlockStatement->statements.insert(
-                            currentBlockStatement->statements.begin() +
-                                currentBlockStatement->index + 1,
+                        size_t s = currentScope->currentBlockStatement
+                                       ->statements.size();
+                        currentScope->currentBlockStatement->statements.insert(
+                            currentScope->currentBlockStatement->statements
+                                    .begin() +
+                                currentScope->currentBlockStatement->index + 1,
                             varAssignStatement);
                     }
                     else
@@ -915,13 +1244,13 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::PLUS:
         {
             // numerical
-            if (!IsNumerical(rightDataType))
+            if (!rightDataType->IsNumerical())
             {
                 ReportError(
                     std::format("Cannot perform unary operator '{}' on "
                                 "datatype '{}'.",
                                 unaryExpression->GetOperator()->GetLexeme(),
-                                TokenDataTypeToString(rightDataType)),
+                                rightDataType->ToString()),
                     unaryExpression->GetCodeErrString());
             }
             break;
@@ -929,26 +1258,26 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::EXCLAMATION:
         {
             // numerical
-            if (rightDataType != TokenType::BOOL)
+            if (rightDataType->type == DataType::Type::BOOL)
             {
                 ReportError(
                     std::format("Cannot perform unary operator '{}' on "
                                 "datatype '{}'.",
                                 unaryExpression->GetOperator()->GetLexeme(),
-                                TokenDataTypeToString(rightDataType)),
+                                rightDataType->ToString()),
                     unaryExpression->GetCodeErrString());
             }
             break;
         }
         case TokenType::SIZEOF:
         {
-            if (rightDataType == TokenType::UNKNOWN)
+            if (rightDataType->type == DataType::Type::UNKNOWN)
             {
                 ReportError(
                     std::format("Cannot perform unary operator '{}' on "
                                 "datatype '{}'.",
                                 unaryExpression->GetOperator()->GetLexeme(),
-                                TokenDataTypeToString(rightDataType)),
+                                rightDataType->ToString()),
                     unaryExpression->GetCodeErrString());
             }
             break;
@@ -962,7 +1291,6 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             break;
         }
         }
-        unaryExpression->dataType = rightDataType;
     }
     else if (dynamic_cast<GroupingExpression *>(expression))
     {
@@ -970,31 +1298,28 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             dynamic_cast<GroupingExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(
             groupingExpression->GetExpression());
-        TokenType exprDataType = groupingExpression->GetExpression()->dataType;
-        groupingExpression->dataType = exprDataType;
+        exprToDataTypeMap[groupingExpression] =
+            exprToDataTypeMap[groupingExpression->GetExpression()];
     }
     else if (dynamic_cast<CastExpression *>(expression))
     {
         CastExpression *castExpression =
             dynamic_cast<CastExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(castExpression->GetExpression());
-        TokenType exprDataType = castExpression->GetExpression()->dataType;
-        castExpression->dataType = castExpression->GetCastToType()->GetType();
-        // TODO: is cast possible?
-        // boolean are only catable to int types. it is one directional
-        // thing. cannot cast int to bool. what types cannot be cast to
-        // another?
-        //
 
-        // Only allow bool to bool cast for now.
-        if (castExpression->dataType == TokenType::BOOL)
+        exprToDataTypeMap[castExpression] =
+            currentScope->datatypesMap[castExpression->castToType->GetLexeme()];
+        if (exprToDataTypeMap[castExpression]->GetType() ==
+            DataType::Type::BOOL)
         {
-            if (exprDataType != TokenType::BOOL)
+            if (exprToDataTypeMap[castExpression]->GetType() !=
+                DataType::Type::BOOL)
             {
                 ReportError(
                     std::format("Cannot cast datatype '{}' to datatype '{}'",
-                                TokenDataTypeToString(exprDataType),
-                                castExpression->GetCastToType()->GetLexeme()),
+                                exprToDataTypeMap[castExpression->expression]
+                                    ->ToString(),
+                                exprToDataTypeMap[castExpression]->ToString()),
                     castExpression->GetCodeErrString());
             }
         }
@@ -1007,38 +1332,47 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         {
         case TokenType::INTEGER_LITERAL:
         {
-            primaryExpression->dataType = TokenType::I32;
+            exprToDataTypeMap[primaryExpression] =
+                currentScope->datatypesMap["i32"];
             break;
         }
         case TokenType::FLOAT_LITERAL:
         {
-            primaryExpression->dataType = TokenType::F32;
+            exprToDataTypeMap[primaryExpression] =
+                currentScope->datatypesMap["f32"];
             break;
         }
         case TokenType::STRING_LITERAL:
         {
-            // TODO: Need to handle pointers first.
+            StringDataType *strType = gZtoonArena.Allocate<StringDataType>();
+            auto strLiteral = dynamic_cast<TokenLiteral<std::string> const *>(
+                primaryExpression->primary);
+            strType->len = strLiteral->value.length();
+            strType->sizeInBytes = strLiteral->value.size();
+            strType->dataType = currentScope->datatypesMap["u8"];
+            exprToDataTypeMap[primaryExpression] = strType;
             break;
         }
         case TokenType::CHARACTER_LITERAL:
         {
-            primaryExpression->dataType = TokenType::U8;
+            exprToDataTypeMap[primaryExpression] =
+                currentScope->datatypesMap["u8"];
             break;
         }
         case TokenType::TRUE:
         case TokenType::FALSE:
         {
-            primaryExpression->dataType = TokenType::BOOL;
+            exprToDataTypeMap[primaryExpression] =
+                currentScope->datatypesMap["bool"];
             break;
         }
         case TokenType::IDENTIFIER:
         {
-            primaryExpression->dataType =
+            exprToDataTypeMap[primaryExpression] =
                 currentScope
-                    ->GetVariable(primaryExpression->GetPrimary()->GetLexeme(),
+                    ->GetVariable(primaryExpression->primary->GetLexeme(),
                                   primaryExpression->GetCodeErrString())
-                    ->GetDataType()
-                    ->GetType();
+                    ->dataType;
             break;
         }
         default:

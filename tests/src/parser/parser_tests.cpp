@@ -423,8 +423,8 @@ TEST(ParserCastExpressionTest)
               "Parsed statement should be an ExpressionStatement");
 
     // The expression should be a cast expression.
-    CastExpression const *castExpr =
-        dynamic_cast<CastExpression const *>(exprStmt->GetExpression());
+    CastExpression *castExpr =
+        dynamic_cast<CastExpression *>(exprStmt->GetExpression());
     ASSERT_NE(castExpr, nullptr, "Expression should be a CastExpression");
 
     // The inner expression should be a primary literal "1".
@@ -436,8 +436,8 @@ TEST(ParserCastExpressionTest)
               "Inner literal should be '1'");
 
     // The cast should use the datatype "i32".
-    ASSERT_EQ(TokenDataTypeToString(castExpr->GetDataType()), "i32",
-              "Cast data type should be 'i32'");
+    ASSERT_EQ(TokenDataTypeToString(castExpr->GetCastToType()->GetType()),
+              "i32", "Cast data type should be 'i32'");
 }
 
 //--------------------------------------------------------------------------
@@ -1172,27 +1172,23 @@ TEST(ParserFunctionPrototypeTest)
     ASSERT_EQ(stmts.size(), 1,
               "Expected one top-level statement for a function prototype");
 
-    // The statement should be an expression statement wrapping a FnExpression.
-    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr,
-              "Top-level statement should be an ExpressionStatement");
-    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
-    ASSERT_NE(fnExpr, nullptr, "Expression should be a FnExpression");
+    auto *fnStmt = dynamic_cast<FnStatement *>(stmts[0]);
+    ASSERT_NE(fnStmt, nullptr, "fnStmt should be a FnStatement");
 
     // Check that the function identifier is "myFunc".
-    ASSERT_EQ(fnExpr->GetIdentifier()->GetLexeme(), std::string("myFunc"),
+    ASSERT_EQ(fnStmt->GetIdentifier()->GetLexeme(), std::string("myFunc"),
               "Function name should be 'myFunc'");
 
     // Check that there are no GetParameters().
-    ASSERT_EQ(fnExpr->GetParameters().size(), 0,
+    ASSERT_EQ(fnStmt->GetParameters().size(), 0,
               "Function prototype should have zero GetParameters()");
 
     // Check that the return type is "i32".
-    ASSERT_EQ(fnExpr->GetReturnDatatype()->GetLexeme(), std::string("i32"),
+    ASSERT_EQ(fnStmt->GetReturnDatatype()->GetLexeme(), std::string("i32"),
               "Return type should be 'i32'");
 
     // The prototype flag should be set.
-    ASSERT_EQ(fnExpr->IsPrototype(), true,
+    ASSERT_EQ(fnStmt->IsPrototype(), true,
               "FnExpression should be marked as a prototype");
 }
 
@@ -1209,42 +1205,39 @@ TEST(ParserFunctionDefinitionTest)
     ASSERT_EQ(stmts.size(), 1,
               "Expected one top-level statement for a function definition");
 
-    auto *exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr,
-              "Top-level statement should be an ExpressionStatement");
-    auto *fnExpr = dynamic_cast<FnExpression *>(exprStmt->GetExpression());
-    ASSERT_NE(fnExpr, nullptr, "Expression should be a FnExpression");
+    auto *fnStmt = dynamic_cast<FnStatement *>(stmts[0]);
+    ASSERT_NE(fnStmt, nullptr, "fnStmt should be a FnStatement");
 
     // Verify function name.
-    ASSERT_EQ(fnExpr->GetIdentifier()->GetLexeme(), std::string("add"),
+    ASSERT_EQ(fnStmt->GetIdentifier()->GetLexeme(), std::string("add"),
               "Function name should be 'add'");
 
     // Verify parameter list.
-    ASSERT_EQ(fnExpr->GetParameters().size(), 2,
+    ASSERT_EQ(fnStmt->GetParameters().size(), 2,
               "Function 'add' should have 2 GetParameters()");
-    auto *paramA = fnExpr->GetParameters()[0];
+    auto *paramA = fnStmt->GetParameters()[0];
     ASSERT_EQ(paramA->GetIdentifier()->GetLexeme(), std::string("a"),
               "First parameter should be 'a'");
     ASSERT_EQ(paramA->GetDataType()->GetLexeme(), std::string("i32"),
               "Type of 'a' should be 'i32'");
-    auto *paramB = fnExpr->GetParameters()[1];
+    auto *paramB = fnStmt->GetParameters()[1];
     ASSERT_EQ(paramB->GetIdentifier()->GetLexeme(), std::string("b"),
               "Second parameter should be 'b'");
     ASSERT_EQ(paramB->GetDataType()->GetLexeme(), std::string("i32"),
               "Type of 'b' should be 'i32'");
 
     // Verify return type.
-    ASSERT_EQ(fnExpr->GetReturnDatatype()->GetLexeme(), std::string("i32"),
+    ASSERT_EQ(fnStmt->GetReturnDatatype()->GetLexeme(), std::string("i32"),
               "Return type should be 'i32'");
 
     // This is a full definition so it should not be marked as a prototype.
-    ASSERT_EQ(fnExpr->IsPrototype(), false,
+    ASSERT_EQ(fnStmt->IsPrototype(), false,
               "Function definition should not be a prototype");
 
     // Verify that a block statement is present.
-    ASSERT_NE(fnExpr->GetBlockStatement(), nullptr,
+    ASSERT_NE(fnStmt->GetBlockStatement(), nullptr,
               "Function definition must have a block statement");
-    ASSERT_NE(fnExpr->GetBlockStatement()->GetStatements().size(), 0,
+    ASSERT_NE(fnStmt->GetBlockStatement()->GetStatements().size(), 0,
               "Function block should contain at least one statement");
 }
 
@@ -1316,23 +1309,21 @@ TEST(ParserComplexFunctionTest)
               "one variable assignment)");
 
     // Check the first function: "complex"
-    auto *fnExpr1 = dynamic_cast<FnExpression *>(
-        dynamic_cast<ExpressionStatement *>(stmts[0])->GetExpression());
-    ASSERT_NE(fnExpr1, nullptr,
+    auto *fnStmt1 = dynamic_cast<FnStatement *>(stmts[0]);
+    ASSERT_NE(fnStmt1, nullptr,
               "First statement should be a FnExpression for 'complex'");
-    ASSERT_EQ(fnExpr1->GetIdentifier()->GetLexeme(), std::string("complex"),
+    ASSERT_EQ(fnStmt1->GetIdentifier()->GetLexeme(), std::string("complex"),
               "Function name should be 'complex'");
-    ASSERT_EQ(fnExpr1->GetParameters().size(), 3,
+    ASSERT_EQ(fnStmt1->GetParameters().size(), 3,
               "Function 'complex' should have 3 GetParameters()");
 
     // Check the second function: "wrapper"
-    auto *fnExpr2 = dynamic_cast<FnExpression *>(
-        dynamic_cast<ExpressionStatement *>(stmts[1])->GetExpression());
-    ASSERT_NE(fnExpr2, nullptr,
+    auto *fnStmt2 = dynamic_cast<FnStatement *>(stmts[1]);
+    ASSERT_NE(fnStmt2, nullptr,
               "Second statement should be a FnExpression for 'wrapper'");
-    ASSERT_EQ(fnExpr2->GetIdentifier()->GetLexeme(), std::string("wrapper"),
+    ASSERT_EQ(fnStmt2->GetIdentifier()->GetLexeme(), std::string("wrapper"),
               "Function name should be 'wrapper'");
-    ASSERT_EQ(fnExpr2->GetParameters().size(), 0,
+    ASSERT_EQ(fnStmt2->GetParameters().size(), 0,
               "Function 'wrapper' should have 0 GetParameters()");
 
     // Check the third statement: variable assignment with a function call.

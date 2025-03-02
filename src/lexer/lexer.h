@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 // One Megabyte
-#define ZTOON_ARENA_SIZE 1024ull * 1024ull
+#define ZTOON_ARENA_SIZE 1024ull * 1024ull * 100ull
 extern MemoryArena gZtoonArena;
 
 enum class TokenType
@@ -26,6 +26,7 @@ enum class TokenType
     F64,
     BOOL,
     NOTYPE,
+    STR,
     INTEGER_LITERAL,
     FLOAT_LITERAL,
     STRING_LITERAL,

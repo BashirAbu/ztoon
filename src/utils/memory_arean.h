@@ -1,6 +1,7 @@
 #pragma once
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <new>
 #include <vector>
@@ -36,41 +37,32 @@ class MemoryArena
             delete member;
         }
 
-        delete base_ptr;
+        delete[] base_ptr;
     }
 
     template <typename T, typename... Args> T *Allocate(Args... args)
     {
         size_t allocSize = sizeof(T);
-        assert(size >= GetAllocatedSize() + allocSize);
+        size_t alignment = alignof(T);
 
-        T *allocated = new (head_ptr) T(args...);
+        size_t ptr = (size_t)(head_ptr);
+        size_t padding = -ptr & (alignment - 1);
+
+        assert(size >= GetAllocatedSize() + allocSize + padding);
+
+        uint8_t *allocationPos = head_ptr + padding;
+        head_ptr += padding;
         head_ptr += allocSize;
+        T *allocated = new (allocationPos) T(args...);
         IArenaMember *member = new ArenaMember<T>(allocated);
 
         arenaMembers.push_back(member);
 
-        allocatedSize += allocSize;
+        allocatedSize += (allocSize + padding);
 
         return allocated;
     }
-    template <typename T, typename... Args>
-    T *AllocateArray(size_t arrSize, Args... args)
-    {
-        size_t allocSize = sizeof(T) * arrSize;
-        assert(size >= (GetAllocatedSize() + allocSize));
-        T *ret = (T *)base_ptr;
-        for (size_t index = 0; index < (allocSize / (sizeof(T))); index++)
-        {
-            T *allocated = new (head_ptr) T(args...);
-            head_ptr += sizeof(T);
-            IArenaMember *member = new ArenaMember<T>(allocated);
 
-            arenaMembers.push_back(member);
-        }
-        allocatedSize += allocSize;
-        return ret;
-    }
     size_t GetAllocatedSize() { return allocatedSize; }
 
   private:

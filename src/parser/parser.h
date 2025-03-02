@@ -28,19 +28,21 @@
 
   block -> "{" statement* "}" ;
 
+  fn_statement -> "fn" IDENTIFIER "("  (var_decl_statement ","?)*  ")" ("->"
+  DATATYPE)? block? ;
 
   statement_expr -> expression ;
 
 
-  fn_expression -> "fn" IDENTIFIER "("  (var_decl_statement ","?)*  ")" "->"
-  DATATYPE block ;
 
 
 
 
-  expression -> ternary_expression ;
-  ternary_expression -> expression ? expression : expression ;
-  or -> and ("||" and)* ;
+  expression -> lambda_expression ;
+  lambda->expression -> (fn "(" (var_decl_statement ","?)* ")" block) |
+  ternary_expression ;
+  ternary_expression -> (expression ? expression :
+  expression) | or ; or -> and ("||" and)* ;
 
   and -> bitwise_or ("&&" bitwise_or)* ;
 
@@ -76,12 +78,10 @@ class Expression
   public:
     virtual ~Expression() {}
     virtual std::string PrettyString(std::string &prefix, bool isLeft) = 0;
-    TokenType GetDataType() const { return dataType; }
     virtual CodeErrString GetCodeErrString() = 0;
     virtual Token const *GetFirstToken() const = 0;
 
   protected:
-    TokenType dataType = TokenType::UNKNOWN;
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -385,14 +385,14 @@ class RetStatement : public Statement
     friend class SemanticAnalyzer;
 };
 
-class FnExpression : public Expression
+class FnStatement : public Statement
 {
   public:
-    std::string PrettyString(std::string &prefix, bool isLeft) override;
+    std::string PrettyString(std::string &prefix) override;
     CodeErrString GetCodeErrString() override
     {
         CodeErrString es = {};
-        es.firstToken = GetFirstToken();
+        es.firstToken = fnToken;
         es.str = std::format("fn {} (", identifier->GetLexeme());
         for (VarDeclStatement *s : parameters)
         {
@@ -409,7 +409,6 @@ class FnExpression : public Expression
         }
         return es;
     }
-    Token const *GetFirstToken() const override { return fnToken; }
     Token const *GetIdentifier() const { return identifier; }
     Token const *GetReturnDatatype() const { return returnDataType; }
     bool IsPrototype() { return isPrototype; }
@@ -427,6 +426,44 @@ class FnExpression : public Expression
     friend class SemanticAnalyzer;
 };
 
+class LambdaExpression : public Expression
+{
+  public:
+    std::string PrettyString(std::string &prefix, bool isLeft) override;
+    Token const *GetFirstToken() { return fnToken; }
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = fnToken;
+        es.str = std::format("Lambda");
+        for (VarDeclStatement *s : parameters)
+        {
+            es.str += std::format("{}, ", s->GetCodeErrString().str);
+        }
+        if (es.str.ends_with(','))
+        {
+            es.str.pop_back();
+        }
+        es.str += std::format(")");
+        if (returnDataType)
+        {
+            es.str += " -> " + returnDataType->GetLexeme();
+        }
+        return es;
+    }
+    Token const *GetReturnDatatype() const { return returnDataType; }
+    BlockStatement *GetBlockStatement() { return blockStatement; };
+    std::vector<VarDeclStatement *> &GetParameters() { return parameters; }
+    Token const *GetFirstToken() const override { return fnToken; }
+
+  private:
+    Token const *fnToken = nullptr;
+    Token const *returnDataType = nullptr;
+    std::vector<VarDeclStatement *> parameters;
+    BlockStatement *blockStatement = nullptr;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
 class FnCallExpression : public Expression
 {
   public:
@@ -591,9 +628,10 @@ class CastExpression : public Expression
         CodeErrString es = {};
         es.firstToken = GetFirstToken();
 
-        es.str = std::format("{} as {}", expression->GetCodeErrString().str,
-                             castToType ? castToType->GetLexeme()
-                                        : TokenDataTypeToString(dataType));
+        es.str = std::format(
+            "{} as {}", expression->GetCodeErrString().str,
+            castToType ? castToType->GetLexeme()
+                       : TokenDataTypeToString(castToType->GetType()));
         return es;
     }
 
@@ -644,11 +682,12 @@ class Parser
 
   private:
     Statement *ParseStatement();
+    Statement *ParseBlockStatement();
+    Statement *ParseFnStatement();
     Statement *ParseVarDeclStatement();
     Statement *ParseVarAssignmentStatement();
     Statement *ParseVarCompundAssignmentStatement();
     Statement *ParseExpressionStatement();
-    Statement *ParseBlockStatement();
     Statement *ParseIfStatement();
     Statement *ParseElseIfStatement();
     Statement *ParseElseStatement();
@@ -656,7 +695,7 @@ class Parser
     Statement *ParseForLoopStatement();
     Statement *ParseRetStatement();
     Expression *ParseExpression();
-    Expression *ParseFnExpression();
+    Expression *ParseLambdaExpression();
     Expression *ParseTernaryExpression();
     Expression *ParseORExpression();
     Expression *ParseANDExpression();

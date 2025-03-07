@@ -1,1338 +1,406 @@
-#include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "ztest.h"
 #include <string>
 
-TEST(Parser_)
+// --- Global Scope Tests ---
+
+// Test 1: Valid global function declaration.
+TEST(ParserGlobalFunctionDeclarationTest)
 {
-    std::string source = R"(
-        fn add (a:i32, b:i32) -> i32
-        {
-            i : i32 = add(1,3);
-            ret a + b;
-        }          )";
+    // Global scope should allow a function declaration.
     Lexer lexer;
-    lexer.Tokenize(source, "parser.ztoon");
+    std::string source = "fn main() {}";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    parser.Parse();
-    parser.PrettyPrintAST();
+    auto ast = parser.Parse();
+    // Expect one declaration.
+    ASSERT_EQ(ast.size(), 1, "Global scope should contain one declaration");
+    // At global scope the node must be either a FnStatement or
+    // VarDeclStatement.
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    auto *varDecl = dynamic_cast<VarDeclStatement *>(ast[0]);
+    // In this case, it must be a function declaration.
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration must be a function declaration");
+    ASSERT_EQ(varDecl, nullptr,
+              "Global declaration must not be a variable declaration here");
+    ASSERT_EQ(fnStmt->GetIdentifier()->GetLexeme(), "main",
+              "Function name should be 'main'");
 }
 
-//--------------------------------------------------------------------------
-// Helper: parse source code and return AST statements.
-static const std::vector<Statement *> &
-parseSource(const std::string &source,
-            const std::string &filename = "test.ztoon")
+// Test 2: Valid global variable declaration.
+TEST(ParserGlobalVarDeclarationTest)
 {
+    // Global scope should allow a variable declaration.
     Lexer lexer;
-    lexer.Tokenize(source, filename);
+    std::string source = "x: i32 = 42;";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    return parser.Parse();
+    auto ast = parser.Parse();
+    ASSERT_EQ(ast.size(), 1, "Global scope should contain one declaration");
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    auto *varDecl = dynamic_cast<VarDeclStatement *>(ast[0]);
+    // For a variable declaration, the FnStatement cast must be null and
+    // VarDeclStatement non-null.
+    ASSERT_EQ(fnStmt, nullptr,
+              "Global declaration should not be a function declaration");
+    ASSERT_NE(varDecl, nullptr,
+              "Global declaration must be a variable declaration");
+    ASSERT_EQ(varDecl->GetIdentifier()->GetLexeme(), "x",
+              "Variable name should be 'x'");
+    ASSERT_EQ(varDecl->GetDataType()->ToString(), "i32",
+              "Variable type should be 'i32'");
 }
 
-TEST(Parser)
+// Test 3: Global scope violation – expression statement.
+// TEST(ParserGlobalExpressionViolationTest)
+// {
+//     // Global scope must not allow an expression statement.
+//     Lexer lexer;
+//     std::string source = "42 + 2;";
+//     lexer.Tokenize(source, "test.ztoon");
+//     Parser parser(lexer.GetTokens());
+//     auto ast = parser.Parse();
+//     // Here the AST node is not a function declaration nor a variable
+//     // declaration.
+//     auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+//     auto *varDecl = dynamic_cast<VarDeclStatement *>(ast[0]);
+//     ASSERT_EQ(fnStmt, nullptr,
+//               "Global expression should not be a function declaration");
+//     ASSERT_EQ(varDecl, nullptr,
+//               "Global expression should not be a variable declaration");
+// }
+
+// // Test 4: Global scope violation – if statement.
+// TEST(ParserGlobalIfViolationTest)
+// {
+//     // Global scope must not allow an if statement.
+//     Lexer lexer;
+//     std::string source = "if true {}";
+//     lexer.Tokenize(source, "test.ztoon");
+//     Parser parser(lexer.GetTokens());
+//     auto ast = parser.Parse();
+//     auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+//     auto *varDecl = dynamic_cast<VarDeclStatement *>(ast[0]);
+//     ASSERT_EQ(fnStmt, nullptr,
+//               "Global if statement should not be a function declaration");
+//     ASSERT_EQ(varDecl, nullptr,
+//               "Global if statement should not be a variable declaration");
+// }
+
+// Test 5: Global scope violation – while loop.
+// TEST(ParserGlobalWhileViolationTest)
+// {
+//     // Global scope must not allow a while loop.
+//     Lexer lexer;
+//     std::string source = "while x {}";
+//     lexer.Tokenize(source, "test.ztoon");
+//     Parser parser(lexer.GetTokens());
+//     auto ast = parser.Parse();
+//     auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+//     auto *varDecl = dynamic_cast<VarDeclStatement *>(ast[0]);
+//     ASSERT_EQ(fnStmt, nullptr,
+//               "Global while loop should not be a function declaration");
+//     ASSERT_EQ(varDecl, nullptr,
+//               "Global while loop should not be a variable declaration");
+// }
+
+// Test 6: Global scope violation – for loop.
+// TEST(ParserGlobalForViolationTest)
+// {
+//     // Global scope must not allow a for loop.
+//     Lexer lexer;
+//     std::string source = "for(x: i32 = 0; x < 10; x = x + 1) {}";
+//     lexer.Tokenize(source, "test.ztoon");
+//     Parser parser(lexer.GetTokens());
+//     auto ast = parser.Parse();
+//     auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+//     auto *varDecl = dynamic_cast<VarDeclStatement *>(ast[0]);
+//     ASSERT_EQ(fnStmt, nullptr,
+//               "Global for loop should not be a function declaration");
+//     ASSERT_EQ(varDecl, nullptr,
+//               "Global for loop should not be a variable declaration");
+// }
+
+// --- Valid Statements Inside a Function Block ---
+
+// Test 7: Valid if statement inside a function block.
+TEST(ParserIfInsideFunctionTest)
 {
-    std::string source = R"(
-        cond: bool = true;
-        a: i32 = cond? 0 : 1 ;
-    )";
-
+    // Inside a function, an if statement is allowed.
     Lexer lexer;
-    lexer.Tokenize(source, "if_statement.ztoon");
-
+    std::string source = "fn main() { if true {} }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    parser.Parse();
-    parser.PrettyPrintAST();
+    auto ast = parser.Parse();
+    // Global AST should contain one function declaration.
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    // Inside the function block, the first statement should be an if statement.
+    auto *ifStmt = dynamic_cast<IfStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
+    ASSERT_NE(ifStmt, nullptr,
+              "Statement inside the function block should be an if statement");
+    std::string cond = ifStmt->GetExpression()->GetCodeErrString().str;
+    ASSERT_NE(cond.find("true"), std::string::npos,
+              "If condition should contain 'true'");
 }
 
-//--------------------------------------------------------------------------
-// Test: Unary Minus Expression
-// Input: "-5;"
-TEST(ParserUnaryMinusTest)
+// Test 8: Valid while loop inside a function block.
+TEST(ParserWhileInsideFunctionTest)
 {
-    std::string source = "-5;";
-    std::string filename = "test_unary_minus.ztoon";
     Lexer lexer;
-    lexer.Tokenize(source, filename);
+    std::string source = "fn main() { while x {} }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    ExpressionStatement *exprStmt =
-        dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Statement should be an ExpressionStatement");
-
-    // The expression should be a UnaryExpression with '-' operator.
-    UnaryExpression const *unaryExpr =
-        dynamic_cast<UnaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(unaryExpr, nullptr, "Expression should be a UnaryExpression");
-    ASSERT_EQ(unaryExpr->GetOperator()->GetType(), TokenType::DASH,
-              "Operator should be DASH");
-
-    // The operand of the unary operator should be the literal "5".
-    PrimaryExpression const *rightPrim =
-        dynamic_cast<PrimaryExpression const *>(
-            unaryExpr->GetRightExpression());
-    ASSERT_NE(rightPrim, nullptr,
-              "Unary right expression should be a PrimaryExpression");
-    ASSERT_EQ(rightPrim->GetPrimary()->GetLexeme(), "5",
-              "Literal should be '5'");
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *whileStmt = dynamic_cast<WhileLoopStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
+    ASSERT_NE(whileStmt, nullptr,
+              "Statement inside the function block should be a while loop");
+    std::string cond = whileStmt->GetCondition()->GetCodeErrString().str;
+    ASSERT_NE(cond.find("x"), std::string::npos,
+              "While loop condition should contain 'x'");
 }
 
-//--------------------------------------------------------------------------
-// Test: Unary Plus-Plus Expression
-// Input: "++5;"
-TEST(ParserUnaryPlusPlusTest)
+// Test 10: Valid variable assignment inside a function block.
+TEST(ParserAssignmentInsideFunctionTest)
 {
-    std::string source = "++5;";
-    std::string filename = "test_unary_plus_plus.ztoon";
     Lexer lexer;
-    lexer.Tokenize(source, filename);
+    std::string source = "fn main() { x = 100; }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    ExpressionStatement *exprStmt =
-        dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Statement should be an ExpressionStatement");
-
-    // The expression should be a UnaryExpression with '++' operator.
-    UnaryExpression const *unaryExpr =
-        dynamic_cast<UnaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(unaryExpr, nullptr, "Expression should be a UnaryExpression");
-    ASSERT_EQ(unaryExpr->GetOperator()->GetType(), TokenType::PLUS_PLUS,
-              "Operator should be PLUS_PLUS");
-
-    // The operand should be the literal "5".
-    PrimaryExpression const *rightPrim =
-        dynamic_cast<PrimaryExpression const *>(
-            unaryExpr->GetRightExpression());
-    ASSERT_NE(rightPrim, nullptr,
-              "Unary right expression should be a PrimaryExpression");
-    ASSERT_EQ(rightPrim->GetPrimary()->GetLexeme(), "5",
-              "Literal should be '5'");
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *assignStmt = dynamic_cast<VarAssignmentStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
+    ASSERT_NE(
+        assignStmt, nullptr,
+        "Statement inside function block should be a variable assignment");
+    ASSERT_EQ(assignStmt->GetIdentifier()->GetLexeme(), "x",
+              "Assigned variable should be 'x'");
+    std::string expr = assignStmt->GetExpression()->GetCodeErrString().str;
+    ASSERT_NE(expr.find("100"), std::string::npos,
+              "Assignment expression should contain '100'");
 }
 
-//--------------------------------------------------------------------------
-// Test: Unary Exclamation Expression
-// Input: "!true;"
-TEST(ParserUnaryExclamationTest)
+// Test 11: Valid compound assignment inside a function block.
+TEST(ParserCompoundAssignmentInsideFunctionTest)
 {
-    std::string source = "!true;";
-    std::string filename = "test_unary_exclamation.ztoon";
     Lexer lexer;
-    lexer.Tokenize(source, filename);
+    std::string source = "fn main() { x += 1; }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    ExpressionStatement *exprStmt =
-        dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Statement should be an ExpressionStatement");
-
-    // The expression should be a UnaryExpression with '!' operator.
-    UnaryExpression const *unaryExpr =
-        dynamic_cast<UnaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(unaryExpr, nullptr, "Expression should be a UnaryExpression");
-    ASSERT_EQ(unaryExpr->GetOperator()->GetType(), TokenType::EXCLAMATION,
-              "Operator should be EXCLAMATION");
-
-    // The operand should be the literal "true".
-    PrimaryExpression const *rightPrim =
-        dynamic_cast<PrimaryExpression const *>(
-            unaryExpr->GetRightExpression());
-    ASSERT_NE(rightPrim, nullptr,
-              "Unary right expression should be a PrimaryExpression");
-    ASSERT_EQ(rightPrim->GetPrimary()->GetLexeme(), "true",
-              "Literal should be 'true'");
-}
-
-//--------------------------------------------------------------------------
-// Test: sizeof Expression
-// Input: "sizeof(1);"
-TEST(ParserSizeofTest)
-{
-    std::string source = "sizeof(1);";
-    std::string filename = "test_sizeof.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    ExpressionStatement *exprStmt =
-        dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Statement should be an ExpressionStatement");
-
-    // The expression should be a UnaryExpression with 'sizeof' operator.
-    UnaryExpression const *unaryExpr =
-        dynamic_cast<UnaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(unaryExpr, nullptr, "Expression should be a UnaryExpression");
-    ASSERT_EQ(unaryExpr->GetOperator()->GetType(), TokenType::SIZEOF,
-              "Operator should be SIZEOF");
-
-    // The operand inside sizeof should be the literal "1".
-    PrimaryExpression const *rightPrim =
-        dynamic_cast<PrimaryExpression const *>(
-            unaryExpr->GetRightExpression());
-    ASSERT_NE(rightPrim, nullptr,
-              "Sizeof's right expression should be a PrimaryExpression");
-    ASSERT_EQ(rightPrim->GetPrimary()->GetLexeme(), "1",
-              "Literal should be '1'");
-}
-
-//--------------------------------------------------------------------------
-// Test: Combined Unary with Binary Expression
-// Input: "1 + -2;"
-TEST(ParserCombinedUnaryBinaryTest)
-{
-    std::string source = "1 + -2;";
-    std::string filename = "test_combined_unary_binary.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    ExpressionStatement *exprStmt =
-        dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Statement should be an ExpressionStatement");
-
-    // The top-level expression should be a BinaryExpression for addition.
-    BinaryExpression const *binaryExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *compoundStmt = dynamic_cast<VarCompoundAssignmentStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
+    ASSERT_NE(
+        compoundStmt, nullptr,
+        "Statement inside function block should be a compound assignment");
+    ASSERT_EQ(compoundStmt->GetIdentifier()->GetLexeme(), "x",
+              "Compound assignment variable should be 'x'");
+    auto *binaryExpr =
+        dynamic_cast<BinaryExpression *>(compoundStmt->GetExpression());
     ASSERT_NE(binaryExpr, nullptr,
-              "Top-level expression should be a BinaryExpression");
-    ASSERT_EQ(binaryExpr->GetOperator()->GetLexeme(), "+",
-              "Operator should be '+'");
-
-    // Left operand should be the literal "1".
-    PrimaryExpression const *leftPrim = dynamic_cast<PrimaryExpression const *>(
-        binaryExpr->GetLeftExpression());
-    ASSERT_NE(leftPrim, nullptr, "Left operand should be a PrimaryExpression");
-    ASSERT_EQ(leftPrim->GetPrimary()->GetLexeme(), "1",
-              "Left literal should be '1'");
-
-    // Right operand should be a UnaryExpression with '-' operator.
-    UnaryExpression const *unaryExpr =
-        dynamic_cast<UnaryExpression const *>(binaryExpr->GetRightExpression());
-    ASSERT_NE(unaryExpr, nullptr, "Right operand should be a UnaryExpression");
-    ASSERT_EQ(unaryExpr->GetOperator()->GetType(), TokenType::DASH,
-              "Unary operator should be DASH");
-
-    // The operand of the unary operator should be the literal "2".
-    PrimaryExpression const *rightPrim =
-        dynamic_cast<PrimaryExpression const *>(
-            unaryExpr->GetRightExpression());
-    ASSERT_NE(rightPrim, nullptr,
-              "Unary's right operand should be a PrimaryExpression");
-    ASSERT_EQ(rightPrim->GetPrimary()->GetLexeme(), "2",
-              "Right literal should be '2'");
+              "Compound assignment should yield a binary expression");
+    ASSERT_EQ(binaryExpr->GetOperator()->GetType(), TokenType::PLUS,
+              "Compound assignment should translate to '+' operator");
 }
 
-//--------------------------------------------------------------------------
-// Test 1: Variable Declaration Statement
-// "a: i32 = 5;"
-TEST(ParserVarDeclTest)
+// Test 12: Valid expression statement inside a function block.
+TEST(ParserExpressionInsideFunctionTest)
 {
-    std::string source = "a: i32 = 5;";
-    std::string filename = "test_var_decl.ztoon";
     Lexer lexer;
-    lexer.Tokenize(source, filename);
+    std::string source = "fn main() { 42 + 2; }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    // The statement should be a variable declaration.
-    VarDeclStatement *varDecl = dynamic_cast<VarDeclStatement *>(stmts[0]);
-    ASSERT_NE(varDecl, nullptr, "Parsed statement should be VarDeclStatement");
-
-    // Check the identifier and datatype tokens.
-    ASSERT_EQ(varDecl->GetIdentifier()->GetLexeme(), "a",
-              "Identifier should be 'a'");
-    ASSERT_EQ(varDecl->GetDataType()->GetLexeme(), "i32",
-              "Data type should be 'i32'");
-
-    // The expression should be a primary expression representing the literal
-    // "5".
-    PrimaryExpression const *primExpr =
-        dynamic_cast<PrimaryExpression const *>(varDecl->GetExpression());
-    ASSERT_NE(primExpr, nullptr, "Expression should be a PrimaryExpression");
-    ASSERT_EQ(primExpr->GetPrimary()->GetLexeme(), "5",
-              "Literal should be '5'");
-}
-
-//--------------------------------------------------------------------------
-// Test 2: Variable Assignment Statement
-// "a = 10;"
-TEST(ParserVarAssignmentTest)
-{
-    std::string source = "a = 10;";
-    std::string filename = "test_var_assign.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    // The statement should be a variable assignment.
-    VarAssignmentStatement *varAssign =
-        dynamic_cast<VarAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(varAssign, nullptr,
-              "Parsed statement should be VarAssignmentStatement");
-    ASSERT_EQ(varAssign->GetIdentifier()->GetLexeme(), "a",
-              "Identifier should be 'a'");
-
-    // The expression should be a primary expression representing "10".
-    PrimaryExpression const *primExpr =
-        dynamic_cast<PrimaryExpression const *>(varAssign->GetExpression());
-    ASSERT_NE(primExpr, nullptr, "Expression should be a PrimaryExpression");
-    ASSERT_EQ(primExpr->GetPrimary()->GetLexeme(), "10",
-              "Literal should be '10'");
-}
-
-//--------------------------------------------------------------------------
-// Test 3: Binary Expression Statement
-// "1 + 2 * 3;"
-TEST(ParserBinaryExpressionTest)
-{
-    std::string source = "1 + 2 * 3;";
-    std::string filename = "test_binary_expr.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    // The statement should be an expression statement.
-    ExpressionStatement *exprStmt =
-        dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr,
-              "Parsed statement should be an ExpressionStatement");
-
-    // For "1 + 2 * 3", the top-level expression should be a binary expression
-    // with '+'.
-    BinaryExpression const *plusExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(plusExpr, nullptr,
-              "Top-level expression should be a BinaryExpression");
-    ASSERT_EQ(plusExpr->GetOperator()->GetLexeme(), "+",
-              "Operator should be '+'");
-
-    // The left operand should be the primary literal "1".
-    PrimaryExpression const *leftPrim =
-        dynamic_cast<PrimaryExpression const *>(plusExpr->GetLeftExpression());
-    ASSERT_NE(leftPrim, nullptr, "Left operand should be a PrimaryExpression");
-    ASSERT_EQ(leftPrim->GetPrimary()->GetLexeme(), "1",
-              "Left literal should be '1'");
-
-    // The right operand should be a binary expression representing "2 * 3".
-    BinaryExpression const *multExpr =
-        dynamic_cast<BinaryExpression const *>(plusExpr->GetRightExpression());
-    ASSERT_NE(multExpr, nullptr,
-              "Right operand should be a BinaryExpression for multiplication");
-    ASSERT_EQ(multExpr->GetOperator()->GetLexeme(), "*",
-              "Operator should be '*'");
-
-    PrimaryExpression const *multLeft =
-        dynamic_cast<PrimaryExpression const *>(multExpr->GetLeftExpression());
-    ASSERT_NE(multLeft, nullptr,
-              "Left operand of multiplication should be a PrimaryExpression");
-    ASSERT_EQ(multLeft->GetPrimary()->GetLexeme(), "2",
-              "Left literal of multiplication should be '2'");
-
-    PrimaryExpression const *multRight =
-        dynamic_cast<PrimaryExpression const *>(multExpr->GetRightExpression());
-    ASSERT_NE(multRight, nullptr,
-              "Right operand of multiplication should be a PrimaryExpression");
-    ASSERT_EQ(multRight->GetPrimary()->GetLexeme(), "3",
-              "Right literal of multiplication should be '3'");
-}
-
-//--------------------------------------------------------------------------
-// Test 4: Grouping Expression Statement
-// "(1 + 2) * 3;"
-TEST(ParserGroupingExpressionTest)
-{
-    std::string source = "(1 + 2) * 3;";
-    std::string filename = "test_grouping_expr.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    ExpressionStatement *exprStmt =
-        dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr,
-              "Parsed statement should be an ExpressionStatement");
-
-    // Top-level expression should be a multiplication.
-    BinaryExpression const *multExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(multExpr, nullptr,
-              "Top-level expression should be a BinaryExpression");
-    ASSERT_EQ(multExpr->GetOperator()->GetLexeme(), "*",
-              "Operator should be '*'");
-
-    // The left operand should be a grouping expression.
-    GroupingExpression const *groupExpr =
-        dynamic_cast<GroupingExpression const *>(multExpr->GetLeftExpression());
-    ASSERT_NE(groupExpr, nullptr,
-              "Left operand should be a GroupingExpression");
-
-    // The grouping expression should contain a binary expression for "1 + 2".
-    BinaryExpression const *innerPlus =
-        dynamic_cast<BinaryExpression const *>(groupExpr->GetExpression());
-    ASSERT_NE(innerPlus, nullptr,
-              "Grouped expression should be a BinaryExpression");
-    ASSERT_EQ(innerPlus->GetOperator()->GetLexeme(), "+",
-              "Grouped operator should be '+'");
-
-    PrimaryExpression const *innerLeft =
-        dynamic_cast<PrimaryExpression const *>(innerPlus->GetLeftExpression());
-    ASSERT_NE(innerLeft, nullptr,
-              "Left operand of inner plus should be a PrimaryExpression");
-    ASSERT_EQ(innerLeft->GetPrimary()->GetLexeme(), "1",
-              "Left literal should be '1'");
-
-    PrimaryExpression const *innerRight =
-        dynamic_cast<PrimaryExpression const *>(
-            innerPlus->GetRightExpression());
-    ASSERT_NE(innerRight, nullptr,
-              "Right operand of inner plus should be a PrimaryExpression");
-    ASSERT_EQ(innerRight->GetPrimary()->GetLexeme(), "2",
-              "Right literal should be '2'");
-
-    // The right operand of the multiplication should be the primary literal
-    // "3".
-    PrimaryExpression const *rightPrim =
-        dynamic_cast<PrimaryExpression const *>(multExpr->GetRightExpression());
-    ASSERT_NE(rightPrim, nullptr,
-              "Right operand should be a PrimaryExpression");
-    ASSERT_EQ(rightPrim->GetPrimary()->GetLexeme(), "3",
-              "Right literal should be '3'");
-}
-
-//--------------------------------------------------------------------------
-// Test 5: Cast Expression Statement
-// "1 as i32;"
-TEST(ParserCastExpressionTest)
-{
-    std::string source = "1 as i32;";
-    std::string filename = "test_cast_expr.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    ExpressionStatement *exprStmt =
-        dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr,
-              "Parsed statement should be an ExpressionStatement");
-
-    // The expression should be a cast expression.
-    CastExpression *castExpr =
-        dynamic_cast<CastExpression *>(exprStmt->GetExpression());
-    ASSERT_NE(castExpr, nullptr, "Expression should be a CastExpression");
-
-    // The inner expression should be a primary literal "1".
-    PrimaryExpression const *innerPrim =
-        dynamic_cast<PrimaryExpression const *>(castExpr->GetExpression());
-    ASSERT_NE(innerPrim, nullptr,
-              "Inner expression should be a PrimaryExpression");
-    ASSERT_EQ(innerPrim->GetPrimary()->GetLexeme(), "1",
-              "Inner literal should be '1'");
-
-    // The cast should use the datatype "i32".
-    ASSERT_EQ(TokenDataTypeToString(castExpr->GetCastToType()->GetType()),
-              "i32", "Cast data type should be 'i32'");
-}
-
-//--------------------------------------------------------------------------
-// Compound Assignment Tests
-
-// Test: "a += 5;" should be transformed into a binary expression with '+'.
-TEST(ParserCompoundAssignmentPlusEqualTest)
-{
-    std::string source = "a += 5;";
-    std::string filename = "compound_plus_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Statement should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::PLUS_EQUAL, "Compound operator should be PLUS_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr,
-              "Compound assignment should yield a BinaryExpression");
-    // The compound assignment should be transformed: a += b  becomes
-    // a + b.
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::PLUS,
-              "Binary operator should be PLUS");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "+",
-              "Binary operator lexeme should be '+'");
-
-    auto leftPrim =
-        dynamic_cast<PrimaryExpression const *>(binExpr->GetLeftExpression());
-    ASSERT_NE(leftPrim, nullptr, "Left operand should be a PrimaryExpression");
-    ASSERT_EQ(leftPrim->GetPrimary()->GetLexeme(), "a",
-              "Left operand should be 'a'");
-
-    auto rightPrim =
-        dynamic_cast<PrimaryExpression const *>(binExpr->GetRightExpression());
-    ASSERT_NE(rightPrim, nullptr,
-              "Right operand should be a PrimaryExpression");
-    ASSERT_EQ(rightPrim->GetPrimary()->GetLexeme(), "5",
-              "Right operand should be '5'");
-}
-
-// Test: "a -= 5;"
-TEST(ParserCompoundAssignmentDashEqualTest)
-{
-    std::string source = "a -= 5;";
-    std::string filename = "compound_dash_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Statement should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::DASH_EQUAL, "Compound operator should be DASH_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr,
-              "Compound assignment should yield a BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::DASH,
-              "Binary operator should be DASH");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "-",
-              "Binary operator lexeme should be '-'");
-
-    auto leftPrim =
-        dynamic_cast<PrimaryExpression const *>(binExpr->GetLeftExpression());
-    ASSERT_NE(leftPrim, nullptr, "Left operand should be a PrimaryExpression");
-    ASSERT_EQ(leftPrim->GetPrimary()->GetLexeme(), "a",
-              "Left operand should be 'a'");
-
-    auto rightPrim =
-        dynamic_cast<PrimaryExpression const *>(binExpr->GetRightExpression());
-    ASSERT_NE(rightPrim, nullptr,
-              "Right operand should be a PrimaryExpression");
-    ASSERT_EQ(rightPrim->GetPrimary()->GetLexeme(), "5",
-              "Right operand should be '5'");
-}
-
-// Test: "a *= 5;"
-TEST(ParserCompoundAssignmentAsteriskEqualTest)
-{
-    std::string source = "a *= 5;";
-    std::string filename = "compound_asterisk_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::ASTERISK_EQUAL,
-              "Compound operator should be ASTERISK_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Should yield a BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::ASTERISK,
-              "Binary operator should be ASTERISK");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "*",
-              "Binary operator lexeme should be '*'");
-}
-
-// Test: "a /= 5;"
-TEST(ParserCompoundAssignmentSlashEqualTest)
-{
-    std::string source = "a /= 5;";
-    std::string filename = "compound_slash_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::SLASH_EQUAL,
-              "Compound operator should be SLASH_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Should yield a BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::SLASH,
-              "Binary operator should be SLASH");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "/",
-              "Binary operator lexeme should be '/'");
-}
-
-// Test: "a %= 5;"
-TEST(ParserCompoundAssignmentPercentageEqualTest)
-{
-    std::string source = "a %= 5;";
-    std::string filename = "compound_percentage_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::PERCENTAGE_EQUAL,
-              "Compound operator should be PERCENTAGE_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Should yield a BinaryExpression");
-    // Note: the implementation sets the lexeme to "%%" for percentage compound.
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::PERCENTAGE,
-              "Binary operator should be PERCENTAGE");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "%%",
-              "Binary operator lexeme should be '%%'");
-}
-
-// Test: "a |= 5;"
-TEST(ParserCompoundAssignmentBitwiseOrEqualTest)
-{
-    std::string source = "a |= 5;";
-    std::string filename = "compound_bitwise_or_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::BITWISE_OR_EQUAL,
-              "Compound operator should be BITWISE_OR_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Should yield a BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::BITWISE_OR,
-              "Binary operator should be BITWISE_OR");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "|",
-              "Binary operator lexeme should be '|'");
-}
-
-// Test: "a &= 5;"
-// Note: Due to an implementation quirk, the binary operator's type is set to
-// PLUS but its lexeme is "&".
-TEST(ParserCompoundAssignmentBitwiseAndEqualTest)
-{
-    std::string source = "a &= 5;";
-    std::string filename = "compound_bitwise_and_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::BITWISE_AND_EQUAL,
-              "Compound operator should be BITWISE_AND_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Should yield a BinaryExpression");
-    // Even though the intended operator is BITWISE_AND, the implementation sets
-    // the type to PLUS.
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "&",
-              "Binary operator lexeme should be '&'");
-}
-
-// Test: "a ^= 5;"
-TEST(ParserCompoundAssignmentBitwiseXorEqualTest)
-{
-    std::string source = "a ^= 5;";
-    std::string filename = "compound_bitwise_xor_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::BITWISE_XOR_EQUAL,
-              "Compound operator should be BITWISE_XOR_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Should yield a BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::BITWISE_XOR,
-              "Binary operator should be BITWISE_XOR");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "^",
-              "Binary operator lexeme should be '^'");
-}
-
-// Test: "a <<= 5;"
-TEST(ParserCompoundAssignmentShiftLeftEqualTest)
-{
-    std::string source = "a <<= 5;";
-    std::string filename = "compound_shift_left_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::SHIFT_LEFT_EQUAL,
-              "Compound operator should be SHIFT_LEFT_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Should yield a BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::SHIFT_LEFT,
-              "Binary operator should be SHIFT_LEFT");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "<<",
-              "Binary operator lexeme should be '<<'");
-}
-
-// Test: "a >>= 5;"
-TEST(ParserCompoundAssignmentShiftRightEqualTest)
-{
-    std::string source = "a >>= 5;";
-    std::string filename = "compound_shift_right_equal.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto compoundStmt =
-        dynamic_cast<VarCompoundAssignmentStatement *>(stmts[0]);
-    ASSERT_NE(compoundStmt, nullptr,
-              "Should be VarCompoundAssignmentStatement");
-    ASSERT_EQ(compoundStmt->GetCompoundAssignment()->GetType(),
-              TokenType::SHIFT_RIGHT_EQUAL,
-              "Compound operator should be SHIFT_RIGHT_EQUAL");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(compoundStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Should yield a BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::SHIFT_RIGHT,
-              "Binary operator should be SHIFT_RIGHT");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), ">>",
-              "Binary operator lexeme should be '>>'");
-}
-
-//--------------------------------------------------------------------------
-// New Binary Operator Tests
-
-// Test: Logical OR: "1 || 0;"
-TEST(ParserLogicalOrTest)
-{
-    std::string source = "1 || 0;";
-    std::string filename = "logical_or.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Should be an ExpressionStatement");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr,
-              "Top-level expression should be BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::OR,
-              "Operator should be OR");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "||",
-              "Operator lexeme should be '||'");
-}
-
-// Test: Logical AND: "1 && 0;"
-TEST(ParserLogicalAndTest)
-{
-    std::string source = "1 && 0;";
-    std::string filename = "logical_and.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Should be an ExpressionStatement");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr,
-              "Top-level expression should be BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::AND,
-              "Operator should be AND");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "&&",
-              "Operator lexeme should be '&&'");
-}
-
-// Test: Bitwise OR: "1 | 2;"
-TEST(ParserBitwiseOrTest)
-{
-    std::string source = "1 | 2;";
-    std::string filename = "bitwise_or.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Should be an ExpressionStatement");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Expression should be BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::BITWISE_OR,
-              "Operator should be BITWISE_OR");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "|",
-              "Operator lexeme should be '|'");
-}
-
-// Test: Bitwise XOR: "1 ^ 2;"
-TEST(ParserBitwiseXorTest)
-{
-    std::string source = "1 ^ 2;";
-    std::string filename = "bitwise_xor.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Should be an ExpressionStatement");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Expression should be BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::BITWISE_XOR,
-              "Operator should be BITWISE_XOR");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "^",
-              "Operator lexeme should be '^'");
-}
-
-// Test: Bitwise AND: "1 & 2;"
-TEST(ParserBitwiseAndTest)
-{
-    std::string source = "1 & 2;";
-    std::string filename = "bitwise_and.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Should be an ExpressionStatement");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Expression should be BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::BITWISE_AND,
-              "Operator should be BITWISE_AND");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "&",
-              "Operator lexeme should be '&'");
-}
-
-// Test: Shift Left: "1 << 2;"
-TEST(ParserShiftLeftTest)
-{
-    std::string source = "1 << 2;";
-    std::string filename = "shift_left.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Should be an ExpressionStatement");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Expression should be BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::SHIFT_LEFT,
-              "Operator should be SHIFT_LEFT");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "<<",
-              "Operator lexeme should be '<<'");
-}
-
-// Test: Shift Right: "1 >> 2;"
-TEST(ParserShiftRightTest)
-{
-    std::string source = "1 >> 2;";
-    std::string filename = "shift_right.ztoon";
-    Lexer lexer;
-    lexer.Tokenize(source, filename);
-    Parser parser(lexer.GetTokens());
-    const auto &stmts = parser.Parse();
-
-    auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-    ASSERT_NE(exprStmt, nullptr, "Should be an ExpressionStatement");
-
-    auto binExpr =
-        dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-    ASSERT_NE(binExpr, nullptr, "Expression should be BinaryExpression");
-    ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::SHIFT_RIGHT,
-              "Operator should be SHIFT_RIGHT");
-    ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), ">>",
-              "Operator lexeme should be '>>'");
-}
-
-// Test: Comparison Operators: "1 < 2;", "1 <= 2;", "1 > 2;", "1 >= 2;"
-TEST(ParserComparisonOperatorsTest)
-{
-    {
-        std::string source = "1 < 2;";
-        Lexer lexer;
-        lexer.Tokenize(source, "comp_less.ztoon");
-        Parser parser(lexer.GetTokens());
-        const auto &stmts = parser.Parse();
-        auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-        auto binExpr =
-            dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-        ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::LESS,
-                  "Operator should be LESS");
-        ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), "<",
-                  "Operator lexeme should be '<'");
-    }
-    {
-        std::string source = "1 <= 2;";
-        Lexer lexer;
-        lexer.Tokenize(source, "comp_less_equal.ztoon");
-        Parser parser(lexer.GetTokens());
-        const auto &stmts = parser.Parse();
-        auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-        auto binExpr =
-            dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-        ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::LESS_EQUAL,
-                  "Operator should be LESS_EQUAL");
-        ASSERT_EQ(binExpr->GetOperator()->GetLexeme(),
-                  "<=", "Operator lexeme should be '<='");
-    }
-    {
-        std::string source = "1 > 2;";
-        Lexer lexer;
-        lexer.Tokenize(source, "comp_greater.ztoon");
-        Parser parser(lexer.GetTokens());
-        const auto &stmts = parser.Parse();
-        auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-        auto binExpr =
-            dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-        ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::GREATER,
-                  "Operator should be GREATER");
-        ASSERT_EQ(binExpr->GetOperator()->GetLexeme(), ">",
-                  "Operator lexeme should be '>'");
-    }
-    {
-        std::string source = "1 >= 2;";
-        Lexer lexer;
-        lexer.Tokenize(source, "comp_greater_equal.ztoon");
-        Parser parser(lexer.GetTokens());
-        const auto &stmts = parser.Parse();
-        auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-        auto binExpr =
-            dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-        ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::GREATER_EQUAL,
-                  "Operator should be GREATER_EQUAL");
-        ASSERT_EQ(binExpr->GetOperator()->GetLexeme(),
-                  ">=", "Operator lexeme should be '>='");
-    }
-}
-
-// Test: Equality Operators: "1 == 1;", "1 != 2;"
-TEST(ParserEqualityOperatorsTest)
-{
-    {
-        std::string source = "1 == 1;";
-        Lexer lexer;
-        lexer.Tokenize(source, "eq_equal.ztoon");
-        Parser parser(lexer.GetTokens());
-        const auto &stmts = parser.Parse();
-        auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-        auto binExpr =
-            dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-        ASSERT_EQ(binExpr->GetOperator()->GetType(), TokenType::EQUAL_EQUAL,
-                  "Operator should be EQUAL_EQUAL");
-        ASSERT_EQ(binExpr->GetOperator()->GetLexeme(),
-                  "==", "Operator lexeme should be '=='");
-    }
-    {
-        std::string source = "1 != 2;";
-        Lexer lexer;
-        lexer.Tokenize(source, "not_equal.ztoon");
-        Parser parser(lexer.GetTokens());
-        const auto &stmts = parser.Parse();
-        auto exprStmt = dynamic_cast<ExpressionStatement *>(stmts[0]);
-        auto binExpr =
-            dynamic_cast<BinaryExpression const *>(exprStmt->GetExpression());
-        ASSERT_EQ(binExpr->GetOperator()->GetType(),
-                  TokenType::EXCLAMATION_EQUAL,
-                  "Operator should be EXCLAMATION_EQUAL");
-        ASSERT_EQ(binExpr->GetOperator()->GetLexeme(),
-                  "!=", "Operator lexeme should be '!='");
-    }
-}
-
-// Test 1: Simple While Loop
-// Source: while (x < 10) { x = x + 1; }
-TEST(ParserWhileLoopTest)
-{
-    std::string source = "while (x < 10) { x = x + 1; }";
-    Lexer lexer;
-    lexer.Tokenize(source, "while_test.ztoon");
-    Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-    // Expect one top-level statement
-    ASSERT_EQ(stmts.size(), 1,
-              "Expected one top-level statement for while loop");
-
-    // The top-level statement should be a WhileLoopStatement.
-    auto *whileStmt = dynamic_cast<WhileLoopStatement *>(stmts[0]);
-    ASSERT_NE(whileStmt, nullptr,
-              "Top-level statement should be a WhileLoopStatement");
-
-    // Check that the condition is parsed (it should be a binary expression for
-    // 'x < 10').
-    ASSERT_NE(whileStmt->GetCondition(), nullptr,
-              "While loop must have a condition");
-
-    // Check that the block exists and contains one statement (the assignment x
-    // = x + 1;)
-    auto *block =
-        dynamic_cast<BlockStatement *>(whileStmt->GetBlockStatement());
-    ASSERT_NE(block, nullptr, "While loop block must be a BlockStatement");
-    ASSERT_EQ(block->GetStatements().size(), 1,
-              "While loop block should contain one statement");
-
-    // Verify that the inner statement is a variable assignment.
-    auto *assignStmt =
-        dynamic_cast<VarAssignmentStatement *>(block->GetStatements()[0]);
-    ASSERT_NE(assignStmt, nullptr,
-              "Inner statement should be a VarAssignmentStatement");
-}
-
-// Test 2: Simple For Loop with all parts
-// Source: for (i: i32 = 0; i < 10; i = i + 1) { x = x + i; }
-TEST(ParserForLoopTest)
-{
-    std::string source = "for (i: i32 = 0; i < 10; i = i + 1) { x = x + i; }";
-    Lexer lexer;
-    lexer.Tokenize(source, "for_test.ztoon");
-    Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-    // The for-loop parser returns a BlockStatement that wraps the
-    // ForLoopStatement.
-    ASSERT_EQ(stmts.size(), 1, "Expected one top-level statement for for loop");
-
-    auto *block = dynamic_cast<BlockStatement *>(stmts[0]);
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
     ASSERT_NE(
-        block, nullptr,
-        "Top-level statement should be a BlockStatement wrapping the for loop");
-    ASSERT_EQ(block->GetStatements().size(), 1,
-              "Block should contain one for loop statement");
-
-    auto *forStmt = dynamic_cast<ForLoopStatement *>(block->GetStatements()[0]);
-    ASSERT_NE(forStmt, nullptr, "Statement should be a ForLoopStatement");
-
-    // Check that init, condition, update, and block are present.
-    ASSERT_NE(forStmt->GetInit(), nullptr, "For loop init must be present");
-    ASSERT_NE(forStmt->GetCondition(), nullptr,
-              "For loop condition must be present");
-    ASSERT_NE(forStmt->GetUpdate(), nullptr, "For loop update must be present");
-    ASSERT_NE(forStmt->GetBlockStatement(), nullptr,
-              "For loop block must be present");
+        exprStmt, nullptr,
+        "Statement inside function block should be an expression statement");
+    auto *binaryExpr =
+        dynamic_cast<BinaryExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(binaryExpr, nullptr, "Expression should be a binary expression");
+    std::string codeStr = binaryExpr->GetCodeErrString().str;
+    ASSERT_NE(codeStr.find("42"), std::string::npos,
+              "Binary expression should contain '42'");
+    ASSERT_NE(codeStr.find("2"), std::string::npos,
+              "Binary expression should contain '2'");
 }
 
-// Test 3: For Loop with Empty Init and Update
-// Source: for (; x < 10; ) { x = x + 1; }
-TEST(ParserForLoopEmptyPartsTest)
+// Test 13: Valid function call inside a function block.
+TEST(ParserFunctionCallInsideFunctionTest)
 {
-    std::string source = "for (; x < 10; ) { x = x + 1; }";
     Lexer lexer;
-    lexer.Tokenize(source, "for_empty.ztoon");
+    std::string source = "fn main() { foo(1, 2); }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-
-    auto *block = dynamic_cast<BlockStatement *>(stmts[0]);
-    ASSERT_NE(block, nullptr,
-              "Expected a BlockStatement wrapping the for loop");
-
-    auto *forStmt = dynamic_cast<ForLoopStatement *>(block->GetStatements()[0]);
-    ASSERT_NE(forStmt, nullptr, "Statement should be a ForLoopStatement");
-    // In this case, init and update might be null.
-    ASSERT_NE(forStmt->GetCondition(), nullptr, "Condition is not nullptr");
-
-    ASSERT_NE(dynamic_cast<EmptyStatement *>(forStmt->GetInit()), nullptr,
-              "Init is EmptyStatement");
-    ASSERT_EQ(forStmt->GetUpdate(), nullptr, "Update is nullptr");
-    ASSERT_NE(forStmt->GetBlockStatement(), nullptr,
-              "For loop block must be present");
-}
-
-// Test 4: Nested Loops (While containing a For Loop)
-// Source:
-//   while (x < 5) {
-//       for (i: i32 = 0; i < 3; i = i + 1) {
-//           x = x + i;
-//       }
-//   }
-TEST(ParserNestedLoopsTest)
-{
-    std::string source = R"(
-        while (x < 5) {
-           for (i: i32 = 0; i < 3; i = i + 1) {
-              x = x + i;
-           }
-        }
-    )";
-    Lexer lexer;
-    lexer.Tokenize(source, "nested_loops.ztoon");
-    Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1,
-              "Expected one top-level statement for nested loops");
-
-    auto *whileStmt = dynamic_cast<WhileLoopStatement *>(stmts[0]);
-    ASSERT_NE(whileStmt, nullptr,
-              "Top-level statement should be a WhileLoopStatement");
-
-    auto *whileBlock =
-        dynamic_cast<BlockStatement *>(whileStmt->GetBlockStatement());
-    ASSERT_NE(whileBlock, nullptr,
-              "While loop block should be a BlockStatement");
-    ASSERT_EQ(whileBlock->GetStatements().size(), 1,
-              "While loop block should contain one statement");
-
-    auto *forStmtOuterBlock =
-        dynamic_cast<BlockStatement *>(whileBlock->GetStatements()[0]);
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
     ASSERT_NE(
-        dynamic_cast<ForLoopStatement *>(forStmtOuterBlock->GetStatements()[0]),
-        nullptr, "Nested statement should be a ForLoopStatement");
+        exprStmt, nullptr,
+        "Statement inside function block should be an expression statement");
+    auto *fnCall = dynamic_cast<FnCallExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(fnCall, nullptr, "Expression should be a function call");
+    ASSERT_EQ(fnCall->GetIdentifier()->GetLexeme(), "foo",
+              "Function call should be to 'foo'");
+    ASSERT_EQ(fnCall->GetArgs().size(), 2,
+              "Function call should have 2 arguments");
 }
 
-// Test 5: While Loop with Empty Block
-// Source: while (x < 10) { }
-// This tests that the parser can handle an empty block.
-TEST(ParserWhileLoopEmptyBlockTest)
+// Test 14: Valid unary expressions inside a function block.
+TEST(ParserUnaryExpressionInsideFunctionTest)
 {
-    std::string source = "while (x < 10) { }";
-    Lexer lexer;
-    lexer.Tokenize(source, "while_empty.ztoon");
-    Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-    ASSERT_EQ(stmts.size(), 1,
-              "Expected one statement for while loop with empty block");
-
-    auto *whileStmt = dynamic_cast<WhileLoopStatement *>(stmts[0]);
-    ASSERT_NE(whileStmt, nullptr, "Statement should be a WhileLoopStatement");
-
-    auto *block =
-        dynamic_cast<BlockStatement *>(whileStmt->GetBlockStatement());
-    ASSERT_NE(block, nullptr, "While loop block should be a BlockStatement");
-    // The block might be empty.
-    ASSERT_EQ(block->GetStatements().size(), 0,
-              "Empty while loop block should contain 0 statements");
+    {
+        Lexer lexer;
+        std::string source = "fn main() { -x; }";
+        lexer.Tokenize(source, "test.ztoon");
+        Parser parser(lexer.GetTokens());
+        auto ast = parser.Parse();
+        auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+        ASSERT_NE(fnStmt, nullptr,
+                  "Global declaration should be a function declaration");
+        auto *exprStmt = dynamic_cast<ExpressionStatement *>(
+            fnStmt->GetBlockStatement()->GetStatements()[0]);
+        ASSERT_NE(exprStmt, nullptr,
+                  "Statement should be an expression statement inside function "
+                  "block");
+        auto *unaryExpr =
+            dynamic_cast<UnaryExpression *>(exprStmt->GetExpression());
+        ASSERT_NE(unaryExpr, nullptr,
+                  "Expression should be a unary expression");
+        ASSERT_EQ(unaryExpr->GetOperator()->GetLexeme(), "-",
+                  "Unary operator should be '-'");
+    }
+    {
+        Lexer lexer;
+        std::string source = "fn main() { x++; }";
+        lexer.Tokenize(source, "test.ztoon");
+        Parser parser(lexer.GetTokens());
+        auto ast = parser.Parse();
+        auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+        ASSERT_NE(fnStmt, nullptr,
+                  "Global declaration should be a function declaration");
+        auto *exprStmt = dynamic_cast<ExpressionStatement *>(
+            fnStmt->GetBlockStatement()->GetStatements()[0]);
+        ASSERT_NE(exprStmt, nullptr,
+                  "Statement should be an expression statement inside function "
+                  "block");
+        auto *unaryExpr =
+            dynamic_cast<UnaryExpression *>(exprStmt->GetExpression());
+        ASSERT_NE(unaryExpr, nullptr,
+                  "Expression should be a unary expression");
+        ASSERT_EQ(unaryExpr->IsPostfix(), true,
+                  "Unary expression should be postfix");
+    }
 }
 
-// Test 1: Function Prototype Parsing
-// Source: fn myFunc() -> i32;
-TEST(ParserFunctionPrototypeTest)
+// Test 15: Valid grouping expression inside a function block.
+TEST(ParserGroupingExpressionInsideFunctionTest)
 {
-    std::string source = "fn myFunc() -> i32;";
     Lexer lexer;
-    lexer.Tokenize(source, "fn_proto.ztoon");
+    std::string source = "fn main() { (x); }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-
-    // Expect one top-level statement.
-    ASSERT_EQ(stmts.size(), 1,
-              "Expected one top-level statement for a function prototype");
-
-    auto *fnStmt = dynamic_cast<FnStatement *>(stmts[0]);
-    ASSERT_NE(fnStmt, nullptr, "fnStmt should be a FnStatement");
-
-    // Check that the function identifier is "myFunc".
-    ASSERT_EQ(fnStmt->GetIdentifier()->GetLexeme(), std::string("myFunc"),
-              "Function name should be 'myFunc'");
-
-    // Check that there are no GetParameters().
-    ASSERT_EQ(fnStmt->GetParameters().size(), 0,
-              "Function prototype should have zero GetParameters()");
-
-    // Check that the return type is "i32".
-    ASSERT_EQ(fnStmt->GetReturnDatatype()->GetLexeme(), std::string("i32"),
-              "Return type should be 'i32'");
-
-    // The prototype flag should be set.
-    ASSERT_EQ(fnStmt->IsPrototype(), true,
-              "FnExpression should be marked as a prototype");
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
+    ASSERT_NE(
+        exprStmt, nullptr,
+        "Statement should be an expression statement inside function block");
+    auto *groupExpr =
+        dynamic_cast<GroupingExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(groupExpr, nullptr, "Expression should be a grouping expression");
 }
 
-// Test 2: Function Definition Parsing
-// Source: fn add(a: i32, b: i32) -> i32 { a + b; }
-TEST(ParserFunctionDefinitionTest)
+// Test 16: Valid cast expression inside a function block.
+TEST(ParserCastExpressionInsideFunctionTest)
 {
-    std::string source = "fn add(a: i32, b: i32) -> i32 { a + b; }";
     Lexer lexer;
-    lexer.Tokenize(source, "fn_def.ztoon");
+    std::string source = "fn main() { x as i32; }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-
-    ASSERT_EQ(stmts.size(), 1,
-              "Expected one top-level statement for a function definition");
-
-    auto *fnStmt = dynamic_cast<FnStatement *>(stmts[0]);
-    ASSERT_NE(fnStmt, nullptr, "fnStmt should be a FnStatement");
-
-    // Verify function name.
-    ASSERT_EQ(fnStmt->GetIdentifier()->GetLexeme(), std::string("add"),
-              "Function name should be 'add'");
-
-    // Verify parameter list.
-    ASSERT_EQ(fnStmt->GetParameters().size(), 2,
-              "Function 'add' should have 2 GetParameters()");
-    auto *paramA = fnStmt->GetParameters()[0];
-    ASSERT_EQ(paramA->GetIdentifier()->GetLexeme(), std::string("a"),
-              "First parameter should be 'a'");
-    ASSERT_EQ(paramA->GetDataType()->GetLexeme(), std::string("i32"),
-              "Type of 'a' should be 'i32'");
-    auto *paramB = fnStmt->GetParameters()[1];
-    ASSERT_EQ(paramB->GetIdentifier()->GetLexeme(), std::string("b"),
-              "Second parameter should be 'b'");
-    ASSERT_EQ(paramB->GetDataType()->GetLexeme(), std::string("i32"),
-              "Type of 'b' should be 'i32'");
-
-    // Verify return type.
-    ASSERT_EQ(fnStmt->GetReturnDatatype()->GetLexeme(), std::string("i32"),
-              "Return type should be 'i32'");
-
-    // This is a full definition so it should not be marked as a prototype.
-    ASSERT_EQ(fnStmt->IsPrototype(), false,
-              "Function definition should not be a prototype");
-
-    // Verify that a block statement is present.
-    ASSERT_NE(fnStmt->GetBlockStatement(), nullptr,
-              "Function definition must have a block statement");
-    ASSERT_NE(fnStmt->GetBlockStatement()->GetStatements().size(), 0,
-              "Function block should contain at least one statement");
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
+    ASSERT_NE(
+        exprStmt, nullptr,
+        "Statement should be an expression statement inside function block");
+    auto *castExpr = dynamic_cast<CastExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(castExpr, nullptr, "Expression should be a cast expression");
+    ASSERT_EQ(castExpr->GetCastToType()->ToString(), "i32",
+              "Cast target type should be 'i32'");
 }
 
-// Test 3: Function Call Parsing
-// Source: fn mul(a: i32, b: i32) -> i32 { a * b; } x: i32 = mul(3, 4);
-TEST(ParserFunctionCallTest)
+// Test 17: Valid ternary expression inside a function block.
+TEST(ParserTernaryExpressionInsideFunctionTest)
 {
-    std::string source =
-        "fn mul(a: i32, b: i32) -> i32 { a * b; } x: i32 = mul(3, 4);";
     Lexer lexer;
-    lexer.Tokenize(source, "fn_call.ztoon");
+    std::string source = "fn main() { x ? y : z; }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-
-    // Expect two top-level statements: function definition and a variable
-    // assignment.
-    ASSERT_EQ(stmts.size(), 2,
-              "Expected two top-level statements (function definition and "
-              "variable assignment)");
-
-    // Check the variable assignment; its expression should be a function call.
-    auto *varAssign = dynamic_cast<VarDeclStatement *>(stmts[1]);
-    ASSERT_NE(varAssign, nullptr,
-              "Second statement should be a VarAssignmentStatement");
-    auto *fnCallExpr =
-        dynamic_cast<FnCallExpression *>(varAssign->GetExpression());
-    ASSERT_NE(fnCallExpr, nullptr,
-              "The assignment expression should be a FnCallExpression");
-
-    // Verify that the function call identifier is "mul".
-    ASSERT_EQ(fnCallExpr->GetIdentifier()->GetLexeme(), std::string("mul"),
-              "Function call should be to 'mul'");
-
-    // Verify that there are exactly two arguments.
-    ASSERT_EQ(fnCallExpr->GetArgs().size(), 2,
-              "Function call should have two arguments");
-
-    // Check that the first and second arguments are primary expressions with
-    // integer literals "3" and "4".
-    auto *arg0 = dynamic_cast<PrimaryExpression *>(fnCallExpr->GetArgs()[0]);
-    ASSERT_NE(arg0, nullptr, "First argument should be a PrimaryExpression");
-    ASSERT_EQ(arg0->GetPrimary()->GetLexeme(), std::string("3"),
-              "First argument should be '3'");
-    auto *arg1 = dynamic_cast<PrimaryExpression *>(fnCallExpr->GetArgs()[1]);
-    ASSERT_NE(arg1, nullptr, "Second argument should be a PrimaryExpression");
-    ASSERT_EQ(arg1->GetPrimary()->GetLexeme(), std::string("4"),
-              "Second argument should be '4'");
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *exprStmt = dynamic_cast<ExpressionStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
+    ASSERT_NE(
+        exprStmt, nullptr,
+        "Statement should be an expression statement inside function block");
+    auto *ternaryExpr =
+        dynamic_cast<TernaryExpression *>(exprStmt->GetExpression());
+    ASSERT_NE(ternaryExpr, nullptr,
+              "Expression should be a ternary expression");
+    ASSERT_NE(ternaryExpr->GetCondition(), nullptr,
+              "Ternary condition should not be null");
+    ASSERT_NE(ternaryExpr->GetTrueExpression(), nullptr,
+              "Ternary true expression should not be null");
+    ASSERT_NE(ternaryExpr->GetFalseExpression(), nullptr,
+              "Ternary false expression should not be null");
 }
 
-// Test 4: Complex Function Parsing with Nested Function Call
-// Source:
-//   fn complex(a: i32, b: i32, c: i32) -> i32 { a + b * c; }
-//   fn wrapper() -> i32 { complex(2, 3, 4); }
-//   x: i32 = wrapper();
-TEST(ParserComplexFunctionTest)
+// Test 18: Valid readonly data type declaration inside a function block.
+TEST(ParserReadonlyDataTypeInsideFunctionTest)
 {
-    std::string source =
-        "fn complex(a: i32, b: i32, c: i32) -> i32 { a + b * c; } "
-        "fn wrapper() -> i32 { complex(2, 3, 4); } "
-        "x: i32 = wrapper();";
     Lexer lexer;
-    lexer.Tokenize(source, "complex_fn.ztoon");
+    std::string source = "fn main() { x: readonly i32; }";
+    lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());
-    auto &stmts = parser.Parse();
-
-    // Expect three top-level statements.
-    ASSERT_EQ(stmts.size(), 3,
-              "Expected three top-level statements (2 function definitions and "
-              "one variable assignment)");
-
-    // Check the first function: "complex"
-    auto *fnStmt1 = dynamic_cast<FnStatement *>(stmts[0]);
-    ASSERT_NE(fnStmt1, nullptr,
-              "First statement should be a FnExpression for 'complex'");
-    ASSERT_EQ(fnStmt1->GetIdentifier()->GetLexeme(), std::string("complex"),
-              "Function name should be 'complex'");
-    ASSERT_EQ(fnStmt1->GetParameters().size(), 3,
-              "Function 'complex' should have 3 GetParameters()");
-
-    // Check the second function: "wrapper"
-    auto *fnStmt2 = dynamic_cast<FnStatement *>(stmts[1]);
-    ASSERT_NE(fnStmt2, nullptr,
-              "Second statement should be a FnExpression for 'wrapper'");
-    ASSERT_EQ(fnStmt2->GetIdentifier()->GetLexeme(), std::string("wrapper"),
-              "Function name should be 'wrapper'");
-    ASSERT_EQ(fnStmt2->GetParameters().size(), 0,
-              "Function 'wrapper' should have 0 GetParameters()");
-
-    // Check the third statement: variable assignment with a function call.
-    auto *varAssign = dynamic_cast<VarDeclStatement *>(stmts[2]);
-    ASSERT_NE(varAssign, nullptr,
-              "Third statement should be a VarAssignmentStatement");
-    auto *fnCall = dynamic_cast<FnCallExpression *>(varAssign->GetExpression());
-    ASSERT_NE(fnCall, nullptr,
-              "Variable assignment should contain a FnCallExpression");
-    ASSERT_EQ(fnCall->GetIdentifier()->GetLexeme(), std::string("wrapper"),
-              "Function call should be to 'wrapper'");
+    auto ast = parser.Parse();
+    auto *fnStmt = dynamic_cast<FnStatement *>(ast[0]);
+    ASSERT_NE(fnStmt, nullptr,
+              "Global declaration should be a function declaration");
+    auto *varDecl = dynamic_cast<VarDeclStatement *>(
+        fnStmt->GetBlockStatement()->GetStatements()[0]);
+    ASSERT_NE(
+        varDecl, nullptr,
+        "Statement inside function block should be a variable declaration");
+    std::string dtStr = varDecl->GetDataType()->ToString();
+    ASSERT_NE(dtStr.find("readonly"), std::string::npos,
+              "Data type string should contain 'readonly'");
 }

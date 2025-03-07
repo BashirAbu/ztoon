@@ -1,5 +1,7 @@
 ##Todo
-- [ ] Funcitons
+- [ ] Improve DataTypes
+    Pointer To Pointer to ....
+    
 
 - [ ] Add Debug info???
 

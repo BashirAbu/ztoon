@@ -46,6 +46,35 @@ Token const *Parser::Prev()
     else
         return nullptr;
 }
+
+DataTypeToken *Parser::ParseDataType()
+{
+
+    DataTypeToken *dataType = gZtoonArena.Allocate<DataTypeToken>();
+    if (Consume(TokenType::READONLY))
+    {
+        dataType->readOnly = Prev();
+    }
+    if (IsDataType(Peek()->GetType()))
+    {
+        Advance();
+        dataType->dataType = Prev();
+    }
+    else
+    {
+        CodeErrString ces = {};
+        ces.firstToken = dataType->readOnly;
+        ces.str = ces.firstToken->GetLexeme();
+        ReportError(std::format("Expect datatype after 'readonly'"), ces);
+    }
+
+    while (Consume(TokenType::ASTERISK))
+    {
+        dataType->asterisks.push_back(Prev());
+    }
+    return dataType;
+}
+
 bool Parser::IsDataType(TokenType type) { return ::IsDataType(type); }
 Parser::Parser(const std::vector<Token *> &tokens) : tokens(tokens) {}
 
@@ -55,9 +84,30 @@ std::vector<Statement *> &Parser::Parse()
 {
     while (Peek()->GetType() != TokenType::END_OF_FILE)
     {
-        statements.push_back(ParseStatement());
+        statements.push_back(ParseDeclaration());
     }
     return statements;
+}
+
+Statement *Parser::ParseDeclaration()
+{
+    // Parse VarDecl, FnStatment, later do struct, enum, union, ...
+    Statement *declStmt = ParseStatement();
+
+    if (dynamic_cast<VarDeclStatement *>(declStmt) ||
+        dynamic_cast<FnStatement *>(declStmt))
+    {
+        return declStmt;
+    }
+    else
+    {
+        ReportError(
+            std::format("Only function definition, variable declaration, "
+                        "struct, enum, or union definition are allowed in "
+                        "global scope"),
+            declStmt->GetCodeErrString());
+    }
+    return nullptr;
 }
 
 Statement *Parser::ParseStatement()
@@ -149,6 +199,7 @@ Statement *Parser::ParseFnStatement()
                     ReportError("Default parameters are not supported",
                                 varDeclStatement->GetCodeErrString());
                 }
+                ((VarDeclStatement *)varDeclStatement)->isParamter = true;
                 fnStmt->parameters.push_back(
                     (VarDeclStatement *)varDeclStatement);
                 if (Peek()->GetType() != TokenType::RIGHT_PAREN)
@@ -173,9 +224,9 @@ Statement *Parser::ParseFnStatement()
 
         if (Consume(TokenType::ARROW))
         {
-            if (!this->IsDataType(Peek()->GetType()))
+            DataTypeToken *retDataType = ParseDataType();
+            if (!retDataType)
             {
-                Advance();
                 CodeErrString ces = {};
                 ces.firstToken = Prev();
                 ces.str = ces.firstToken->GetLexeme();
@@ -184,14 +235,13 @@ Statement *Parser::ParseFnStatement()
                             ces);
             }
 
-            Advance();
-
-            fnStmt->returnDataType = Prev();
+            fnStmt->returnDataTypeToken = retDataType;
         }
         else
         {
-            fnStmt->returnDataType =
-                gZtoonArena.Allocate<Token>(TokenType::NOTYPE);
+            DataTypeToken *noType = gZtoonArena.Allocate<DataTypeToken>();
+            noType->dataType = gZtoonArena.Allocate<Token>(TokenType::NOTYPE);
+            fnStmt->returnDataTypeToken = noType;
         }
 
         if (Consume(TokenType::SEMICOLON))
@@ -217,11 +267,7 @@ Statement *Parser::ParseFnStatement()
         }
 
         fnStmt->blockStatement = (BlockStatement *)blockStatement;
-        for (Statement *s : fnStmt->parameters)
-        {
-            fnStmt->blockStatement->statements.insert(
-                fnStmt->blockStatement->statements.begin(), s);
-        }
+
         return fnStmt;
     }
     return ParseVarDeclStatement();
@@ -237,12 +283,10 @@ Statement *Parser::ParseVarDeclStatement()
         varDeclStatement->identifier = Prev();
         if (Consume(TokenType::COLON))
         {
-            if (IsDataType(Peek()->GetType()))
+            DataTypeToken *dataType = ParseDataType();
+            if (dataType)
             {
-                Advance();
-                varDeclStatement->dataType = Prev();
-                identifierMap[varDeclStatement->identifier] =
-                    varDeclStatement->dataType;
+                varDeclStatement->dataTypeToken = dataType;
                 if (Consume(TokenType::EQUAL))
                 {
                     varDeclStatement->expression = ParseExpression();
@@ -698,95 +742,8 @@ Expression *Parser::BuildBinaryExpression(Token const *op, Expression *left,
     return expr;
 }
 
-Expression *Parser::ParseExpression() { return ParseLambdaExpression(); }
-Expression *Parser::ParseLambdaExpression()
-{
-    if (Consume(TokenType::FN))
-    {
-        LambdaExpression *lambdaExpr = gZtoonArena.Allocate<LambdaExpression>();
-        lambdaExpr->fnToken = Prev();
-        if (Consume(TokenType::LEFT_PAREN))
-        {
-            while (!Consume(TokenType::RIGHT_PAREN))
-            {
-                Statement *varDeclStatement = ParseVarDeclStatement();
-                if (!dynamic_cast<VarDeclStatement *>(varDeclStatement))
-                {
-                    ReportError(
-                        std::format("Expect function paramter but found '{}'",
-                                    varDeclStatement->GetCodeErrString().str),
-                        varDeclStatement->GetCodeErrString());
-                }
-                if (((VarDeclStatement *)varDeclStatement)->expression)
-                {
-                    ReportError("Default parameters are not supported",
-                                varDeclStatement->GetCodeErrString());
-                }
-                lambdaExpr->parameters.push_back(
-                    (VarDeclStatement *)varDeclStatement);
-                if (Peek()->GetType() != TokenType::RIGHT_PAREN)
-                {
-                    if (!Consume(TokenType::COMMA))
-                    {
-                        ReportError(
-                            std::format(
-                                "Expect ',' after function paramter '{}'",
-                                varDeclStatement->GetCodeErrString().str),
-                            varDeclStatement->GetCodeErrString());
-                    }
-                }
-            }
-        }
-        else
-        {
-            CodeErrString ces = {};
-            ces.firstToken = lambdaExpr->GetFirstToken();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError(std::format("Expect '(' after fn'"), ces);
-        }
+Expression *Parser::ParseExpression() { return ParseTernaryExpression(); }
 
-        if (Consume(TokenType::ARROW))
-        {
-            if (!this->IsDataType(Peek()->GetType()))
-            {
-                Advance();
-                CodeErrString ces = {};
-                ces.firstToken = Prev();
-                ces.str = ces.firstToken->GetLexeme();
-
-                ReportError(std::format("Expect datatype after '->'", ces.str),
-                            ces);
-            }
-
-            Advance();
-
-            lambdaExpr->returnDataType = Prev();
-        }
-        else
-        {
-            lambdaExpr->returnDataType =
-                gZtoonArena.Allocate<Token>(TokenType::NOTYPE);
-        }
-
-        Statement *blockStatement = ParseBlockStatement();
-
-        if (!dynamic_cast<BlockStatement *>(blockStatement))
-        {
-            ReportError(std::format("Expect block statement but found '{}'",
-                                    blockStatement->GetCodeErrString().str),
-                        blockStatement->GetCodeErrString());
-        }
-
-        lambdaExpr->blockStatement = (BlockStatement *)blockStatement;
-        for (Statement *s : lambdaExpr->parameters)
-        {
-            lambdaExpr->blockStatement->statements.insert(
-                lambdaExpr->blockStatement->statements.begin(), s);
-        }
-        return lambdaExpr;
-    }
-    return ParseTernaryExpression();
-}
 Expression *Parser::ParseTernaryExpression()
 {
     Expression *expr = ParseORExpression();
@@ -955,10 +912,10 @@ Expression *Parser::ParseCastExpression()
     {
         CastExpression *castExpr = gZtoonArena.Allocate<CastExpression>();
         castExpr->expression = expr;
-        if (IsDataType(Peek()->GetType()))
+        DataTypeToken *castToDataType = ParseDataType();
+        if (castToDataType)
         {
-            castExpr->castToType = Peek();
-            Advance();
+            castExpr->castToTypeToken = castToDataType;
         }
         else
         {
@@ -1058,7 +1015,6 @@ Expression *Parser::ParsePrimaryExpression()
     }
     case TokenType::STRING_LITERAL:
     {
-
         Advance();
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
         expr->primary = Prev();
@@ -1252,7 +1208,7 @@ std::string VarDeclStatement::PrettyString(std::string &prefix)
     str += prefix;
     str += "|_";
     str += "var_decl(" + identifier->GetLexeme() + " (" +
-           dataType->GetLexeme() + ")" + ")\n";
+           dataTypeToken->ToString() + ")" + ")\n";
     prefix.pop_back();
     prefix.pop_back();
     prefix.pop_back();
@@ -1268,10 +1224,7 @@ std::string VarAssignmentStatement::PrettyString(std::string &prefix)
     str += expression ? expression->PrettyString(prefix, true) : "";
     str += prefix;
     str += "|_";
-    str += "var_assign(" + identifier->GetLexeme() + " (" +
-           TokenDataTypeToString(dataType ? dataType->GetType()
-                                          : TokenType::UNKNOWN) +
-           ")" + ")\n";
+    str += "var_assign(" + identifier->GetLexeme() + ")\n";
     prefix.pop_back();
     prefix.pop_back();
     prefix.pop_back();
@@ -1343,7 +1296,8 @@ std::string FnStatement::PrettyString(std::string &prefix)
         str += s->PrettyString(prefix);
     }
     str += prefix + "|_ret_type(" +
-           (returnDataType ? returnDataType->GetLexeme() : "NoRet ") + ")\n";
+           (returnDataTypeToken ? returnDataTypeToken->ToString() : "NoRet ") +
+           ")\n";
     if (blockStatement)
         str += blockStatement->PrettyString(prefix);
     prefix.pop_back();
@@ -1364,28 +1318,6 @@ std::string ExpressionStatement::PrettyString(std::string &prefix)
 {
     std::string str = "";
     str += expression ? expression->PrettyString(prefix, false) : "";
-    return str;
-}
-
-std::string LambdaExpression::PrettyString(std::string &prefix, bool isLeft)
-{
-    std::string str = "";
-    str += prefix;
-    str += isLeft ? "|-" : "|_";
-    str += (std::string) "(Lambda)\n";
-    prefix += isLeft ? "|   " : "    ";
-    for (Statement *s : parameters)
-    {
-        str += s->PrettyString(prefix);
-    }
-    str += prefix + "|_ret_type(" +
-           (returnDataType ? returnDataType->GetLexeme() : "NoRet ") + ")\n";
-    if (blockStatement)
-        str += blockStatement->PrettyString(prefix);
-    prefix.pop_back();
-    prefix.pop_back();
-    prefix.pop_back();
-    prefix.pop_back();
     return str;
 }
 
@@ -1480,7 +1412,7 @@ std::string CastExpression::PrettyString(std::string &prefix, bool isLeft)
     prefix += isLeft ? "|   " : "    ";
     str += prefix;
     str += "|-";
-    str += TokenDataTypeToString(castToType->GetType()) + "\n";
+    str += castToTypeToken->ToString() + "\n";
     str += expression ? expression->PrettyString(prefix, true) : "";
     prefix.pop_back();
     prefix.pop_back();

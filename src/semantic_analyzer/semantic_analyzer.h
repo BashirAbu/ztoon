@@ -21,7 +21,6 @@ class DataType
         F32,
         F64,
         BOOL,
-        STRING,
         STRUCT,
         ENUM,
         UNION,
@@ -35,15 +34,13 @@ class DataType
     bool IsInteger();
     bool IsFloat();
     bool IsSigned();
+    bool IsReadOnly() { return isReadOnly; }
     TokenType ToTokenType();
 
   protected:
     virtual std::string AggregateTypeToString() { return ""; }
     Type type;
-    size_t typeWidth = 0;
-    size_t alignment = 4;
-    Token const *dataTypeToken;
-
+    bool isReadOnly = false;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -114,37 +111,13 @@ class PointerDataType : public DataType
     PointerDataType() {}
     DataType *PointedToDatatype() { return dataType; }
 
-  private:
-    // depends on host arch.
     DataType *dataType;
+    PointerDataType *pointer = nullptr;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
 };
 
-class ArrayDataType : public PointerDataType
-{
-  public:
-  private:
-    size_t size = 0;
-    friend class Scope;
-    friend class SemanticAnalyzer;
-    friend class CodeGen;
-};
-
-class StringDataType : public PointerDataType
-{
-  public:
-    StringDataType() { type = DataType::Type::STRING; }
-
-  private:
-    size_t len;
-    size_t sizeInBytes;
-    friend class Scope;
-    friend class Scope;
-    friend class SemanticAnalyzer;
-    friend class CodeGen;
-};
 class Variable
 {
   public:
@@ -166,12 +139,15 @@ class Function
   public:
     std::string GetName() { return name; }
     class FnStatement *GetFnStatement() { return fnStmt; }
+    void AddParamter(Variable *var, CodeErrString codeErrString);
 
   private:
     std::string name;
     class FnStatement *fnStmt = nullptr;
+    class RetStatement *retStmt = nullptr;
     FnPointerDataType *fnPointer = nullptr;
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class Scope
@@ -185,6 +161,8 @@ class Scope
     Scope(Scope *parent = nullptr);
 
     Scope const *GetParent() const { return parent; }
+
+    DataType *GetDataType(DataTypeToken *dataTypeToken);
 
   private:
     Scope *parent = nullptr;
@@ -213,7 +191,7 @@ class SemanticAnalyzer
     std::unordered_map<Statement *, DataType *> stmtToDataTypeMap;
     std::vector<Statement *> &statements;
     BlockStatement *currentBlockStatement = nullptr;
-    Function *currentFunction = nullptr;
     size_t statementCurrentIndex = 0;
+    Function *currentFunction = nullptr;
     friend class CodeGen;
 };

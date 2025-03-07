@@ -38,6 +38,14 @@ struct IfStatementData
     llvm::BasicBlock *falseBlock = nullptr, *mergeBlock = nullptr;
     llvm::Function *currentFunction = nullptr;
 };
+
+struct IRFunction
+{
+    llvm::FunctionType *fnType = nullptr;
+    llvm::Function *fn = nullptr;
+    llvm::BasicBlock *fnBB;
+    Function *ztoonFn = nullptr;
+};
 class CodeGen
 {
   public:
@@ -46,6 +54,9 @@ class CodeGen
     void GenIR();
     void AddIRVariable(IRVariable *irVariable);
     IRVariable *GetIRVariable(std::string name);
+
+    void AddIRFunction(IRFunction *irFunc);
+    IRFunction *GetIRFunction(std::string name, CodeErrString codeErrString);
 
     std::unique_ptr<llvm::LLVMContext> ctx;
     std::unique_ptr<llvm::Module> module;
@@ -70,5 +81,7 @@ class CodeGen
                        std::unordered_map<std::string, IRVariable *>>
         scopeToIRVariablesMap;
     std::unordered_map<std::string, IRVariable *> irVariablesMap;
+    std::unordered_map<std::string, IRFunction *> irFunctionsMaps;
+
     SemanticAnalyzer &semanticAnalyzer;
 };

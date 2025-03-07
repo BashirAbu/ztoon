@@ -2,48 +2,106 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "semantic_analyzer.h"
-#include "llvm/IR/Metadata.h"
+#include <cstring>
 #include <format>
 #include <functional>
-#include <utility>
 
 std::string DataType::ToString()
 {
+    std::string str;
+    if (isReadOnly)
+    {
+        str += "readonly ";
+    }
     switch (type)
     {
     case DataType::Type::I8:
-        return "i8";
+    {
+
+        str += "i8";
+        break;
+    }
     case DataType::Type::I16:
-        return "i16";
+    {
+        str += "i16";
+        break;
+    }
     case DataType::Type::I32:
-        return "i32";
+    {
+        str += "i32";
+        break;
+    }
     case DataType::Type::I64:
-        return "i64";
+    {
+        str += "i64";
+        break;
+    }
     case DataType::Type::U8:
-        return "u8";
+    {
+        str += "u8";
+        break;
+    }
     case DataType::Type::U16:
-        return "u16";
+    {
+        str += "u16";
+        break;
+    }
     case DataType::Type::U32:
-        return "u32";
+    {
+        str += "u32";
+        break;
+    }
     case DataType::Type::U64:
-        return "u64";
+    {
+        str += "u64";
+        break;
+    }
     case DataType::Type::F32:
-        return "f32";
+    {
+        str += "f32";
+        break;
+    }
     case DataType::Type::F64:
-        return "f64";
+    {
+        str += "f64";
+        break;
+    }
     case DataType::Type::BOOL:
-        return "bool";
+    {
+        str += "bool";
+        break;
+    }
     case DataType::Type::NOTYPE:
-        return "notype";
-    case DataType::Type::STRING:
-        return "string";
+    {
+        str += "notype";
+        break;
+    }
     case DataType::Type::STRUCT:
     case DataType::Type::ENUM:
     case DataType::Type::UNION:
-        return AggregateTypeToString();
-    default:
-        return "Unknown type";
+    {
+        str += AggregateTypeToString();
+        break;
     }
+    case DataType::Type::POINTER:
+    {
+
+        auto ptrType = (PointerDataType *)this;
+        str += ptrType->dataType->ToString();
+        while (ptrType->pointer)
+        {
+            str += "*";
+        }
+        break;
+    }
+    default:
+    {
+        str += "Unknown type";
+        break;
+    }
+    }
+
+    return str;
 }
 
 std::string FnPointerDataTypeToStringKey(FnPointerDataType *fnDataType)
@@ -54,72 +112,104 @@ std::string FnPointerDataTypeToStringKey(FnPointerDataType *fnDataType)
     {
         fpDatatypeStringKey += std::format("{} ", paramDatatype->ToString());
     }
-    fpDatatypeStringKey += fnDataType->GetReturnDataType()->ToString();
+    fpDatatypeStringKey +=
+        std::format("-> {}", fnDataType->GetReturnDataType()->ToString());
     return fpDatatypeStringKey;
 }
+
+DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
+{
+    std::string typeStr = dataTypeToken->ToString();
+
+    if (datatypesMap.contains(typeStr))
+    {
+        return datatypesMap[typeStr];
+    }
+    else
+    {
+        if (datatypesMap.contains(dataTypeToken->GetDataType()->GetLexeme()))
+        {
+            // Build type
+            if (dataTypeToken->asterisks.size() > 0)
+            {
+                PointerDataType *ptrDataType =
+                    gZtoonArena.Allocate<PointerDataType>();
+                ptrDataType->type = DataType::Type::POINTER;
+                ptrDataType->dataType =
+                    datatypesMap[dataTypeToken->dataType->GetLexeme()];
+                if (dataTypeToken->readOnly)
+                {
+                    ptrDataType->isReadOnly = true;
+                }
+                datatypesMap[ptrDataType->ToString()] = ptrDataType;
+                return ptrDataType;
+            }
+            else if (dataTypeToken->readOnly)
+            {
+                DataType *type = gZtoonArena.Allocate<DataType>();
+                *type =
+                    *(datatypesMap[dataTypeToken->GetDataType()->GetLexeme()]);
+
+                type->isReadOnly = true;
+                datatypesMap[type->ToString()] = type;
+                return type;
+            }
+        }
+        else
+        {
+            ReportError("Datatype is not defined.",
+                        dataTypeToken->GetCodeErrString());
+            return nullptr;
+        }
+    }
+
+    return nullptr;
+}
+
 Scope::Scope(Scope *parent)
 {
     this->parent = parent;
 
     datatypesMap["i8"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["i8"]->type = DataType::Type::I8;
-    datatypesMap["i8"]->typeWidth = 8;
-    datatypesMap["i8"]->alignment = 4;
 
     datatypesMap["i16"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["i16"]->type = DataType::Type::I16;
-    datatypesMap["i16"]->typeWidth = 16;
-    datatypesMap["i16"]->alignment = 4;
 
     datatypesMap["i32"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["i32"]->type = DataType::Type::I32;
-    datatypesMap["i32"]->typeWidth = 32;
-    datatypesMap["i32"]->alignment = 4;
 
     datatypesMap["i64"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["i64"]->type = DataType::Type::I64;
-    datatypesMap["i64"]->typeWidth = 64;
-    datatypesMap["i64"]->alignment = 4;
 
     datatypesMap["u8"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["u8"]->type = DataType::Type::U8;
-    datatypesMap["u8"]->typeWidth = 8;
-    datatypesMap["u8"]->alignment = 4;
 
     datatypesMap["u16"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["u16"]->type = DataType::Type::U16;
-    datatypesMap["u16"]->typeWidth = 16;
-    datatypesMap["u16"]->alignment = 4;
 
     datatypesMap["u32"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["u32"]->type = DataType::Type::U32;
-    datatypesMap["u32"]->typeWidth = 32;
-    datatypesMap["u32"]->alignment = 4;
 
     datatypesMap["u64"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["u64"]->type = DataType::Type::U64;
-    datatypesMap["u64"]->typeWidth = 64;
-    datatypesMap["u64"]->alignment = 4;
 
     datatypesMap["f32"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["f32"]->type = DataType::Type::F32;
-    datatypesMap["f32"]->typeWidth = 32;
-    datatypesMap["f32"]->alignment = 4;
-
     datatypesMap["f64"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["f64"]->type = DataType::Type::F64;
-    datatypesMap["f64"]->typeWidth = 64;
-    datatypesMap["f64"]->alignment = 4;
 
     datatypesMap["bool"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["bool"]->type = DataType::Type::BOOL;
-    datatypesMap["bool"]->typeWidth = 1;
-    datatypesMap["bool"]->alignment = 4;
 
     datatypesMap["notype"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["notype"]->type = DataType::Type::NOTYPE;
-    datatypesMap["notype"]->typeWidth = 1;
-    datatypesMap["notype"]->alignment = 4;
+
+    auto strPtr = gZtoonArena.Allocate<PointerDataType>();
+    strPtr->dataType = datatypesMap["i8"];
+    strPtr->type = DataType::Type::POINTER;
+    strPtr->isReadOnly = true;
+    datatypesMap["readonly i8*"] = strPtr;
 }
 
 bool DataType::IsNumerical()
@@ -212,8 +302,6 @@ TokenType DataType::ToTokenType()
         return TokenType::BOOL;
     case DataType::Type::NOTYPE:
         return TokenType::NOTYPE;
-    case DataType::Type::STRING:
-        return TokenType::STR;
     case DataType::Type::STRUCT:
     case DataType::Type::ENUM:
     case DataType::Type::UNION:
@@ -275,6 +363,12 @@ void Scope::AddVariable(Variable *variable, CodeErrString codeErrString)
 
 void Scope::AddFunction(Function *function, CodeErrString codeErrString)
 {
+    if (parent)
+    {
+        ReportError(
+            std::format("Functions can only be declared in the global scope"),
+            codeErrString);
+    }
 
     if (functionsMap.contains(function->GetName()))
     {
@@ -327,6 +421,7 @@ Function *Scope::GetFunction(std::string name, CodeErrString codeErrString)
     }
     return nullptr;
 }
+
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Statement *> &statements)
     : statements(statements)
 {
@@ -360,13 +455,12 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
     {
         VarDeclStatement *varDeclStatement =
             dynamic_cast<VarDeclStatement *>(statement);
+        stmtToDataTypeMap[varDeclStatement] =
+            currentScope->GetDataType(varDeclStatement->GetDataType());
         if (varDeclStatement->GetExpression())
         {
             EvaluateAndAssignDataTypeToExpression(
                 varDeclStatement->GetExpression());
-            stmtToDataTypeMap[varDeclStatement] =
-                exprToDataTypeMap[varDeclStatement->expression];
-
             PrimaryExpression *varExpr =
                 gZtoonArena.Allocate<PrimaryExpression>();
             varExpr->primary = varDeclStatement->GetIdentifier();
@@ -385,25 +479,42 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                         stmtToDataTypeMap[varDeclStatement]->ToString()),
                     varDeclStatement->GetCodeErrString());
             }
+            // meaning in global scope.
+            if (!currentScope->parent)
+            {
+                if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
+                         ->IsReadOnly() ||
+                    dynamic_cast<FnCallExpression *>(
+                        varDeclStatement->GetExpression()))
+                {
+                    ReportError(
+                        std::format("ReadOnly or compile time expression are "
+                                    "allowd to be "
+                                    "assigned to global variables"),
+                        varDeclStatement->GetExpression()->GetCodeErrString());
+                }
+            }
         }
+
         Variable *var = gZtoonArena.Allocate<Variable>(
             varDeclStatement->GetIdentifier()->GetLexeme());
         var->token = varDeclStatement->GetIdentifier();
-        var->dataType =
-            currentScope
-                ->datatypesMap[stmtToDataTypeMap[varDeclStatement]->ToString()];
+        var->dataType = stmtToDataTypeMap[varDeclStatement];
         currentScope->AddVariable(var, varDeclStatement->GetCodeErrString());
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
     {
-
         VarAssignmentStatement *varAssignmentStatement =
             dynamic_cast<VarAssignmentStatement *>(statement);
 
         Variable const *var = currentScope->GetVariable(
             varAssignmentStatement->GetIdentifier()->GetLexeme(),
             varAssignmentStatement->GetCodeErrString());
-
+        if (var->dataType->IsReadOnly())
+        {
+            ReportError(std::format("Cannot assign value to readonly variable"),
+                        varAssignmentStatement->GetCodeErrString());
+        }
         stmtToDataTypeMap[varAssignmentStatement] = var->dataType;
         EvaluateAndAssignDataTypeToExpression(
             varAssignmentStatement->GetExpression());
@@ -436,6 +547,11 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         Variable const *var = currentScope->GetVariable(
             varComAssignStatement->GetIdentifier()->GetLexeme(),
             varComAssignStatement->GetCodeErrString());
+        if (var->dataType->IsReadOnly())
+        {
+            ReportError(std::format("Cannot assign value to readonly variable"),
+                        varComAssignStatement->GetCodeErrString());
+        }
         stmtToDataTypeMap[varComAssignStatement] = var->dataType;
 
         EvaluateAndAssignDataTypeToExpression(
@@ -590,7 +706,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             exprToDataTypeMap[expr] = fn->fnPointer->GetReturnDataType();
             stmtToDataTypeMap[retStmt] = fn->fnPointer->GetReturnDataType();
             DataType::Type type = DecideDataType(&expr, &retStmt->expression);
-
+            fn->retStmt = retStmt;
+            retStmt->fnStmt = fn->GetFnStatement();
             if (type == DataType::Type::UNKNOWN)
             {
                 ReportError(
@@ -631,11 +748,6 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
     }
     else if (dynamic_cast<FnStatement *>(statement))
     {
-        if (currentScope->parent)
-        {
-            ReportError("Functions can only be declared in global scope.",
-                        statement->GetCodeErrString());
-        }
         FnStatement *fnStmt = dynamic_cast<FnStatement *>(statement);
 
         Function *fp = gZtoonArena.Allocate<Function>();
@@ -644,19 +756,17 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             gZtoonArena.Allocate<FnPointerDataType>();
         fpDataType->type = DataType::Type::FNPOINTER;
         fpDataType->returnDataType =
-            currentScope->datatypesMap[fnStmt->returnDataType->GetLexeme()];
+            currentScope->GetDataType(fnStmt->returnDataTypeToken);
 
         fp->fnStmt = fnStmt;
         fp->fnPointer = fpDataType;
         currentScope->AddFunction(fp, fnStmt->GetCodeErrString());
-        // this should be handled by the
-        // function block.
-        //  for (Statement *p : fnStmt->parameters)
-        //  {
-        //      AnalizeStatement(p);
-        //  }
         Function *temp = currentFunction;
         currentFunction = fp;
+        for (Statement *p : fnStmt->parameters)
+        {
+            AnalizeStatement(p);
+        }
         AnalizeStatement(fnStmt->blockStatement);
         currentFunction = temp;
         // check for ret statement;
@@ -743,7 +853,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                 }
                 return retFound;
             };
-            if (fnStmt->returnDataType->type != TokenType::NOTYPE)
+            if (fnStmt->returnDataTypeToken->GetDataType()->type !=
+                TokenType::NOTYPE)
             {
                 if (fnStmt->GetBlockStatement()->statements.empty())
                 {
@@ -826,8 +937,15 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                     CastExpression *castExpr =
                         gZtoonArena.Allocate<CastExpression>();
                     castExpr->expression = *right;
-                    castExpr->castToType = gZtoonArena.Allocate<Token>(
-                        leftDataType->ToTokenType());
+                    castExpr->castToTypeToken =
+                        gZtoonArena.Allocate<DataTypeToken>();
+                    castExpr->castToTypeToken->dataType =
+                        gZtoonArena.Allocate<Token>(
+                            leftDataType->ToTokenType());
+                    castExpr->castToTypeToken->readOnly =
+                        leftDataType->IsReadOnly()
+                            ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
+                            : nullptr;
                     exprToDataTypeMap[castExpr] = leftDataType;
                     *right = castExpr;
                     return leftDataType->type;
@@ -839,8 +957,15 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                     CastExpression *castExpr =
                         gZtoonArena.Allocate<CastExpression>();
                     castExpr->expression = *right;
-                    castExpr->castToType = gZtoonArena.Allocate<Token>(
-                        leftDataType->ToTokenType());
+                    castExpr->castToTypeToken =
+                        gZtoonArena.Allocate<DataTypeToken>();
+                    castExpr->castToTypeToken->dataType =
+                        gZtoonArena.Allocate<Token>(
+                            leftDataType->ToTokenType());
+                    castExpr->castToTypeToken->readOnly =
+                        leftDataType->IsReadOnly()
+                            ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
+                            : nullptr;
                     exprToDataTypeMap[castExpr] = leftDataType;
                     *right = castExpr;
                     return leftDataType->type;
@@ -868,8 +993,15 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                         gZtoonArena.Allocate<CastExpression>();
                     castExpr->expression = *left;
                     exprToDataTypeMap[castExpr] = rightDataType;
-                    castExpr->castToType = gZtoonArena.Allocate<Token>(
-                        rightDataType->ToTokenType());
+                    castExpr->castToTypeToken =
+                        gZtoonArena.Allocate<DataTypeToken>();
+                    castExpr->castToTypeToken->dataType =
+                        gZtoonArena.Allocate<Token>(
+                            rightDataType->ToTokenType());
+                    castExpr->castToTypeToken->readOnly =
+                        rightDataType->IsReadOnly()
+                            ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
+                            : nullptr;
                     *left = castExpr;
                     return rightDataType->type;
                 }
@@ -880,7 +1012,16 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                     CastExpression *castExpr =
                         gZtoonArena.Allocate<CastExpression>();
                     castExpr->expression = *left;
-                    exprToDataTypeMap[castExpr] = leftDataType;
+                    exprToDataTypeMap[castExpr] = rightDataType;
+                    castExpr->castToTypeToken =
+                        gZtoonArena.Allocate<DataTypeToken>();
+                    castExpr->castToTypeToken->dataType =
+                        gZtoonArena.Allocate<Token>(
+                            rightDataType->ToTokenType());
+                    castExpr->castToTypeToken->readOnly =
+                        rightDataType->IsReadOnly()
+                            ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
+                            : nullptr;
                     *left = castExpr;
                     return rightDataType->type;
                 }
@@ -1174,7 +1315,6 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                         gZtoonArena.Allocate<VarAssignmentStatement>();
                     Token *typeToken = gZtoonArena.Allocate<Token>(
                         rightDataType->ToTokenType());
-                    varAssignStatement->dataType = typeToken;
                     varAssignStatement->identifier = primaryExpr->GetPrimary();
 
                     BinaryExpression *binaryExpr =
@@ -1306,7 +1446,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         EvaluateAndAssignDataTypeToExpression(castExpression->GetExpression());
 
         exprToDataTypeMap[castExpression] =
-            currentScope->datatypesMap[castExpression->castToType->GetLexeme()];
+            currentScope->GetDataType(castExpression->castToTypeToken);
         if (exprToDataTypeMap[castExpression]->GetType() ==
             DataType::Type::BOOL)
         {
@@ -1342,19 +1482,17 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         }
         case TokenType::STRING_LITERAL:
         {
-            StringDataType *strType = gZtoonArena.Allocate<StringDataType>();
             auto strLiteral = dynamic_cast<TokenLiteral<std::string> const *>(
                 primaryExpression->primary);
-            strType->len = strLiteral->value.length();
-            strType->sizeInBytes = strLiteral->value.size();
-            strType->dataType = currentScope->datatypesMap["u8"];
-            exprToDataTypeMap[primaryExpression] = strType;
+
+            exprToDataTypeMap[primaryExpression] =
+                currentScope->datatypesMap["readonly i8*"];
             break;
         }
         case TokenType::CHARACTER_LITERAL:
         {
             exprToDataTypeMap[primaryExpression] =
-                currentScope->datatypesMap["u8"];
+                currentScope->datatypesMap["i8"];
             break;
         }
         case TokenType::TRUE:

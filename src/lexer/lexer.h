@@ -26,7 +26,6 @@ enum class TokenType
     F64,
     BOOL,
     NOTYPE,
-    STR,
     INTEGER_LITERAL,
     FLOAT_LITERAL,
     STRING_LITERAL,
@@ -89,6 +88,7 @@ enum class TokenType
     FOR,
     FN,
     RET,
+    READONLY
 };
 
 std::string TokenDataTypeToString(TokenType type);

@@ -6,7 +6,9 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
@@ -84,12 +86,7 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
     }
     case DataType::Type::NOTYPE:
     {
-        irType.type = irBuilder->getIntNTy(1);
-        break;
-    }
-    case DataType::Type::STRING:
-    {
-        irType.type = irBuilder->getIntNTy(1);
+        irType.type = irBuilder->getVoidTy();
         break;
     }
     case DataType::Type::STRUCT:
@@ -99,9 +96,15 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
         irType.type = irBuilder->getIntNTy(1);
         break;
     }
+    case DataType::Type::POINTER:
+    {
+        auto ptrZtoonType = dynamic_cast<PointerDataType *>(type);
+        IRType dataType = ZtoonTypeToLLVMType(ptrZtoonType->dataType);
+        irType.type = dataType.type->getPointerTo();
+        break;
+    }
     default:
     {
-
         break;
     }
     }
@@ -144,6 +147,37 @@ IRVariable *CodeGen::GetIRVariable(std::string name)
     return nullptr;
 }
 
+void CodeGen::AddIRFunction(IRFunction *irFunc)
+{
+    assert(irFunc);
+    if (!irFunctionsMaps.contains(irFunc->ztoonFn->GetName()))
+    {
+        irFunctionsMaps[irFunc->ztoonFn->GetName()] = irFunc;
+    }
+    else
+    {
+        ReportError(std::format("Function '{}' is already defined",
+                                irFunc->ztoonFn->GetName()),
+                    irFunc->ztoonFn->GetFnStatement()->GetCodeErrString());
+    }
+}
+
+IRFunction *CodeGen::GetIRFunction(std::string name,
+                                   CodeErrString codeErrString)
+{
+    if (irFunctionsMaps.contains(name))
+    {
+        return irFunctionsMaps[name];
+    }
+
+    CodeErrString ces = {};
+
+    ReportError(std::format("Function '{}' is not defined", name),
+                codeErrString);
+
+    assert(0);
+    return nullptr;
+}
 IRValue CodeGen::CastIntToInt(IRValue value, IRType castType)
 {
     IRValue castedValue = {};
@@ -365,7 +399,12 @@ void CodeGen::GenStatementIR(Statement *statement)
         irBuilder->SetInsertPoint(trueBlock);
 
         GenStatementIR(ifStatement->GetBlockStatement());
-        irBuilder->CreateBr(mergeBlock);
+        llvm::Instruction *term = irBuilder->GetInsertBlock()->getTerminator();
+
+        if (!term || !llvm::isa<llvm::ReturnInst>(term))
+        {
+            irBuilder->CreateBr(mergeBlock);
+        }
 
         IfStatementData ifData = {};
         ifData.falseBlock = falseBlock;
@@ -380,14 +419,22 @@ void CodeGen::GenStatementIR(Statement *statement)
         }
         else
         {
+            llvm::Instruction *term =
+                irBuilder->GetInsertBlock()->getTerminator();
 
-            irBuilder->SetInsertPoint(falseBlock);
-            irBuilder->CreateBr(mergeBlock);
+            if (!term || !llvm::isa<llvm::ReturnInst>(term))
+            {
+                irBuilder->SetInsertPoint(falseBlock);
+                irBuilder->CreateBr(mergeBlock);
+            }
         }
         if (ifData.falseBlock)
         {
-            irBuilder->SetInsertPoint(ifData.falseBlock);
-            irBuilder->CreateBr(mergeBlock);
+            if (!term || !llvm::isa<llvm::ReturnInst>(term))
+            {
+                irBuilder->SetInsertPoint(ifData.falseBlock);
+                irBuilder->CreateBr(mergeBlock);
+            }
         }
 
         irBuilder->SetInsertPoint(mergeBlock);
@@ -434,6 +481,94 @@ void CodeGen::GenStatementIR(Statement *statement)
         irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
 
         irBuilder->SetInsertPoint(exitBlock);
+    }
+    else if (dynamic_cast<FnStatement *>(statement))
+    {
+        auto *fnStmt = dynamic_cast<FnStatement *>(statement);
+        Function *fn = semanticAnalyzer.currentScope->GetFunction(
+            fnStmt->GetIdentifier()->GetLexeme(), fnStmt->GetCodeErrString());
+
+        FnPointerDataType *fnDataType = fn->fnPointer;
+
+        llvm::Type *retType =
+            ZtoonTypeToLLVMType(fnDataType->returnDataType).type;
+
+        std::vector<llvm::Type *> fnParams;
+
+        for (DataType *param : fnDataType->GetParameters())
+        {
+            fnParams.push_back(ZtoonTypeToLLVMType(param).type);
+        }
+
+        llvm::FunctionType *fnType =
+            llvm::FunctionType::get(retType, fnParams, fnStmt->IsVarArgs());
+
+        llvm::Function *function = llvm::Function::Create(
+            fnType, llvm::GlobalValue::ExternalLinkage, fn->GetName(), *module);
+
+        IRFunction *irFunc = gZtoonArena.Allocate<IRFunction>();
+        irFunc->fn = function;
+        irFunc->fnType = fnType;
+        irFunc->ztoonFn = fn;
+        AddIRFunction(irFunc);
+
+        if (!fnStmt->IsPrototype())
+        {
+            llvm::BasicBlock *fnBB = llvm::BasicBlock::Create(
+                *ctx, std::format("{}FnBlock", fn->GetName()), irFunc->fn);
+            irFunc->fnBB = fnBB;
+            irBuilder->SetInsertPoint(fnBB);
+
+            size_t index = 0;
+            for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
+            {
+                GenStatementIR(paramStmt);
+                IRVariable *paramVar =
+                    GetIRVariable(paramStmt->GetIdentifier()->GetLexeme());
+                llvm::Value *value = irFunc->fn->getArg(index);
+                irBuilder->CreateStore(value, paramVar->aInsta);
+                index++;
+            }
+            GenStatementIR(fnStmt->GetBlockStatement());
+
+            llvm::Instruction *term =
+                irBuilder->GetInsertBlock()->getTerminator();
+
+            if (!term || !llvm::isa<llvm::ReturnInst>(term))
+            {
+                if (irFunc->ztoonFn->fnPointer->returnDataType->type !=
+                    DataType::Type::NOTYPE)
+                {
+                    irBuilder->CreateRet(
+                        GenExpressionIR(
+                            irFunc->ztoonFn->retStmt->GetExpression())
+                            .value);
+                }
+                else
+                {
+                    irBuilder->CreateRetVoid();
+                }
+            }
+        }
+    }
+    else if (dynamic_cast<RetStatement *>(statement))
+    {
+        auto *retStmt = dynamic_cast<RetStatement *>(statement);
+        IRFunction *fn = irFunctionsMaps
+            [retStmt->GetFnStatement()->GetIdentifier()->GetFilename()];
+
+        if (semanticAnalyzer.stmtToDataTypeMap[retStmt]->GetType() !=
+            DataType::Type::NOTYPE)
+        {
+
+            IRValue retValue = GenExpressionIR(retStmt->GetExpression());
+
+            irBuilder->CreateRet(retValue.value);
+        }
+        else
+        {
+            irBuilder->CreateRetVoid();
+        }
     }
 }
 
@@ -495,7 +630,12 @@ void CodeGen::GenIfStatementIR(Statement *statement, IfStatementData *ifData)
 
         GenStatementIR(elifStatement->GetBlockStatement());
 
-        irBuilder->CreateBr(ifData->mergeBlock);
+        llvm::Instruction *term = irBuilder->GetInsertBlock()->getTerminator();
+
+        if (!term || !llvm::isa<llvm::ReturnInst>(term))
+        {
+            irBuilder->CreateBr(ifData->mergeBlock);
+        }
 
         // Prepare for next else if or else
         ifData->falseBlock = falseBlock;
@@ -514,7 +654,12 @@ void CodeGen::GenIfStatementIR(Statement *statement, IfStatementData *ifData)
 
         GenStatementIR(elseStatement->GetBlockStatement());
 
-        irBuilder->CreateBr(ifData->mergeBlock);
+        llvm::Instruction *term = irBuilder->GetInsertBlock()->getTerminator();
+
+        if (!term || !llvm::isa<llvm::ReturnInst>(term))
+        {
+            irBuilder->CreateBr(ifData->mergeBlock);
+        }
 
         // exit
         ifData->falseBlock = nullptr;
@@ -623,8 +768,26 @@ CodeGen::CMPZtoonTypeToCMPLLVM(TokenType type, IRValue value, bool isNaN)
 IRValue CodeGen::GenExpressionIR(Expression *expression)
 {
     IRValue irValue = {};
+    if (dynamic_cast<FnCallExpression *>(expression))
+    {
+        auto *fnCallExpr = dynamic_cast<FnCallExpression *>(expression);
 
-    if (dynamic_cast<TernaryExpression *>(expression))
+        IRFunction *fn =
+            irFunctionsMaps[fnCallExpr->GetIdentifier()->GetLexeme()];
+
+        std::vector<llvm::Value *> args;
+
+        for (auto *arg : fnCallExpr->GetArgs())
+        {
+            args.push_back(GenExpressionIR(arg).value);
+        }
+
+        irValue.type =
+            ZtoonTypeToLLVMType(semanticAnalyzer.exprToDataTypeMap[fnCallExpr]);
+        irValue.value = irBuilder->CreateCall(
+            fn->fn, args, std::format("{}_call", fn->ztoonFn->GetName()));
+    }
+    else if (dynamic_cast<TernaryExpression *>(expression))
     {
         TernaryExpression *ternaryExpr =
             dynamic_cast<TernaryExpression *>(expression);

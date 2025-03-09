@@ -14,11 +14,13 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include <format>
 #include <memory>
+#include <type_traits>
 IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
 {
     IRType irType = {};
@@ -262,6 +264,36 @@ IRValue CodeGen::CastIntToFloat(IRValue value, IRType castType)
     castedValue = CastFloatToFloat(castedValue, castType);
     return castedValue;
 }
+
+IRValue CodeGen::CastPtrToPtr(IRValue value, IRType castType)
+{
+    IRValue irValue = {};
+    irValue.type = castType;
+    irValue.value = irBuilder->CreateBitCast(value.value, castType.type);
+
+    return irValue;
+}
+IRValue CodeGen::CastIntToPtr(IRValue value, IRType castType)
+{
+    IRValue irValue = {};
+    // first cast valut int to int with arch bit width.
+    IRType intType = {};
+    intType.type = llvm::Type::getIntNTy(*ctx, GetPtrBitWidth());
+    irValue = CastIntToInt(value, intType);
+    irValue.value = irBuilder->CreateIntToPtr(value.value, castType.type);
+    irValue.type = castType;
+
+    return irValue;
+}
+IRValue CodeGen::CastPtrToInt(IRValue value, IRType castType)
+{
+
+    IRValue irValue = {};
+    irValue.value = irBuilder->CreatePtrToInt(value.value, castType.type);
+    irValue.type = castType;
+
+    return irValue;
+}
 IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
 {
     // int to int
@@ -286,19 +318,55 @@ IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
     {
         return CastIntToFloat(value, castType);
     }
+    else if (value.type.type->isPointerTy() && castType.type->isPointerTy())
+    {
+        return CastPtrToPtr(value, castType);
+    }
+    else if (value.type.type->isIntegerTy() && castType.type->isPointerTy())
+    {
+        return CastIntToPtr(value, castType);
+    }
+    else if (value.type.type->isPointerTy() && castType.type->isIntegerTy())
+    {
+        return CastPtrToInt(value, castType);
+    }
     else
     {
         return IRValue{};
     }
-    //  int to float
+    // int to float
     // pointer casting stuff later.
 }
 
-CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer)
+IRValue CodeGen::GetLValue(Expression *expr)
+{
+    IRValue lValue = {};
+    if (!expr->IsLValue())
+    {
+        ReportError(std::format("Expression '{}' is not l-value",
+                                expr->GetCodeErrString().str),
+                    expr->GetCodeErrString());
+    }
+    if (dynamic_cast<PrimaryExpression *>(expr))
+    {
+        auto pe = dynamic_cast<PrimaryExpression *>(expr);
+        IRVariable *var = GetIRVariable(pe->GetPrimary()->GetLexeme());
+        lValue.value = var->aInsta;
+        lValue.type = var->irType;
+    }
+    else if (dynamic_cast<UnaryExpression *>(expr))
+    {
+        lValue = GenExpressionIR(expr);
+    }
+    return lValue;
+}
+
+CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
     : semanticAnalyzer(semanticAnalyzer)
 {
     ctx = std::make_unique<llvm::LLVMContext>();
     module = std::make_unique<llvm::Module>("ztoon module", *ctx);
+    module->setTargetTriple(targetArch);
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
 }
@@ -342,24 +410,27 @@ void CodeGen::GenStatementIR(Statement *statement)
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
     {
+        // Need to check if ptr or variable.
         VarAssignmentStatement *varAssignmentStatement =
             dynamic_cast<VarAssignmentStatement *>(statement);
+
+        IRValue lValue = GetLValue(varAssignmentStatement->GetLValue());
+
         // Assign value to predefined variable.
-        IRValue value =
-            GenExpressionIR(varAssignmentStatement->GetExpression());
-        IRVariable *irVar =
-            GetIRVariable(varAssignmentStatement->GetIdentifier()->GetLexeme());
-        irBuilder->CreateStore(value.value, irVar->aInsta);
+        IRValue rValue = GenExpressionIR(varAssignmentStatement->GetRValue());
+
+        irBuilder->CreateStore(rValue.value, lValue.value);
     }
     else if (dynamic_cast<VarCompoundAssignmentStatement *>(statement))
     {
         VarCompoundAssignmentStatement *varComAssignStatement =
             dynamic_cast<VarCompoundAssignmentStatement *>(statement);
-        // similar to assign statement.
-        IRValue value = GenExpressionIR(varComAssignStatement->GetExpression());
-        IRVariable *irVar =
-            GetIRVariable(varComAssignStatement->GetIdentifier()->GetLexeme());
-        irBuilder->CreateStore(value.value, irVar->aInsta);
+        IRValue lValue = GetLValue(varComAssignStatement->GetLValue());
+
+        // Assign value to predefined variable.
+        IRValue rValue = GenExpressionIR(varComAssignStatement->GetRValue());
+
+        irBuilder->CreateStore(rValue.value, lValue.value);
     }
     else if (dynamic_cast<ExpressionStatement *>(statement))
     {
@@ -1246,6 +1317,25 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                 moduleDataLayout->getTypeAllocSize(rValue.value->getType());
             irValue.value =
                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(*ctx), size);
+            break;
+        }
+        case TokenType::ASTERISK:
+        {
+            PointerDataType *ptr = dynamic_cast<PointerDataType *>(
+                semanticAnalyzer
+                    .exprToDataTypeMap[unaryExpression->GetRightExpression()]);
+            irValue.type = ZtoonTypeToLLVMType(ptr->dataType);
+            irValue.value = irBuilder->CreateLoad(
+                irValue.type.type, rValue.value,
+                std::format("deref_{}", unaryExpression->GetRightExpression()
+                                            ->GetCodeErrString()
+                                            .str));
+            break;
+        }
+        case TokenType::BITWISE_AND:
+        {
+            // need to get ptr. i just need its vluae
+            irValue = GetLValue(unaryExpression->GetRightExpression());
             break;
         }
         default:

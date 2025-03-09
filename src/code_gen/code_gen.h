@@ -49,7 +49,7 @@ struct IRFunction
 class CodeGen
 {
   public:
-    CodeGen(SemanticAnalyzer &semanticAnalyzer);
+    CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch);
     ~CodeGen();
     void GenIR();
     void AddIRVariable(IRVariable *irVariable);
@@ -64,6 +64,11 @@ class CodeGen
     std::unique_ptr<llvm::DataLayout> moduleDataLayout;
 
   private:
+    IRValue GetLValue(Expression *expr);
+    uint32_t GetPtrBitWidth()
+    {
+        return moduleDataLayout->getPointerSizeInBits();
+    }
     void GenStatementIR(Statement *statement);
     void GenIfStatementIR(Statement *statement, IfStatementData *ifData);
     IRValue GenExpressionIR(Expression *expression);
@@ -76,7 +81,9 @@ class CodeGen
     IRValue CastFloatToFloat(IRValue value, IRType castType);
     IRValue CastFloatToInt(IRValue value, IRType castType);
     IRValue CastIntToFloat(IRValue value, IRType castType);
-
+    IRValue CastPtrToPtr(IRValue value, IRType castType);
+    IRValue CastIntToPtr(IRValue value, IRType castType);
+    IRValue CastPtrToInt(IRValue value, IRType castType);
     std::unordered_map<Scope const *,
                        std::unordered_map<std::string, IRVariable *>>
         scopeToIRVariablesMap;

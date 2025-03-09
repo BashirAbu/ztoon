@@ -354,3 +354,27 @@ TEST(SemanticAnalyzerUnaryPostfixTest)
     ASSERT_EQ(foundPostfixDec, true,
               "Function 'dec' should contain a unary postfix expression");
 }
+
+TEST(SemanticAnalyzerUnaryRef)
+{
+    std::string source = "fn main() {  a: i32 = 1; ptr: i32* = &a;  }";
+    Lexer lexer;
+    lexer.Tokenize(source, "unary_ref.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+TEST(SemanticAnalyzerUnaryDeref)
+{
+    std::string source =
+        "fn main() {  a: i32 = 1; ptr: i32* = &a; *ptr = 12;  }";
+    Lexer lexer;
+    lexer.Tokenize(source, "unary_ref.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}

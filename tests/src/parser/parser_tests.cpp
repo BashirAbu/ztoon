@@ -183,9 +183,9 @@ TEST(ParserAssignmentInsideFunctionTest)
     ASSERT_NE(
         assignStmt, nullptr,
         "Statement inside function block should be a variable assignment");
-    ASSERT_EQ(assignStmt->GetIdentifier()->GetLexeme(), "x",
+    ASSERT_EQ(assignStmt->GetLValue()->GetCodeErrString().str, "x",
               "Assigned variable should be 'x'");
-    std::string expr = assignStmt->GetExpression()->GetCodeErrString().str;
+    std::string expr = assignStmt->GetRValue()->GetCodeErrString().str;
     ASSERT_NE(expr.find("100"), std::string::npos,
               "Assignment expression should contain '100'");
 }
@@ -206,10 +206,10 @@ TEST(ParserCompoundAssignmentInsideFunctionTest)
     ASSERT_NE(
         compoundStmt, nullptr,
         "Statement inside function block should be a compound assignment");
-    ASSERT_EQ(compoundStmt->GetIdentifier()->GetLexeme(), "x",
+    ASSERT_EQ(compoundStmt->GetLValue()->GetCodeErrString().str, "x",
               "Compound assignment variable should be 'x'");
     auto *binaryExpr =
-        dynamic_cast<BinaryExpression *>(compoundStmt->GetExpression());
+        dynamic_cast<BinaryExpression *>(compoundStmt->GetRValue());
     ASSERT_NE(binaryExpr, nullptr,
               "Compound assignment should yield a binary expression");
     ASSERT_EQ(binaryExpr->GetOperator()->GetType(), TokenType::PLUS,

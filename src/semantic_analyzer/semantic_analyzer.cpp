@@ -88,10 +88,12 @@ std::string DataType::ToString()
 
         auto ptrType = (PointerDataType *)this;
         str += ptrType->dataType->ToString();
-        while (ptrType->pointer)
-        {
-            str += "*";
-        }
+        str += "*";
+        // while (dynamic_cast<PointerDataType *>(ptrType->dataType))
+        // {
+        //     str += "*";
+        //     ptrType = dynamic_cast<PointerDataType *>(ptrType->dataType);
+        // }
         break;
     }
     default:
@@ -134,9 +136,13 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
             {
                 PointerDataType *ptrDataType =
                     gZtoonArena.Allocate<PointerDataType>();
+
                 ptrDataType->type = DataType::Type::POINTER;
-                ptrDataType->dataType =
-                    datatypesMap[dataTypeToken->dataType->GetLexeme()];
+                DataTypeToken *token = gZtoonArena.Allocate<DataTypeToken>();
+                *token = *dataTypeToken;
+                token->asterisks.pop_back();
+                ptrDataType->dataType = GetDataType(token);
+
                 if (dataTypeToken->readOnly)
                 {
                     ptrDataType->isReadOnly = true;
@@ -475,7 +481,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                     std::format(
                         "Cannot assign value of type '{}' to variable "
                         "of type '{}'",
-                        stmtToDataTypeMap[varDeclStatement]->ToString(),
+                        exprToDataTypeMap[varDeclStatement->GetExpression()]
+                            ->ToString(),
                         stmtToDataTypeMap[varDeclStatement]->ToString()),
                     varDeclStatement->GetCodeErrString());
             }
@@ -506,34 +513,33 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
     {
         VarAssignmentStatement *varAssignmentStatement =
             dynamic_cast<VarAssignmentStatement *>(statement);
-
-        Variable const *var = currentScope->GetVariable(
-            varAssignmentStatement->GetIdentifier()->GetLexeme(),
-            varAssignmentStatement->GetCodeErrString());
-        if (var->dataType->IsReadOnly())
+        EvaluateAndAssignDataTypeToExpression(
+            varAssignmentStatement->GetLValue());
+        if (varAssignmentStatement->GetLValue()->IsLValue())
         {
-            ReportError(std::format("Cannot assign value to readonly variable"),
+
+            stmtToDataTypeMap[varAssignmentStatement] =
+                exprToDataTypeMap[varAssignmentStatement->GetLValue()];
+        }
+        else
+        {
+            ReportError("Cannot assign value to r-value expression",
                         varAssignmentStatement->GetCodeErrString());
         }
-        stmtToDataTypeMap[varAssignmentStatement] = var->dataType;
-        EvaluateAndAssignDataTypeToExpression(
-            varAssignmentStatement->GetExpression());
 
-        PrimaryExpression *varExpr = gZtoonArena.Allocate<PrimaryExpression>();
-        varExpr->primary = varAssignmentStatement->GetIdentifier();
-        Expression *variableRawExpression = varExpr;
-        exprToDataTypeMap[varExpr] =
-            stmtToDataTypeMap[varAssignmentStatement]; // check if types are
-                                                       // compatible.
+        EvaluateAndAssignDataTypeToExpression(
+            varAssignmentStatement->GetRValue());
+
         DataType::Type dataType = DecideDataType(
-            &(variableRawExpression), &varAssignmentStatement->expression);
+            &(varAssignmentStatement->lValue), &varAssignmentStatement->rValue);
         if (dataType == DataType::Type::UNKNOWN)
         {
             ReportError(
                 std::format(
                     "Cannot assign value of type '{}' to variable "
                     "of type '{}'",
-                    stmtToDataTypeMap[varAssignmentStatement]->ToString(),
+                    exprToDataTypeMap[varAssignmentStatement->rValue]
+                        ->ToString(),
                     stmtToDataTypeMap[varAssignmentStatement]->ToString()),
                 varAssignmentStatement->GetCodeErrString());
         }
@@ -544,34 +550,33 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         VarCompoundAssignmentStatement *varComAssignStatement =
             dynamic_cast<VarCompoundAssignmentStatement *>(statement);
 
-        Variable const *var = currentScope->GetVariable(
-            varComAssignStatement->GetIdentifier()->GetLexeme(),
-            varComAssignStatement->GetCodeErrString());
-        if (var->dataType->IsReadOnly())
+        EvaluateAndAssignDataTypeToExpression(
+            varComAssignStatement->GetLValue());
+        if (varComAssignStatement->GetLValue()->IsLValue())
         {
-            ReportError(std::format("Cannot assign value to readonly variable"),
+
+            stmtToDataTypeMap[varComAssignStatement] =
+                exprToDataTypeMap[varComAssignStatement->GetLValue()];
+        }
+        else
+        {
+            ReportError("Cannot assign value to r-value expression",
                         varComAssignStatement->GetCodeErrString());
         }
-        stmtToDataTypeMap[varComAssignStatement] = var->dataType;
 
         EvaluateAndAssignDataTypeToExpression(
-            varComAssignStatement->GetExpression());
-        PrimaryExpression *varExpr = gZtoonArena.Allocate<PrimaryExpression>();
-        varExpr->primary = varComAssignStatement->GetIdentifier();
-        Expression *variableRawExpression = varExpr;
+            varComAssignStatement->GetRValue());
 
-        exprToDataTypeMap[varExpr] =
-            stmtToDataTypeMap[varComAssignStatement]; // check if types are
-                                                      // compatible.
         DataType::Type dataType = DecideDataType(
-            &(variableRawExpression), &varComAssignStatement->expression);
+            &(varComAssignStatement->lValue), &varComAssignStatement->rValue);
         if (dataType == DataType::Type::UNKNOWN)
         {
             ReportError(
                 std::format(
                     "Cannot assign value of type '{}' to variable "
                     "of type '{}'",
-                    stmtToDataTypeMap[varComAssignStatement]->ToString(),
+                    exprToDataTypeMap[varComAssignStatement->rValue]
+                        ->ToString(),
                     stmtToDataTypeMap[varComAssignStatement]->ToString()),
                 varComAssignStatement->GetCodeErrString());
         }
@@ -909,11 +914,11 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
 {
     DataType *leftDataType = exprToDataTypeMap[*left];
     DataType *rightDataType = exprToDataTypeMap[*right];
-    bool isLeftPrimary = dynamic_cast<PrimaryExpression *>((*left));
-    bool isRightPrimary = dynamic_cast<PrimaryExpression *>((*right));
+    bool isLeftLValue = (*left)->IsLValue();
+    bool isRightLValue = (*right)->IsLValue();
     if (leftDataType->ToString() != rightDataType->ToString())
     {
-        if (isLeftPrimary && isRightPrimary)
+        if (isLeftLValue && isRightLValue)
         {
             PrimaryExpression *leftPrimaryExpr =
                 dynamic_cast<PrimaryExpression *>((*left));
@@ -1057,6 +1062,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             fnCallExpr->identifier->GetLexeme(),
             fnCallExpr->GetCodeErrString());
         exprToDataTypeMap[fnCallExpr] = fp->fnPointer->returnDataType;
+
         for (Expression *arg : fnCallExpr->args)
         {
             EvaluateAndAssignDataTypeToExpression(arg);
@@ -1315,7 +1321,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                         gZtoonArena.Allocate<VarAssignmentStatement>();
                     Token *typeToken = gZtoonArena.Allocate<Token>(
                         rightDataType->ToTokenType());
-                    varAssignStatement->identifier = primaryExpr->GetPrimary();
+                    varAssignStatement->lValue = primaryExpr;
 
                     BinaryExpression *binaryExpr =
                         gZtoonArena.Allocate<BinaryExpression>();
@@ -1343,7 +1349,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                                 TokenType::PLUS_PLUS
                             ? gZtoonArena.Allocate<Token>(TokenType::PLUS)
                             : gZtoonArena.Allocate<Token>(TokenType::DASH);
-                    varAssignStatement->expression = binaryExpr;
+                    varAssignStatement->rValue = binaryExpr;
                     // operation directly after this statement.
                     // need to know if inside block statement or no.
                     // if inside, need to get block statement.
@@ -1420,6 +1426,39 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             }
             break;
         }
+
+        case TokenType::ASTERISK:
+        {
+            // deref works on ptrs.
+            if (rightDataType->type != DataType::Type::POINTER)
+            {
+                ReportError(std::format("Cannot derefrence non-pointer types"),
+                            unaryExpression->GetCodeErrString());
+            }
+            PointerDataType *ptrDataType =
+                dynamic_cast<PointerDataType *>(rightDataType);
+            unaryExpression->isLvalue = true;
+            exprToDataTypeMap[unaryExpression] =
+                ptrDataType->PointedToDatatype();
+            break;
+        }
+        case TokenType::BITWISE_AND:
+        {
+            // ref only works on lvalue
+            if (!unaryExpression->GetRightExpression()->IsLValue())
+            {
+                ReportError("Cannot reference r-value expressions",
+                            unaryExpression->GetCodeErrString());
+            }
+
+            PointerDataType *ptrDataType =
+                gZtoonArena.Allocate<PointerDataType>();
+            ptrDataType->type = DataType::Type::POINTER;
+            ptrDataType->dataType = rightDataType;
+            currentScope->datatypesMap[ptrDataType->ToString()] = ptrDataType;
+            exprToDataTypeMap[unaryExpression] = ptrDataType;
+            break;
+        }
         default:
         {
             ReportError(
@@ -1447,19 +1486,42 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
 
         exprToDataTypeMap[castExpression] =
             currentScope->GetDataType(castExpression->castToTypeToken);
-        if (exprToDataTypeMap[castExpression]->GetType() ==
-            DataType::Type::BOOL)
+
+        DataType *valueType = exprToDataTypeMap[castExpression->expression];
+        DataType *castType = exprToDataTypeMap[castExpression];
+        if (castType->GetType() == DataType::Type::BOOL)
         {
             if (exprToDataTypeMap[castExpression]->GetType() !=
                 DataType::Type::BOOL)
             {
                 ReportError(
-                    std::format("Cannot cast datatype '{}' to datatype '{}'",
-                                exprToDataTypeMap[castExpression->expression]
-                                    ->ToString(),
-                                exprToDataTypeMap[castExpression]->ToString()),
+                    std::format(
+                        "Cannot Cast from '{}' datatype to '{}' datatype",
+                        valueType->ToString(), castType->ToString()),
                     castExpression->GetCodeErrString());
             }
+        }
+        // ptr stuff
+        //  ptr to ptr ok
+        //  int to ptr ok
+        //  ptr to int ok
+        //  else not ok.
+        else if (castType->GetType() == DataType::Type::POINTER &&
+                 (valueType->GetType() != DataType::Type::POINTER ||
+                  !valueType->IsInteger()))
+        {
+            ReportError(
+                std::format("Cannot Cast from '{}' datatype to '{}' datatype",
+                            valueType->ToString(), castType->ToString()),
+                castExpression->GetCodeErrString());
+        }
+
+        else if ((valueType->GetType() == DataType::Type::POINTER) &&
+                 !castType->IsInteger())
+        {
+            ReportError(std::format("Pointer datatype can only be casted to an "
+                                    "integer datatype"),
+                        castExpression->GetCodeErrString());
         }
     }
     else if (dynamic_cast<PrimaryExpression *>(expression))
@@ -1504,6 +1566,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         }
         case TokenType::IDENTIFIER:
         {
+            primaryExpression->isLvalue = true;
             exprToDataTypeMap[primaryExpression] =
                 currentScope
                     ->GetVariable(primaryExpression->primary->GetLexeme(),

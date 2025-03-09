@@ -32,7 +32,7 @@ TEST(CodeGen_SimpleArithmetic)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
 
     if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
@@ -73,7 +73,7 @@ TEST(CodeGen_ForLoop)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -117,7 +117,7 @@ TEST(CodeGen_NestedLoops)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -155,7 +155,7 @@ TEST(CodeGen_WhileLoop)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -191,7 +191,7 @@ TEST(CodeGen_IfStatement)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -218,7 +218,7 @@ TEST(CodeGen_TernaryExpression)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -249,7 +249,7 @@ TEST(CodeGen_FunctionCall)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -276,7 +276,7 @@ TEST(CodeGen_UnaryMinus)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -303,7 +303,7 @@ TEST(CodeGen_CompoundAssignment)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -331,7 +331,7 @@ TEST(CodeGen_FloatArithmetic)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -359,7 +359,7 @@ TEST(CodeGen_MixedCast)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -386,7 +386,7 @@ TEST(CodeGen_BooleanOps)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -414,7 +414,7 @@ TEST(CodeGen_ShiftOps)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -442,7 +442,7 @@ TEST(CodeGen_BitwiseOps)
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
     sa.Analize();
-    CodeGen codeGen(sa);
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -453,4 +453,74 @@ TEST(CodeGen_BitwiseOps)
     auto *Fp = (int (*)())Sym.getValue();
     int r = Fp();
     ASSERT_EQ(r, 5, "Bitwise operations should yield 5");
+}
+TEST(CodeGen_Recursion)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    std::string source = R"(
+        fn fact(n: i32) -> i32 {
+            if n <= 1 { ret 1; } else { ret n * fact(n - 1); }
+        }
+        fn main() -> i32 { ret fact(5); }
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 120, "Recursion: fact(5) should equal 120");
+}
+
+TEST(CodeGen_PTR)
+{
+
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    std::string source = R"(
+        
+        fn main() -> u64
+         {
+             a: i32 = 422;
+             b: i32* = &a;
+             c: i32** = &b;
+             ret c as u64;
+         }
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (size_t (*)())Sym.getValue();
+    size_t r = Fp();
+    int deref = **((size_t **)r);
 }

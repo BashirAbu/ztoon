@@ -112,7 +112,6 @@ class PointerDataType : public DataType
     DataType *PointedToDatatype() { return dataType; }
 
     DataType *dataType;
-    PointerDataType *pointer = nullptr;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;

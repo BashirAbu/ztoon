@@ -960,7 +960,7 @@ Expression *Parser::ParseUnaryExpression()
                 return nullptr;
             }
         }
-        unaryExpr->right = ParseExpression();
+        unaryExpr->right = ParsePrimaryExpression();
 
         if (TokenMatch(Peek()->GetType(), TokenType::DASH_DASH,
                        TokenType::PLUS_PLUS))

@@ -1507,7 +1507,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         //  ptr to int ok
         //  else not ok.
         else if (castType->GetType() == DataType::Type::POINTER &&
-                 (valueType->GetType() != DataType::Type::POINTER ||
+                 (valueType->GetType() != DataType::Type::POINTER &&
                   !valueType->IsInteger()))
         {
             ReportError(

@@ -356,7 +356,8 @@ IRValue CodeGen::GetLValue(Expression *expr)
     }
     else if (dynamic_cast<UnaryExpression *>(expr))
     {
-        lValue = GenExpressionIR(expr);
+        auto unaryExpr = dynamic_cast<UnaryExpression *>(expr);
+        lValue = GenExpressionIR(unaryExpr->GetRightExpression());
     }
     return lValue;
 }
@@ -645,44 +646,6 @@ void CodeGen::GenStatementIR(Statement *statement)
 
 void CodeGen::GenIfStatementIR(Statement *statement, IfStatementData *ifData)
 {
-    /*
-        if true {
-
-        }
-        else if true {
-
-        }
-        else if true {
-
-        }
-        else {
-
-        }
-
-        br cnd, ifTrueBlock, ifFalseBlock
-
-        ifTrueBlock:
-            ....
-            br mergeBlock
-        ifFalseBlock:
-            br elif_cnd, elifTrueBlock, elifFalseBlock
-        elifTrueBLock:
-            ....
-            br mergeBlock
-        elifFalseBlock:
-            ; maybe another elif or else or nothing
-            br cnd, elifTrueBlock2, elifFalseBlock2
-        elifTrueBlock2:
-            ...
-            br mergeBlock
-        elIfFalseBlock3:
-            br elseBlock
-        elseBlock:
-            ....
-            br mergeBlock
-        mergeBlock:
-        ... cont.
-    */
     if (dynamic_cast<ElseIfStatement *>(statement))
     {
         ElseIfStatement *elifStatement =
@@ -1334,7 +1297,6 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         }
         case TokenType::BITWISE_AND:
         {
-            // need to get ptr. i just need its vluae
             irValue = GetLValue(unaryExpression->GetRightExpression());
             break;
         }

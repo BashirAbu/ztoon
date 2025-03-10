@@ -337,8 +337,6 @@ IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
     {
         return IRValue{};
     }
-    // int to float
-    // pointer casting stuff later.
 }
 
 IRValue CodeGen::GetLValue(Expression *expr)
@@ -377,7 +375,6 @@ CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
 CodeGen::~CodeGen() {}
 void CodeGen::GenIR()
 {
-
     for (Statement *statement : semanticAnalyzer.statements)
     {
         GenStatementIR(statement);
@@ -540,13 +537,15 @@ void CodeGen::GenStatementIR(Statement *statement)
             llvm::BasicBlock::Create(*ctx, "falseBlock", currentFunction);
         llvm::BasicBlock *mergeBlock =
             llvm::BasicBlock::Create(*ctx, "mergeBlock", currentFunction);
-        irBuilder->CreateCondBr(expression.value, trueBlock, falseBlock);
+        if (!irBuilder->GetInsertBlock()->getTerminator())
+        {
+            irBuilder->CreateCondBr(expression.value, trueBlock, falseBlock);
+        }
         irBuilder->SetInsertPoint(trueBlock);
 
         GenStatementIR(ifStatement->GetBlockStatement());
-        llvm::Instruction *term = irBuilder->GetInsertBlock()->getTerminator();
 
-        if (!term || !llvm::isa<llvm::ReturnInst>(term))
+        if (!irBuilder->GetInsertBlock()->getTerminator())
         {
             irBuilder->CreateBr(mergeBlock);
         }
@@ -564,20 +563,18 @@ void CodeGen::GenStatementIR(Statement *statement)
         }
         else
         {
-            llvm::Instruction *term =
-                irBuilder->GetInsertBlock()->getTerminator();
-
-            if (!term || !llvm::isa<llvm::ReturnInst>(term))
+            irBuilder->SetInsertPoint(falseBlock);
+            if (!irBuilder->GetInsertBlock()->getTerminator())
             {
-                irBuilder->SetInsertPoint(falseBlock);
                 irBuilder->CreateBr(mergeBlock);
             }
         }
         if (ifData.falseBlock)
         {
-            if (!term || !llvm::isa<llvm::ReturnInst>(term))
+
+            irBuilder->SetInsertPoint(ifData.falseBlock);
+            if (!irBuilder->GetInsertBlock()->getTerminator())
             {
-                irBuilder->SetInsertPoint(ifData.falseBlock);
                 irBuilder->CreateBr(mergeBlock);
             }
         }
@@ -596,14 +593,27 @@ void CodeGen::GenStatementIR(Statement *statement)
             llvm::BasicBlock::Create(*ctx, "exitBlock", currentFunction);
 
         IRValue cond = GenExpressionIR(whileStatement->GetCondition());
-        irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
+        if (!irBuilder->GetInsertBlock()->getTerminator())
+        {
+            irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
+        }
 
         irBuilder->SetInsertPoint(loopBlock);
+
+        IRLoop *temp = currentLoop;
+        currentLoop = gZtoonArena.Allocate<IRLoop>();
+        currentLoop->loopBB = loopBlock;
+        currentLoop->extBB = exitBlock;
+        currentLoop->loopStmt = whileStatement;
+
         GenStatementIR(whileStatement->GetBlockStatement());
         cond = GenExpressionIR(whileStatement->GetCondition());
-        irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
-
+        if (!irBuilder->GetInsertBlock()->getTerminator())
+        {
+            irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
+        }
         irBuilder->SetInsertPoint(exitBlock);
+        currentLoop = temp;
     }
     else if (dynamic_cast<ForLoopStatement *>(statement))
     {
@@ -615,17 +625,53 @@ void CodeGen::GenStatementIR(Statement *statement)
             irBuilder->GetInsertBlock()->getParent();
         llvm::BasicBlock *loopBlock =
             llvm::BasicBlock::Create(*ctx, "loopBlock", currentFunction);
+        llvm::BasicBlock *condBlock =
+            llvm::BasicBlock::Create(*ctx, "condBlock", currentFunction);
         llvm::BasicBlock *exitBlock =
             llvm::BasicBlock::Create(*ctx, "exitBlock", currentFunction);
-
         irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
 
         irBuilder->SetInsertPoint(loopBlock);
+        IRLoop *temp = currentLoop;
+        currentLoop = gZtoonArena.Allocate<IRLoop>();
+        currentLoop->loopBB = loopBlock;
+        currentLoop->extBB = exitBlock;
+        currentLoop->condBB = condBlock;
+        currentLoop->loopStmt = forLoopStatement;
         GenStatementIR(forLoopStatement->GetBlockStatement());
+        // in case of continue we need to do this cond.
+        if (!irBuilder->GetInsertBlock()->getTerminator())
+        {
+            irBuilder->CreateBr(condBlock);
+        }
+        irBuilder->SetInsertPoint(condBlock);
+        // update
+        GenStatementIR(forLoopStatement->GetUpdate());
         cond = GenExpressionIR(forLoopStatement->GetCondition());
-        irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
-
+        if (!irBuilder->GetInsertBlock()->getTerminator())
+        {
+            irBuilder->CreateCondBr(cond.value, loopBlock, exitBlock);
+        }
         irBuilder->SetInsertPoint(exitBlock);
+        currentLoop = temp;
+    }
+    else if (dynamic_cast<BreakStatement *>(statement))
+    {
+        auto bStmt = dynamic_cast<BreakStatement *>(statement);
+        if (!irBuilder->GetInsertBlock()->getTerminator())
+        {
+            irBuilder->CreateBr(currentLoop->extBB);
+        }
+    }
+    else if (dynamic_cast<ContinueStatement *>(statement))
+    {
+        auto cStmt = dynamic_cast<ContinueStatement *>(statement);
+        // condBB for 'for loop' and exitBB for 'while loop'
+        if (!irBuilder->GetInsertBlock()->getTerminator())
+        {
+            irBuilder->CreateBr(currentLoop->condBB ? currentLoop->condBB
+                                                    : currentLoop->loopBB);
+        }
     }
     else if (dynamic_cast<FnStatement *>(statement))
     {
@@ -737,9 +783,7 @@ void CodeGen::GenIfStatementIR(Statement *statement, IfStatementData *ifData)
 
         GenStatementIR(elifStatement->GetBlockStatement());
 
-        llvm::Instruction *term = irBuilder->GetInsertBlock()->getTerminator();
-
-        if (!term || !llvm::isa<llvm::ReturnInst>(term))
+        if (!irBuilder->GetInsertBlock()->getTerminator())
         {
             irBuilder->CreateBr(ifData->mergeBlock);
         }
@@ -761,9 +805,7 @@ void CodeGen::GenIfStatementIR(Statement *statement, IfStatementData *ifData)
 
         GenStatementIR(elseStatement->GetBlockStatement());
 
-        llvm::Instruction *term = irBuilder->GetInsertBlock()->getTerminator();
-
-        if (!term || !llvm::isa<llvm::ReturnInst>(term))
+        if (!irBuilder->GetInsertBlock()->getTerminator())
         {
             irBuilder->CreateBr(ifData->mergeBlock);
         }

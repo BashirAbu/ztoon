@@ -193,5 +193,6 @@ class SemanticAnalyzer
     BlockStatement *currentBlockStatement = nullptr;
     size_t statementCurrentIndex = 0;
     Function *currentFunction = nullptr;
+    size_t inLoop = 0;
     friend class CodeGen;
 };

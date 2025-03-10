@@ -378,3 +378,86 @@ TEST(SemanticAnalyzerUnaryDeref)
     SemanticAnalyzer analyzer(stmts);
     analyzer.Analize();
 }
+
+TEST(SemanticAnalyzerWhileLoop)
+{
+    std::string source = R"(
+        fn main()
+        {
+            a: i32 = 0;
+            while a < 5
+            {
+                a++;
+            }
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "unary_ref.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+TEST(SemanticAnalyzerWhileLoopBreak)
+{
+    std::string source = R"(
+        fn main()
+        {
+            a: i32 = 0;
+            while a < 5
+            {
+                for i : i32 = 0; i < 4; i++
+                {
+                    if i > 3
+                    {
+                        break;
+                    }
+                }
+                if a == 3
+                {
+                    break;
+                }
+                a++;
+            }
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "unary_ref.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+TEST(SemanticAnalyzerWhileLoopContinue)
+{
+    std::string source = R"(
+        fn main()
+        {
+            a: i32 = 0;
+            while a < 5
+            {
+                for i : i32 = 0; i < 4; i++
+                {
+                    if i > 3
+                    {
+                        continue;
+                    }
+                }
+                if a == 3
+                {
+                    continue;
+                }
+                a++;
+            }
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "unary_ref.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}

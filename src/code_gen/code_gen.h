@@ -46,6 +46,15 @@ struct IRFunction
     llvm::BasicBlock *fnBB;
     Function *ztoonFn = nullptr;
 };
+
+struct IRLoop
+{
+    llvm::BasicBlock *loopBB = nullptr;
+    llvm::BasicBlock *extBB = nullptr;
+    llvm::BasicBlock *condBB = nullptr;
+
+    Statement *loopStmt = nullptr;
+};
 class CodeGen
 {
   public:
@@ -89,6 +98,6 @@ class CodeGen
         scopeToIRVariablesMap;
     std::unordered_map<std::string, IRVariable *> irVariablesMap;
     std::unordered_map<std::string, IRFunction *> irFunctionsMaps;
-
+    IRLoop *currentLoop = nullptr;
     SemanticAnalyzer &semanticAnalyzer;
 };

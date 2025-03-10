@@ -37,8 +37,9 @@ TEST(CodeGen_SimpleArithmetic)
 
     if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
     {
-        llvm::errs() << "Error in module\n";
+        llvm::errs() << "Module verification failed\n";
     }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -75,6 +76,11 @@ TEST(CodeGen_ForLoop)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -86,6 +92,91 @@ TEST(CodeGen_ForLoop)
     ASSERT_EQ(r, 45, "Sum of 0 to 9 should equal 45");
 }
 
+TEST(CodeGen_ForLoopBreak)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    // Sum numbers 0 through 9: expected result is 45.
+    std::string source = R"(
+        fn main() -> i32 {
+            a: i32 = 0;
+            for i: i32 = 0; i < 10; i++ {
+                a = a + i;
+                if a > 20 {
+                    break;
+                }
+            }
+            ret a;
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 21, "Result should be 21");
+}
+
+TEST(CodeGen_ForLoopContinue)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    // Sum numbers 0 through 9: expected result is 45.
+    std::string source = R"(
+        fn main() -> i32 {
+            a: i32 = 0;
+            for i: i32 = 0; i < 10; i++ {
+                if a > 10 {
+                    continue;
+                }
+                a = a + i;
+            }
+            ret a;
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 15, "Result should be 15");
+}
 // Test 3: Nested loops (complex computation).
 TEST(CodeGen_NestedLoops)
 {
@@ -119,6 +210,11 @@ TEST(CodeGen_NestedLoops)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -130,7 +226,66 @@ TEST(CodeGen_NestedLoops)
     ASSERT_EQ(r, 33763500, "Nested loops should compute 33763500");
 }
 
-// Test 4: While loop.
+// Test 3: Nested loops (complex computation).
+TEST(CodeGen_NestedLoopsBreakContinue)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    std::string source = R"(
+        fn main() -> i32 {
+            a: i32 = 0;
+            for i: i32 = 0; i < 10; i++ {
+                a += i;
+                while a < 5 {
+                    a++;
+                    if a == 2 {
+                        continue;
+                    }
+
+                    if a == 4
+                    {
+                        break;
+                    }
+                }
+
+                if i != a {
+                    continue;
+                }
+
+                if ( a > 15)
+                {
+                    break;
+                }
+            }
+            ret a;
+        }
+    )";
+    // Expected result computed externally: 33763500
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 49, "Result should be 49");
+} // Test 4: While loop.
 TEST(CodeGen_WhileLoop)
 {
     llvm::InitializeNativeTarget();
@@ -157,6 +312,11 @@ TEST(CodeGen_WhileLoop)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -168,6 +328,96 @@ TEST(CodeGen_WhileLoop)
     ASSERT_EQ(r, 10, "While loop sum should equal 10");
 }
 
+TEST(CodeGen_WhileLoopBreak)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    // Compute a sum with a while loop: sum of 1+2+3+4 = 10.
+    std::string source = R"(
+        fn main() -> i32 {
+            a: i32 = 0;
+            b: i32 = 1;
+            while b < 5 {
+                if b == 3
+                {
+                    break;
+                }
+                a = a + b;
+                b++;
+            }
+            ret a;
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 3, "While loop sum should equal 3");
+}
+TEST(CodeGen_WhileLoopContinue)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    // Compute a sum with a while loop: sum of 1+2+3+4 = 10.
+    std::string source = R"(
+        fn main() -> i32 {
+            a: i32 = 0;
+            b: i32 = 1;
+            while b < 5 {
+                b++;
+                if b == 3
+                {
+                    continue;
+                }
+                a = a + b;
+            }
+            ret a;
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 11, "While loop sum should equal 11");
+}
 // Test 5: If statement.
 TEST(CodeGen_IfStatement)
 {
@@ -193,6 +443,11 @@ TEST(CodeGen_IfStatement)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -220,6 +475,11 @@ TEST(CodeGen_TernaryExpression)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -251,6 +511,11 @@ TEST(CodeGen_FunctionCall)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -278,6 +543,11 @@ TEST(CodeGen_UnaryMinus)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -305,6 +575,11 @@ TEST(CodeGen_CompoundAssignment)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -333,6 +608,11 @@ TEST(CodeGen_FloatArithmetic)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -361,6 +641,11 @@ TEST(CodeGen_MixedCast)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -388,6 +673,11 @@ TEST(CodeGen_BooleanOps)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -416,6 +706,11 @@ TEST(CodeGen_ShiftOps)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -444,6 +739,11 @@ TEST(CodeGen_BitwiseOps)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
@@ -475,6 +775,11 @@ TEST(CodeGen_Recursion)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -513,6 +818,11 @@ TEST(CodeGen_PTR)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -550,6 +860,11 @@ TEST(CodeGen_FNPTR)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -585,6 +900,11 @@ TEST(CodeGen_UninitializedVariables)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -619,6 +939,11 @@ TEST(CodeGen_InitializedGlobalVars)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -629,6 +954,44 @@ TEST(CodeGen_InitializedGlobalVars)
     auto *Fp = (int (*)())Sym.getValue();
     int r = Fp();
     ASSERT_EQ(r, 12, "Value should be 12");
+}
+TEST(CodeGen_UninitializedGlobalVars)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    std::string source = R"(
+        gA: i32;
+        fn main() -> i32
+        {
+            ret gA;
+        }
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 0, "Value should be 0");
 }
 TEST(CodeGen_GlobalVarsIniailzedWithReadOnly)
 {
@@ -654,6 +1017,11 @@ TEST(CodeGen_GlobalVarsIniailzedWithReadOnly)
     sa.Analize();
     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
     codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());

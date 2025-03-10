@@ -1,6 +1,5 @@
 ##Todo
-- assign value to deref ptr.
-- global variables.
+- continue and break.
 - string
 - fn pointer variable.
     - should be able to pass as function argument.

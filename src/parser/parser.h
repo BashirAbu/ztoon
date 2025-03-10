@@ -167,6 +167,42 @@ class EmptyStatement : public Statement
         return err;
     }
 };
+
+class BreakStatement : public Statement
+{
+
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString ces = {};
+        ces.firstToken = token;
+        ces.str = "break";
+        return ces;
+    }
+
+  private:
+    Token const *token = nullptr;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
+
+class ContinueStatement : public Statement
+{
+
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString ces = {};
+        ces.firstToken = token;
+        ces.str = "continue";
+        return ces;
+    }
+
+  private:
+    Token const *token = nullptr;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
 class VarDeclStatement : public Statement
 {
   public:
@@ -729,6 +765,9 @@ class Parser
     Statement *ParseElseStatement();
     Statement *ParseWhileLoopStatement();
     Statement *ParseForLoopStatement();
+    Statement *ParseBreakStatement();
+    Statement *ParseContinueStatement();
+
     Statement *ParseRetStatement();
 
     Expression *ParseExpression();

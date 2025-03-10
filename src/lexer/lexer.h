@@ -88,7 +88,9 @@ enum class TokenType
     FOR,
     FN,
     RET,
-    READONLY
+    READONLY,
+    BREAK,
+    CONTINUE
 };
 
 std::string TokenDataTypeToString(TokenType type);

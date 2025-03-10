@@ -510,11 +510,13 @@ Statement *Parser::ParseForLoopStatement()
             ces.str = ces.firstToken->GetLexeme();
             ReportError(std::format("For loop's block is missing"), ces);
         }
-        // Update expression runs at the end of the for loop block.
         if (forLoopStatement->GetUpdate())
         {
-            forLoopStatement->blockStatement->statements.push_back(
-                forLoopStatement->GetUpdate());
+            BlockStatement *updataBlockStatement =
+                gZtoonArena.Allocate<BlockStatement>();
+            updataBlockStatement->statements.push_back(
+                forLoopStatement->update);
+            forLoopStatement->update = updataBlockStatement;
         }
         BlockStatement *blockStatement = gZtoonArena.Allocate<BlockStatement>();
         blockStatement->statements.push_back(forLoopStatement);
@@ -522,6 +524,29 @@ Statement *Parser::ParseForLoopStatement()
         return blockStatement;
     }
 
+    return ParseBreakStatement();
+}
+
+Statement *Parser::ParseBreakStatement()
+{
+    if (Consume(TokenType::BREAK))
+    {
+        BreakStatement *bStmt = gZtoonArena.Allocate<BreakStatement>();
+        bStmt->token = Prev();
+        return bStmt;
+    }
+
+    return ParseContinueStatement();
+}
+
+Statement *Parser::ParseContinueStatement()
+{
+    if (Consume(TokenType::CONTINUE))
+    {
+        ContinueStatement *cStmt = gZtoonArena.Allocate<ContinueStatement>();
+        cStmt->token = Prev();
+        return cStmt;
+    }
     return ParseRetStatement();
 }
 

@@ -695,8 +695,9 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                     whileStatement->GetCondition()->GetCodeErrString().str),
                 whileStatement->GetCondition()->GetCodeErrString());
         }
-
+        inLoop++;
         AnalizeStatement(whileStatement->GetBlockStatement());
+        inLoop--;
     }
     else if (dynamic_cast<ForLoopStatement *>(statement))
     {
@@ -721,8 +722,35 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                     forLoopStatement->GetCondition()->GetCodeErrString());
             }
         }
+        if (forLoopStatement->GetUpdate())
+        {
+            AnalizeStatement(forLoopStatement->GetUpdate());
+        }
+        inLoop++;
 
         AnalizeStatement(forLoopStatement->GetBlockStatement());
+        inLoop--;
+    }
+    else if (dynamic_cast<BreakStatement *>(statement))
+    {
+        auto bStmt = dynamic_cast<BreakStatement *>(statement);
+        // only in loops and switch stmts
+        if (inLoop == 0)
+        {
+            ReportError("Cannot use 'break' statement outside loop statement",
+                        bStmt->GetCodeErrString());
+        }
+    }
+    else if (dynamic_cast<ContinueStatement *>(statement))
+    {
+        // only in loops
+        auto cStmt = dynamic_cast<ContinueStatement *>(statement);
+        if (inLoop == 0)
+        {
+            ReportError(
+                "Cannot use 'continue' statement outside loop statement",
+                cStmt->GetCodeErrString());
+        }
     }
     else if (dynamic_cast<RetStatement *>(statement))
     {
@@ -1308,99 +1336,78 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::PLUS_PLUS:
         {
             // numerical
-            PrimaryExpression *primaryExpr = dynamic_cast<PrimaryExpression *>(
-                unaryExpression->GetRightExpression());
-            if (primaryExpr)
-            {
-                if (!currentScope->GetVariable(
-                        primaryExpr->primary->GetLexeme(),
-                        primaryExpr->GetCodeErrString()))
-                {
-                    ReportError(
-                        std::format(
-                            "Cannot perform unary operator '{}' on "
-                            "non l-value expression",
-                            unaryExpression->GetOperator()->GetLexeme()),
-                        unaryExpression->GetCodeErrString());
-                }
-                if (!rightDataType->IsNumerical())
-                {
-                    ReportError(
-                        std::format("Cannot perform unary operator '{}' on "
-                                    "datatype '{}'.",
-                                    unaryExpression->GetOperator()->GetLexeme(),
-                                    rightDataType->ToString()),
-                        unaryExpression->GetCodeErrString());
-                }
-                if (unaryExpression->IsPostfix())
-                {
-                    // Insert new variable assign statement with binary
-                    VarAssignmentStatement *varAssignStatement =
-                        gZtoonArena.Allocate<VarAssignmentStatement>();
-                    Token *typeToken = gZtoonArena.Allocate<Token>(
-                        rightDataType->ToTokenType());
-                    varAssignStatement->lValue = primaryExpr;
-
-                    BinaryExpression *binaryExpr =
-                        gZtoonArena.Allocate<BinaryExpression>();
-                    binaryExpr->left = primaryExpr;
-                    PrimaryExpression *oneExpr =
-                        gZtoonArena.Allocate<PrimaryExpression>();
-                    exprToDataTypeMap[oneExpr] = rightDataType;
-
-                    Token *oneToken = nullptr;
-                    if (rightDataType->IsInteger())
-                    {
-                        oneToken = gZtoonArena.Allocate<TokenLiteral<int32_t>>(
-                            TokenType::INTEGER_LITERAL, 1);
-                    }
-                    else if (rightDataType->IsFloat())
-                    {
-                        oneToken = gZtoonArena.Allocate<TokenLiteral<float>>(
-                            TokenType::FLOAT_LITERAL, 1.0);
-                    }
-                    oneExpr->primary = oneToken;
-                    binaryExpr->right = oneExpr;
-                    exprToDataTypeMap[binaryExpr] = rightDataType;
-                    binaryExpr->op =
-                        unaryExpression->GetOperator()->type ==
-                                TokenType::PLUS_PLUS
-                            ? gZtoonArena.Allocate<Token>(TokenType::PLUS)
-                            : gZtoonArena.Allocate<Token>(TokenType::DASH);
-                    varAssignStatement->rValue = binaryExpr;
-                    // operation directly after this statement.
-                    // need to know if inside block statement or no.
-                    // if inside, need to get block statement.
-
-                    if (currentBlockStatement)
-                    {
-                        // inside
-                        size_t s = currentBlockStatement->statements.size();
-                        currentBlockStatement->statements.insert(
-                            currentBlockStatement->statements.begin() +
-                                currentBlockStatement->index + 1,
-                            varAssignStatement);
-                    }
-                    else
-                    {
-                        // global
-                        statements.insert(statements.begin() +
-                                              statementCurrentIndex + 1,
-                                          varAssignStatement);
-                    }
-
-                    // disable this expression.
-                    unaryExpression->op =
-                        gZtoonArena.Allocate<Token>(TokenType::PLUS);
-                }
-            }
-            else
+            if (!unaryExpression->GetRightExpression()->IsLValue())
             {
                 ReportError(
-                    std::format("Expression '{}' must be l-value",
-                                unaryExpression->right->GetCodeErrString().str),
-                    unaryExpression->right->GetCodeErrString());
+                    std::format("Cannot perform unary operator '{}' on r-value "
+                                "expression",
+                                unaryExpression->GetOperator()->GetLexeme()),
+                    unaryExpression->GetRightExpression()->GetCodeErrString());
             }
+
+            if (!rightDataType->IsNumerical())
+            {
+                ReportError(
+                    std::format("Cannot perform unary operator '{}' on "
+                                "datatype '{}'.",
+                                unaryExpression->GetOperator()->GetLexeme(),
+                                rightDataType->ToString()),
+                    unaryExpression->GetCodeErrString());
+            }
+            if (unaryExpression->IsPostfix())
+            {
+                // Insert new variable assign statement with binary
+                VarAssignmentStatement *varAssignStatement =
+                    gZtoonArena.Allocate<VarAssignmentStatement>();
+                Token *typeToken =
+                    gZtoonArena.Allocate<Token>(rightDataType->ToTokenType());
+                varAssignStatement->lValue =
+                    unaryExpression->GetRightExpression();
+
+                BinaryExpression *binaryExpr =
+                    gZtoonArena.Allocate<BinaryExpression>();
+                binaryExpr->left = unaryExpression->GetRightExpression();
+                PrimaryExpression *oneExpr =
+                    gZtoonArena.Allocate<PrimaryExpression>();
+                exprToDataTypeMap[oneExpr] = rightDataType;
+
+                Token *oneToken = nullptr;
+                if (rightDataType->IsInteger())
+                {
+                    oneToken = gZtoonArena.Allocate<TokenLiteral<int32_t>>(
+                        TokenType::INTEGER_LITERAL, 1);
+                }
+                else if (rightDataType->IsFloat())
+                {
+                    oneToken = gZtoonArena.Allocate<TokenLiteral<float>>(
+                        TokenType::FLOAT_LITERAL, 1.0);
+                }
+                oneExpr->primary = oneToken;
+                binaryExpr->right = oneExpr;
+                exprToDataTypeMap[binaryExpr] = rightDataType;
+                binaryExpr->op =
+                    unaryExpression->GetOperator()->type == TokenType::PLUS_PLUS
+                        ? gZtoonArena.Allocate<Token>(TokenType::PLUS)
+                        : gZtoonArena.Allocate<Token>(TokenType::DASH);
+                varAssignStatement->rValue = binaryExpr;
+                // operation directly after this statement.
+                // need to know if inside block statement or no.
+                // if inside, need to get block statement.
+
+                if (currentBlockStatement)
+                {
+                    // inside
+                    size_t s = currentBlockStatement->statements.size();
+                    currentBlockStatement->statements.insert(
+                        currentBlockStatement->statements.begin() +
+                            currentBlockStatement->index + 1,
+                        varAssignStatement);
+                }
+                // disable this expression.
+                unaryExpression->op =
+                    gZtoonArena.Allocate<Token>(TokenType::PLUS);
+            }
+
             break;
         }
         case TokenType::PLUS:

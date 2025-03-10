@@ -189,6 +189,7 @@ class VarDeclStatement : public Statement
     }
 
     bool IsParamter() { return isParamter; }
+    bool IsGlobal() { return isGlobal; }
 
   private:
     Token const *identifier = nullptr;
@@ -197,6 +198,7 @@ class VarDeclStatement : public Statement
     Expression *expression = nullptr;
 
     bool isParamter = false;
+    bool isGlobal = false;
     friend class Parser;
     friend class SemanticAnalyzer;
 };

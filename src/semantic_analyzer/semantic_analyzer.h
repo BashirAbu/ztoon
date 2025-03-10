@@ -131,6 +131,7 @@ class Variable
     DataType *dataType = nullptr;
 
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class Function

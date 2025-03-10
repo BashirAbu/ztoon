@@ -470,6 +470,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             PrimaryExpression *varExpr =
                 gZtoonArena.Allocate<PrimaryExpression>();
             varExpr->primary = varDeclStatement->GetIdentifier();
+            varExpr->isLvalue = true;
             Expression *variableRawExpression = varExpr;
             exprToDataTypeMap[varExpr] = stmtToDataTypeMap[varDeclStatement];
             // check if types are compatible.
@@ -487,13 +488,28 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                     varDeclStatement->GetCodeErrString());
             }
             // meaning in global scope.
-            if (!currentScope->parent)
+            if (varDeclStatement->IsGlobal())
             {
                 if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
-                         ->IsReadOnly() ||
-                    dynamic_cast<FnCallExpression *>(
-                        varDeclStatement->GetExpression()))
+                         ->IsReadOnly() &&
+                    (!dynamic_cast<PrimaryExpression *>(
+                        varDeclStatement->GetExpression())))
                 {
+                    ReportError(
+                        std::format("ReadOnly or compile time expression are "
+                                    "allowd to be "
+                                    "assigned to global variables"),
+                        varDeclStatement->GetExpression()->GetCodeErrString());
+                }
+                else if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
+                              ->IsReadOnly() &&
+                         (!dynamic_cast<PrimaryExpression *>(
+                             varDeclStatement->GetExpression())) &&
+                         dynamic_cast<PrimaryExpression *>(
+                             varDeclStatement->GetExpression())
+                                 ->primary->GetType() == TokenType::IDENTIFIER)
+                {
+
                     ReportError(
                         std::format("ReadOnly or compile time expression are "
                                     "allowd to be "
@@ -520,6 +536,12 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
             stmtToDataTypeMap[varAssignmentStatement] =
                 exprToDataTypeMap[varAssignmentStatement->GetLValue()];
+            if (stmtToDataTypeMap[varAssignmentStatement]->IsReadOnly())
+            {
+
+                ReportError("Cannot assign value to readonly variable",
+                            varAssignmentStatement->GetCodeErrString());
+            }
         }
         else
         {
@@ -557,6 +579,12 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
             stmtToDataTypeMap[varComAssignStatement] =
                 exprToDataTypeMap[varComAssignStatement->GetLValue()];
+            if (stmtToDataTypeMap[varComAssignStatement]->IsReadOnly())
+            {
+
+                ReportError("Cannot assign value to readonly variable",
+                            varComAssignStatement->GetCodeErrString());
+            }
         }
         else
         {
@@ -908,7 +936,17 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             fpDataType;
     }
 }
+void removeReadonlyPrefix(std::string &str)
+{
+    const std::string prefix = "readonly ";
+    const size_t prefixLen = prefix.length();
 
+    // Check if the string starts with "readonly " and erase it
+    if (str.compare(0, prefixLen, prefix) == 0)
+    {
+        str.erase(0, prefixLen);
+    }
+}
 DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                                                 Expression **right)
 {
@@ -916,125 +954,104 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
     DataType *rightDataType = exprToDataTypeMap[*right];
     bool isLeftLValue = (*left)->IsLValue();
     bool isRightLValue = (*right)->IsLValue();
-    if (leftDataType->ToString() != rightDataType->ToString())
+
+    std::string leftDataTypeStr = leftDataType->ToString();
+    std::string rightDataTypeStr = rightDataType->ToString();
+    removeReadonlyPrefix(leftDataTypeStr);
+    removeReadonlyPrefix(rightDataTypeStr);
+
+    if (leftDataTypeStr != rightDataTypeStr)
     {
-        if (isLeftLValue && isRightLValue)
+
+        if ((*left)->IsLValue() && !(*right)->IsLValue() &&
+                (rightDataType->IsInteger()) ||
+            rightDataType->IsFloat())
         {
-            PrimaryExpression *leftPrimaryExpr =
-                dynamic_cast<PrimaryExpression *>((*left));
-
-            PrimaryExpression *rightPrimaryExpr =
-                dynamic_cast<PrimaryExpression *>((*right));
-
-            if (leftPrimaryExpr->GetPrimary()->GetType() ==
-                        TokenType::IDENTIFIER &&
-                    rightPrimaryExpr->GetPrimary()->GetType() !=
-                        TokenType::IDENTIFIER &&
-                    (rightDataType->IsInteger()) ||
-                rightDataType->IsFloat())
+            TokenType leftVarDataType = leftDataType->ToTokenType();
+            TokenType rightLiteralDataType = rightDataType->ToTokenType();
+            if (IsInteger(leftVarDataType) && IsInteger(rightLiteralDataType))
             {
-                TokenType leftVarDataType = leftDataType->ToTokenType();
-                TokenType rightLiteralDataType = rightDataType->ToTokenType();
-                if (IsInteger(leftVarDataType) &&
-                    IsInteger(rightLiteralDataType))
-                {
-                    // cast
-                    CastExpression *castExpr =
-                        gZtoonArena.Allocate<CastExpression>();
-                    castExpr->expression = *right;
-                    castExpr->castToTypeToken =
-                        gZtoonArena.Allocate<DataTypeToken>();
-                    castExpr->castToTypeToken->dataType =
-                        gZtoonArena.Allocate<Token>(
-                            leftDataType->ToTokenType());
-                    castExpr->castToTypeToken->readOnly =
-                        leftDataType->IsReadOnly()
-                            ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
-                            : nullptr;
-                    exprToDataTypeMap[castExpr] = leftDataType;
-                    *right = castExpr;
-                    return leftDataType->type;
-                }
-                else if (IsFloat(leftVarDataType) &&
-                         IsFloat(rightLiteralDataType))
-                {
-                    // cast
-                    CastExpression *castExpr =
-                        gZtoonArena.Allocate<CastExpression>();
-                    castExpr->expression = *right;
-                    castExpr->castToTypeToken =
-                        gZtoonArena.Allocate<DataTypeToken>();
-                    castExpr->castToTypeToken->dataType =
-                        gZtoonArena.Allocate<Token>(
-                            leftDataType->ToTokenType());
-                    castExpr->castToTypeToken->readOnly =
-                        leftDataType->IsReadOnly()
-                            ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
-                            : nullptr;
-                    exprToDataTypeMap[castExpr] = leftDataType;
-                    *right = castExpr;
-                    return leftDataType->type;
-                }
-                else
-                {
-                    // error
-                    return DataType::Type::UNKNOWN;
-                }
+                // cast
+                CastExpression *castExpr =
+                    gZtoonArena.Allocate<CastExpression>();
+                castExpr->expression = *right;
+                castExpr->castToTypeToken =
+                    gZtoonArena.Allocate<DataTypeToken>();
+                castExpr->castToTypeToken->dataType =
+                    gZtoonArena.Allocate<Token>(leftDataType->ToTokenType());
+                castExpr->castToTypeToken->readOnly =
+                    leftDataType->IsReadOnly()
+                        ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
+                        : nullptr;
+                exprToDataTypeMap[castExpr] = leftDataType;
+                *right = castExpr;
+                return leftDataType->type;
             }
-            else if (rightPrimaryExpr->GetPrimary()->GetType() ==
-                         TokenType::IDENTIFIER &&
-                     leftPrimaryExpr->GetPrimary()->GetType() !=
-                         TokenType::IDENTIFIER &&
-                     (leftDataType->IsInteger() || leftDataType->IsFloat()))
+            else if (IsFloat(leftVarDataType) && IsFloat(rightLiteralDataType))
             {
+                // cast
+                CastExpression *castExpr =
+                    gZtoonArena.Allocate<CastExpression>();
+                castExpr->expression = *right;
+                castExpr->castToTypeToken =
+                    gZtoonArena.Allocate<DataTypeToken>();
+                castExpr->castToTypeToken->dataType =
+                    gZtoonArena.Allocate<Token>(leftDataType->ToTokenType());
+                castExpr->castToTypeToken->readOnly =
+                    leftDataType->IsReadOnly()
+                        ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
+                        : nullptr;
+                exprToDataTypeMap[castExpr] = leftDataType;
+                *right = castExpr;
+                return leftDataType->type;
+            }
+            else
+            {
+                // error
+                return DataType::Type::UNKNOWN;
+            }
+        }
+        else if ((*right)->IsLValue() && !(*left)->IsLValue() &&
+                 (leftDataType->IsInteger() || leftDataType->IsFloat()))
+        {
 
-                TokenType leftLiteralDataType = leftDataType->ToTokenType();
-                TokenType rightVarDataType = rightDataType->ToTokenType();
-                if (IsInteger(leftLiteralDataType) &&
-                    IsInteger(rightVarDataType))
-                {
-                    // cast
-                    CastExpression *castExpr =
-                        gZtoonArena.Allocate<CastExpression>();
-                    castExpr->expression = *left;
-                    exprToDataTypeMap[castExpr] = rightDataType;
-                    castExpr->castToTypeToken =
-                        gZtoonArena.Allocate<DataTypeToken>();
-                    castExpr->castToTypeToken->dataType =
-                        gZtoonArena.Allocate<Token>(
-                            rightDataType->ToTokenType());
-                    castExpr->castToTypeToken->readOnly =
-                        rightDataType->IsReadOnly()
-                            ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
-                            : nullptr;
-                    *left = castExpr;
-                    return rightDataType->type;
-                }
-                else if (IsFloat(leftLiteralDataType) &&
-                         IsFloat(rightVarDataType))
-                {
-                    // cast
-                    CastExpression *castExpr =
-                        gZtoonArena.Allocate<CastExpression>();
-                    castExpr->expression = *left;
-                    exprToDataTypeMap[castExpr] = rightDataType;
-                    castExpr->castToTypeToken =
-                        gZtoonArena.Allocate<DataTypeToken>();
-                    castExpr->castToTypeToken->dataType =
-                        gZtoonArena.Allocate<Token>(
-                            rightDataType->ToTokenType());
-                    castExpr->castToTypeToken->readOnly =
-                        rightDataType->IsReadOnly()
-                            ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
-                            : nullptr;
-                    *left = castExpr;
-                    return rightDataType->type;
-                }
-                else
-                {
-                    // error
-                    return DataType::Type::UNKNOWN;
-                }
+            TokenType leftLiteralDataType = leftDataType->ToTokenType();
+            TokenType rightVarDataType = rightDataType->ToTokenType();
+            if (IsInteger(leftLiteralDataType) && IsInteger(rightVarDataType))
+            {
+                // cast
+                CastExpression *castExpr =
+                    gZtoonArena.Allocate<CastExpression>();
+                castExpr->expression = *left;
+                exprToDataTypeMap[castExpr] = rightDataType;
+                castExpr->castToTypeToken =
+                    gZtoonArena.Allocate<DataTypeToken>();
+                castExpr->castToTypeToken->dataType =
+                    gZtoonArena.Allocate<Token>(rightDataType->ToTokenType());
+                castExpr->castToTypeToken->readOnly =
+                    rightDataType->IsReadOnly()
+                        ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
+                        : nullptr;
+                *left = castExpr;
+                return rightDataType->type;
+            }
+            else if (IsFloat(leftLiteralDataType) && IsFloat(rightVarDataType))
+            {
+                // cast
+                CastExpression *castExpr =
+                    gZtoonArena.Allocate<CastExpression>();
+                castExpr->expression = *left;
+                exprToDataTypeMap[castExpr] = rightDataType;
+                castExpr->castToTypeToken =
+                    gZtoonArena.Allocate<DataTypeToken>();
+                castExpr->castToTypeToken->dataType =
+                    gZtoonArena.Allocate<Token>(rightDataType->ToTokenType());
+                castExpr->castToTypeToken->readOnly =
+                    rightDataType->IsReadOnly()
+                        ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
+                        : nullptr;
+                *left = castExpr;
+                return rightDataType->type;
             }
             else
             {
@@ -1047,6 +1064,7 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
             return DataType::Type::UNKNOWN;
         }
     }
+
     return leftDataType->type;
 }
 
@@ -1456,6 +1474,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             ptrDataType->type = DataType::Type::POINTER;
             ptrDataType->dataType = rightDataType;
             currentScope->datatypesMap[ptrDataType->ToString()] = ptrDataType;
+            ptrDataType->isReadOnly = true;
             exprToDataTypeMap[unaryExpression] = ptrDataType;
             break;
         }

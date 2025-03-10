@@ -3,12 +3,15 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "semantic_analyzer/semantic_analyzer.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
@@ -351,7 +354,7 @@ IRValue CodeGen::GetLValue(Expression *expr)
     {
         auto pe = dynamic_cast<PrimaryExpression *>(expr);
         IRVariable *var = GetIRVariable(pe->GetPrimary()->GetLexeme());
-        lValue.value = var->aInsta;
+        lValue.value = var->value;
         lValue.type = var->irType;
     }
     else if (dynamic_cast<UnaryExpression *>(expr))
@@ -387,26 +390,96 @@ void CodeGen::GenStatementIR(Statement *statement)
     {
         VarDeclStatement *varDeclStatement =
             dynamic_cast<VarDeclStatement *>(statement);
-        // Define variable. stack variable.
-        llvm::AllocaInst *inst = irBuilder->CreateAlloca(
-            ZtoonTypeToLLVMType(
-                semanticAnalyzer.stmtToDataTypeMap[varDeclStatement])
-                .type,
-            nullptr, varDeclStatement->GetIdentifier()->GetLexeme());
-        IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
-        irVariable->aInsta = inst;
-        irVariable->variabel = semanticAnalyzer.currentScope->GetVariable(
-            varDeclStatement->GetIdentifier()->GetLexeme(),
-            varDeclStatement->GetCodeErrString());
-        irVariable->irType = ZtoonTypeToLLVMType(
-            semanticAnalyzer.stmtToDataTypeMap[varDeclStatement]);
-        AddIRVariable(irVariable);
 
-        if (varDeclStatement->GetExpression())
+        if (varDeclStatement->IsGlobal())
         {
-            // evaluate expression;
-            IRValue value = GenExpressionIR(varDeclStatement->GetExpression());
-            irBuilder->CreateStore(value.value, inst);
+            DataType *type =
+                semanticAnalyzer.stmtToDataTypeMap[varDeclStatement];
+
+            llvm::GlobalVariable *globalVar;
+            if (varDeclStatement->GetExpression())
+            {
+                auto pe = dynamic_cast<PrimaryExpression *>(
+                    varDeclStatement->GetExpression());
+                bool isExprGlobalVar =
+                    pe ? pe->GetPrimary()->GetType() == TokenType::IDENTIFIER
+                       : false;
+                IRValue exprValue =
+                    GenExpressionIR(varDeclStatement->GetExpression());
+                if (!llvm::isa<llvm::Constant>(exprValue.value))
+                {
+                    ReportError(
+                        std::format("Expression '{}' is not constant",
+                                    varDeclStatement->GetExpression()
+                                        ->GetCodeErrString()
+                                        .str),
+                        varDeclStatement->GetExpression()->GetCodeErrString());
+                }
+                llvm::Constant *constValue =
+                    llvm::cast<llvm::Constant>(exprValue.value);
+                globalVar = new llvm::GlobalVariable(
+                    *module, ZtoonTypeToLLVMType(type).type, type->IsReadOnly(),
+                    llvm::GlobalValue::ExternalLinkage,
+                    isExprGlobalVar
+                        ? llvm::cast<llvm::GlobalVariable>(exprValue.value)
+                              ->getInitializer()
+                        : constValue,
+                    std::format(
+                        "g_{}",
+                        varDeclStatement->GetIdentifier()->GetLexeme()));
+            }
+            else
+            {
+                globalVar = new llvm::GlobalVariable(
+                    *module, ZtoonTypeToLLVMType(type).type, type->IsReadOnly(),
+                    llvm::GlobalValue::CommonLinkage,
+                    llvm::Constant::getNullValue(
+                        ZtoonTypeToLLVMType(type).type),
+                    std::format(
+                        "g_{}",
+                        varDeclStatement->GetIdentifier()->GetLexeme()));
+            }
+
+            IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
+            irVariable->value = globalVar;
+            irVariable->variabel = semanticAnalyzer.currentScope->GetVariable(
+                varDeclStatement->GetIdentifier()->GetLexeme(),
+                varDeclStatement->GetCodeErrString());
+            irVariable->irType = ZtoonTypeToLLVMType(
+                semanticAnalyzer.stmtToDataTypeMap[varDeclStatement]);
+            AddIRVariable(irVariable);
+        }
+        else
+        {
+            llvm::AllocaInst *inst = irBuilder->CreateAlloca(
+                ZtoonTypeToLLVMType(
+                    semanticAnalyzer.stmtToDataTypeMap[varDeclStatement])
+                    .type,
+                nullptr, varDeclStatement->GetIdentifier()->GetLexeme());
+            IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
+            irVariable->value = inst;
+            irVariable->variabel = semanticAnalyzer.currentScope->GetVariable(
+                varDeclStatement->GetIdentifier()->GetLexeme(),
+                varDeclStatement->GetCodeErrString());
+            irVariable->irType = ZtoonTypeToLLVMType(
+                semanticAnalyzer.stmtToDataTypeMap[varDeclStatement]);
+            AddIRVariable(irVariable);
+
+            if (varDeclStatement->GetExpression())
+            {
+                // evaluate expression;
+                IRValue value =
+                    GenExpressionIR(varDeclStatement->GetExpression());
+                irBuilder->CreateStore(value.value, inst);
+            }
+            else
+            {
+                irBuilder->CreateStore(
+                    llvm::Constant::getNullValue(
+                        ZtoonTypeToLLVMType(irVariable->variabel->dataType)
+                            .type),
+                    inst);
+            }
         }
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
@@ -598,7 +671,7 @@ void CodeGen::GenStatementIR(Statement *statement)
                 IRVariable *paramVar =
                     GetIRVariable(paramStmt->GetIdentifier()->GetLexeme());
                 llvm::Value *value = irFunc->fn->getArg(index);
-                irBuilder->CreateStore(value, paramVar->aInsta);
+                irBuilder->CreateStore(value, paramVar->value);
                 index++;
             }
             GenStatementIR(fnStmt->GetBlockStatement());
@@ -1226,7 +1299,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                     std::format("unary_op_{}",
                                 unaryExpression->GetOperator()->GetLexeme()));
             }
-            irBuilder->CreateStore(irValue.value, var->aInsta);
+            irBuilder->CreateStore(irValue.value, var->value);
             break;
         }
         case TokenType::PLUS:
@@ -1241,7 +1314,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                 unaryExpression->GetRightExpression());
             IRVariable *var =
                 GetIRVariable(primaryExpr->GetPrimary()->GetLexeme());
-            irValue.value = irBuilder->CreateLoad(var->irType.type, var->aInsta,
+            irValue.value = irBuilder->CreateLoad(var->irType.type, var->value,
                                                   var->variabel->GetName());
             if (unaryDataType->IsInteger())
             {
@@ -1260,7 +1333,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                     std::format("unary_op_{}",
                                 unaryExpression->GetOperator()->GetLexeme()));
             }
-            irBuilder->CreateStore(irValue.value, var->aInsta);
+            irBuilder->CreateStore(irValue.value, var->value);
             break;
         }
         case TokenType::EXCLAMATION:
@@ -1379,10 +1452,22 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         }
         case TokenType::IDENTIFIER:
         {
-            IRVariable *var =
-                GetIRVariable(primaryExpression->GetPrimary()->GetLexeme());
-            irValue.value = irBuilder->CreateLoad(var->irType.type, var->aInsta,
-                                                  "load_var_value");
+            // are we in global scope?i
+            llvm::BasicBlock *block = irBuilder->GetInsertBlock();
+            if (block)
+            {
+                IRVariable *var =
+                    GetIRVariable(primaryExpression->GetPrimary()->GetLexeme());
+                irValue.value = irBuilder->CreateLoad(
+                    var->irType.type, var->value, "load_var_value");
+            }
+            else
+            {
+                IRVariable *var =
+                    GetIRVariable(primaryExpression->GetPrimary()->GetLexeme());
+                irValue.value = var->value;
+                irValue.type = var->irType;
+            }
         }
         break;
         case TokenType::STRING_LITERAL:

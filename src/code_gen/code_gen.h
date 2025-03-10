@@ -23,7 +23,7 @@ struct IRType
 struct IRVariable
 {
     Variable const *variabel = nullptr;
-    llvm::AllocaInst *aInsta = nullptr;
+    llvm::Value *value = nullptr;
     IRType irType;
 };
 

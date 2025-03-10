@@ -97,6 +97,11 @@ Statement *Parser::ParseDeclaration()
     if (dynamic_cast<VarDeclStatement *>(declStmt) ||
         dynamic_cast<FnStatement *>(declStmt))
     {
+        VarDeclStatement *varDecl = dynamic_cast<VarDeclStatement *>(declStmt);
+        if (varDecl)
+        {
+            varDecl->isGlobal = true;
+        }
         return declStmt;
     }
     else

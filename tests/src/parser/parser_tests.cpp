@@ -260,7 +260,7 @@ TEST(ParserFunctionCallInsideFunctionTest)
         "Statement inside function block should be an expression statement");
     auto *fnCall = dynamic_cast<FnCallExpression *>(exprStmt->GetExpression());
     ASSERT_NE(fnCall, nullptr, "Expression should be a function call");
-    ASSERT_EQ(fnCall->GetIdentifier()->GetLexeme(), "foo",
+    ASSERT_EQ(fnCall->GetGetExpression()->GetCodeErrString().str, "foo",
               "Function call should be to 'foo'");
     ASSERT_EQ(fnCall->GetArgs().size(), 2,
               "Function call should have 2 arguments");

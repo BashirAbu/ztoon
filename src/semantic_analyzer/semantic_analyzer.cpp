@@ -132,6 +132,11 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         if (datatypesMap.contains(dataTypeToken->GetDataType()->GetLexeme()))
         {
             // Build type
+            if (dataTypeToken->isArray)
+            {
+                dataTypeToken->asterisks.push_back(
+                    gZtoonArena.Allocate<Token>(TokenType::ASTERISK));
+            }
             if (dataTypeToken->asterisks.size() > 0)
             {
                 PointerDataType *ptrDataType =
@@ -147,6 +152,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 {
                     ptrDataType->isReadOnly = true;
                 }
+
                 datatypesMap[ptrDataType->ToString()] = ptrDataType;
                 return ptrDataType;
             }
@@ -317,16 +323,17 @@ TokenType DataType::ToTokenType()
     }
 }
 
-Variable *Scope::GetVariable(std::string name, CodeErrString codeErrString)
+Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString)
 {
-    Variable *var = nullptr;
+
+    Symbol *symbol = nullptr;
 
     Scope const *current = this;
-    while (!var)
+    while (!symbol)
     {
-        if (current->variablesMap.contains(name))
+        if (current->symbolsMap.contains(name))
         {
-            var = current->variablesMap.at(name);
+            symbol = current->symbolsMap.at(name);
         }
         // go up one level;
         if (!current->parent)
@@ -337,95 +344,29 @@ Variable *Scope::GetVariable(std::string name, CodeErrString codeErrString)
         current = current->parent;
     }
 
-    if (var)
+    if (symbol)
     {
-        return var;
+        return symbol;
     }
     else
     {
-        ReportError(
-            std::format("Variable '{}' is not defined in this scope.", name),
-            codeErrString);
+        ReportError(std::format("'{}' is not defined in this scope.", name),
+                    codeErrString);
     }
     return nullptr;
 }
-
-void Scope::AddVariable(Variable *variable, CodeErrString codeErrString)
+void Scope::AddSymbol(Symbol *symbol, CodeErrString codeErrString)
 {
-    if (variablesMap.contains(variable->GetName()))
+    if (symbolsMap.contains(symbol->GetName()))
     {
-        Variable *alreadyDefinedVar = variablesMap[variable->GetName()];
-        ReportError(std::format("Variable '{}' already defined at {}:{}.",
-                                variable->GetName(),
-                                alreadyDefinedVar->GetToken()->GetFilename(),
-                                alreadyDefinedVar->GetToken()->GetLineNumber()),
+        Symbol *alreadyDefined = symbolsMap[symbol->GetName()];
+        ReportError(std::format("'{}' already defined", symbol->GetName()),
                     codeErrString);
     }
     else
     {
-        variablesMap[variable->GetName()] = variable;
+        symbolsMap[symbol->GetName()] = symbol;
     }
-}
-
-void Scope::AddFunction(Function *function, CodeErrString codeErrString)
-{
-    if (parent)
-    {
-        ReportError(
-            std::format("Functions can only be declared in the global scope"),
-            codeErrString);
-    }
-
-    if (functionsMap.contains(function->GetName()))
-    {
-        Function *alreadyDefinedVar = functionsMap[function->GetName()];
-        ReportError(std::format("function '{}' already defined at {}:{}.",
-                                function->GetName(),
-                                alreadyDefinedVar->GetFnStatement()
-                                    ->GetIdentifier()
-                                    ->GetFilename(),
-                                alreadyDefinedVar->GetFnStatement()
-                                    ->GetIdentifier()
-                                    ->GetLineNumber()),
-                    codeErrString);
-    }
-    else
-    {
-        functionsMap[function->GetName()] = function;
-    }
-}
-Function *Scope::GetFunction(std::string name, CodeErrString codeErrString)
-{
-
-    Function *fn = nullptr;
-
-    Scope const *current = this;
-    while (!fn)
-    {
-        if (current->functionsMap.contains(name))
-        {
-            fn = current->functionsMap.at(name);
-        }
-        // go up one level;
-        if (!current->parent)
-        {
-            // no more scopes.
-            break;
-        }
-        current = current->parent;
-    }
-
-    if (fn)
-    {
-        return fn;
-    }
-    else
-    {
-        ReportError(
-            std::format("Function '{}' is not declared in this scope.", name),
-            codeErrString);
-    }
-    return nullptr;
 }
 
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Statement *> &statements)
@@ -523,7 +464,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             varDeclStatement->GetIdentifier()->GetLexeme());
         var->token = varDeclStatement->GetIdentifier();
         var->dataType = stmtToDataTypeMap[varDeclStatement];
-        currentScope->AddVariable(var, varDeclStatement->GetCodeErrString());
+        currentScope->AddSymbol(var, varDeclStatement->GetCodeErrString());
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
     {
@@ -810,7 +751,6 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
     else if (dynamic_cast<FnStatement *>(statement))
     {
         FnStatement *fnStmt = dynamic_cast<FnStatement *>(statement);
-
         Function *fp = gZtoonArena.Allocate<Function>();
         fp->name = fnStmt->identifier->GetLexeme();
         FnPointerDataType *fpDataType =
@@ -818,15 +758,16 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         fpDataType->type = DataType::Type::FNPOINTER;
         fpDataType->returnDataType =
             currentScope->GetDataType(fnStmt->returnDataTypeToken);
-
+        fpDataType->isVarArgs = fnStmt->IsVarArgs();
         fp->fnStmt = fnStmt;
         fp->fnPointer = fpDataType;
-        currentScope->AddFunction(fp, fnStmt->GetCodeErrString());
+        currentScope->AddSymbol(fp, fnStmt->GetCodeErrString());
         Function *temp = currentFunction;
         currentFunction = fp;
         for (Statement *p : fnStmt->parameters)
         {
             AnalizeStatement(p);
+            fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
         }
         AnalizeStatement(fnStmt->blockStatement);
         currentFunction = temp;
@@ -953,11 +894,6 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                     }
                 }
             }
-        }
-
-        for (VarDeclStatement *p : fnStmt->GetParameters())
-        {
-            fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
         }
 
         currentScope->datatypesMap[FnPointerDataTypeToStringKey(fpDataType)] =
@@ -1104,21 +1040,29 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
     {
         FnCallExpression *fnCallExpr =
             dynamic_cast<FnCallExpression *>(expression);
-        Function *fp = (Function *)currentScope->GetFunction(
-            fnCallExpr->identifier->GetLexeme(),
-            fnCallExpr->GetCodeErrString());
-        exprToDataTypeMap[fnCallExpr] = fp->fnPointer->returnDataType;
+        EvaluateAndAssignDataTypeToExpression(fnCallExpr->GetGetExpression());
+        // id or epxr
+        FnPointerDataType *fnDataType = dynamic_cast<FnPointerDataType *>(
+            exprToDataTypeMap[fnCallExpr->GetGetExpression()]);
+        if (!fnDataType)
+        {
+            ReportError("Expression is not of function pointer type",
+                        fnCallExpr->GetCodeErrString());
+        }
+        exprToDataTypeMap[fnCallExpr] = fnDataType->GetReturnDataType();
 
         for (Expression *arg : fnCallExpr->args)
         {
             EvaluateAndAssignDataTypeToExpression(arg);
         }
         size_t index = 0;
-        for (VarDeclStatement *p : fp->GetFnStatement()->parameters)
+        for (Expression *argExpr : fnCallExpr->GetArgs())
         {
             PrimaryExpression *id = gZtoonArena.Allocate<PrimaryExpression>();
             id->primary = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
-            exprToDataTypeMap[id] = stmtToDataTypeMap[p];
+            auto params = fnDataType->GetParameters();
+            size_t size = params.size();
+            exprToDataTypeMap[id] = params[index];
             Expression *exprId = id;
             if (DecideDataType(&exprId, &fnCallExpr->args[index]) ==
                 DataType::Type::UNKNOWN)
@@ -1130,8 +1074,8 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                         fnCallExpr->args[index]->GetCodeErrString().str,
 
                         exprToDataTypeMap[fnCallExpr->args[index]]->ToString(),
-                        p->GetCodeErrString().str,
-                        stmtToDataTypeMap[p]->ToString()),
+                        argExpr->GetCodeErrString().str,
+                        exprToDataTypeMap[fnCallExpr->args[index]]->ToString()),
                     fnCallExpr->args[index]->GetCodeErrString());
             }
             index++;
@@ -1550,6 +1494,28 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                         castExpression->GetCodeErrString());
         }
     }
+    else if (dynamic_cast<SubscriptExpression *>(expression))
+    {
+        SubscriptExpression *subExpr =
+            dynamic_cast<SubscriptExpression *>(expression);
+        EvaluateAndAssignDataTypeToExpression(subExpr->GetExpression());
+
+        DataType *ptrDataType = exprToDataTypeMap[subExpr->GetExpression()];
+        if (ptrDataType->GetType() != DataType::Type::POINTER)
+        {
+            ReportError("Subscript operator only works on pointer type",
+                        subExpr->GetExpression()->GetCodeErrString());
+        }
+        EvaluateAndAssignDataTypeToExpression(subExpr->GetIndexExpression());
+        DataType *indexDataType =
+            exprToDataTypeMap[subExpr->GetIndexExpression()];
+        if (!indexDataType->IsInteger())
+        {
+            ReportError("Index expression must be integer type",
+                        subExpr->GetIndexExpression()->GetCodeErrString());
+        }
+        exprToDataTypeMap[subExpr] = ptrDataType;
+    }
     else if (dynamic_cast<PrimaryExpression *>(expression))
     {
         PrimaryExpression *primaryExpression =
@@ -1595,9 +1561,9 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             primaryExpression->isLvalue = true;
             exprToDataTypeMap[primaryExpression] =
                 currentScope
-                    ->GetVariable(primaryExpression->primary->GetLexeme(),
-                                  primaryExpression->GetCodeErrString())
-                    ->dataType;
+                    ->GetSymbol(primaryExpression->primary->GetLexeme(),
+                                primaryExpression->GetCodeErrString())
+                    ->GetDataType();
             break;
         }
         default:

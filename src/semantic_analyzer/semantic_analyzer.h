@@ -26,6 +26,7 @@ class DataType
         UNION,
         FNPOINTER,
         POINTER,
+
     };
     Type GetType() { return type; }
 
@@ -96,10 +97,12 @@ class FnPointerDataType : public DataType
   public:
     std::vector<DataType *> GetParameters() { return paramters; }
     DataType *GetReturnDataType() { return returnDataType; }
+    bool IsVarArgs() { return isVarArgs; }
 
   private:
     DataType *returnDataType;
     std::vector<DataType *> paramters;
+    bool isVarArgs = false;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -117,13 +120,24 @@ class PointerDataType : public DataType
     friend class CodeGen;
 };
 
-class Variable
+class Symbol
+{
+  public:
+    virtual ~Symbol() {}
+    virtual std::string GetName() = 0;
+    virtual DataType *GetDataType() = 0;
+
+  private:
+};
+
+class Variable : public Symbol
 {
   public:
     Variable(std::string name) : name(name) {}
     virtual ~Variable() {}
-    std::string GetName() const { return name; }
+    std::string GetName() override { return name; }
     Token const *GetToken() { return token; }
+    DataType *GetDataType() override { return dataType; }
 
   protected:
     Token const *token = nullptr;
@@ -134,12 +148,14 @@ class Variable
     friend class CodeGen;
 };
 
-class Function
+class Function : public Symbol
 {
   public:
-    std::string GetName() { return name; }
+    std::string GetName() override { return name; }
     class FnStatement *GetFnStatement() { return fnStmt; }
     void AddParamter(Variable *var, CodeErrString codeErrString);
+
+    DataType *GetDataType() override { return fnPointer; }
 
   private:
     std::string name;
@@ -153,11 +169,8 @@ class Function
 class Scope
 {
   public:
-    Variable *GetVariable(std::string name, CodeErrString codeErrString);
-    void AddVariable(Variable *variable, CodeErrString codeErrString);
-
-    void AddFunction(Function *function, CodeErrString codeErrString);
-    Function *GetFunction(std::string name, CodeErrString codeErrString);
+    Symbol *GetSymbol(std::string name, CodeErrString codeErrString);
+    void AddSymbol(Symbol *symbol, CodeErrString codeErrString);
     Scope(Scope *parent = nullptr);
 
     Scope const *GetParent() const { return parent; }
@@ -166,8 +179,7 @@ class Scope
 
   private:
     Scope *parent = nullptr;
-    std::unordered_map<std::string, Variable *> variablesMap;
-    std::unordered_map<std::string, Function *> functionsMap;
+    std::unordered_map<std::string, Symbol *> symbolsMap;
     std::unordered_map<std::string, DataType *> datatypesMap;
     friend class SemanticAnalyzer;
     friend class CodeGen;

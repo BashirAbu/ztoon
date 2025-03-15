@@ -72,6 +72,21 @@ DataTypeToken *Parser::ParseDataType()
     {
         dataType->asterisks.push_back(Prev());
     }
+
+    if (Consume(TokenType::LEFT_SQUARE_BRACKET))
+    {
+        dataType->isArray = true;
+        dataType->leftSquareParenToken = Prev();
+        dataType->arrayIndexExpr = ParseExpression();
+        if (!Consume(TokenType::RIGHT_SQUARE_BRACKET))
+        {
+            CodeErrString ces = {};
+            ces.firstToken = dataType->leftSquareParenToken;
+            ces.str = ces.firstToken->GetLexeme();
+
+            ReportError("Missing ']'", ces);
+        }
+    }
     return dataType;
 }
 
@@ -967,7 +982,7 @@ Expression *Parser::ParseUnaryExpression()
         if ((Prev()->GetType() == TokenType::SIZEOF) &&
             Consume(TokenType::LEFT_PAREN))
         {
-            unaryExpr->right = ParsePrimaryExpression();
+            unaryExpr->right = ParsePostfixExpression();
             if (!unaryExpr->right)
             {
                 CodeErrString ces = {};
@@ -1003,7 +1018,7 @@ Expression *Parser::ParseUnaryExpression()
         return unaryExpr;
     }
 
-    Expression *expr = ParsePrimaryExpression();
+    Expression *expr = ParsePostfixExpression();
     if (TokenMatch(Peek()->GetType(), TokenType::DASH_DASH,
                    TokenType::PLUS_PLUS))
     {
@@ -1014,6 +1029,58 @@ Expression *Parser::ParseUnaryExpression()
         unaryExpr->right = expr;
         unaryExpr->postfix = true;
         return unaryExpr;
+    }
+    return expr;
+}
+
+Expression *Parser::ParsePostfixExpression()
+{
+    Expression *expr = ParsePrimaryExpression();
+
+    if (Consume(TokenType::LEFT_PAREN))
+    {
+        FnCallExpression *fnCallExpr = gZtoonArena.Allocate<FnCallExpression>();
+        fnCallExpr->expression = expr;
+        while (!Consume(TokenType::RIGHT_PAREN))
+        {
+            Expression *expr = ParseExpression();
+            if (!expr)
+            {
+                ReportError("Expect expression after '('",
+                            expr->GetCodeErrString());
+            }
+            fnCallExpr->args.push_back(expr);
+            if (!Consume(TokenType::COMMA))
+            {
+                if (Peek()->GetType() == TokenType::RIGHT_PAREN)
+                {
+                    continue;
+                }
+                else
+                {
+                    ReportError(std::format("Expect ',' after argument '{}'",
+                                            expr->GetCodeErrString().str),
+                                expr->GetCodeErrString());
+                }
+            }
+        }
+        return fnCallExpr;
+    }
+
+    else if (Consume(TokenType::LEFT_SQUARE_BRACKET))
+    {
+        // subscript stuff.
+        SubscriptExpression *subExpr =
+            gZtoonArena.Allocate<SubscriptExpression>();
+        subExpr->expression = expr;
+        subExpr->token = Prev();
+        subExpr->index = ParseExpression();
+
+        if (!Consume(TokenType::RIGHT_SQUARE_BRACKET))
+        {
+            ReportError("Missing ']'", subExpr->GetCodeErrString());
+        }
+        return subExpr;
     }
     return expr;
 }
@@ -1075,42 +1142,6 @@ Expression *Parser::ParsePrimaryExpression()
     {
         Token const *prev = Prev();
         Advance();
-        if (prev->type != TokenType::FN &&
-            Peek()->type == TokenType::LEFT_PAREN)
-        {
-            FnCallExpression *fnCallExpr =
-                gZtoonArena.Allocate<FnCallExpression>();
-            fnCallExpr->identifier = Prev();
-            Advance();
-            while (!Consume(TokenType::RIGHT_PAREN))
-            {
-                Expression *expr = ParseExpression();
-                if (!expr)
-                {
-                    CodeErrString ces = {};
-                    ces.firstToken = fnCallExpr->identifier;
-                    ces.str = ces.firstToken->GetLexeme();
-                    ReportError("Expect expression after '('", ces);
-                }
-                fnCallExpr->args.push_back(expr);
-                if (!Consume(TokenType::COMMA))
-                {
-                    if (Peek()->GetType() == TokenType::RIGHT_PAREN)
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        ReportError(
-                            std::format("Expect ',' after argument '{}'",
-                                        expr->GetCodeErrString().str),
-                            expr->GetCodeErrString());
-                    }
-                }
-            }
-            retExpr = fnCallExpr;
-            break;
-        }
 
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
         expr->primary = Prev();

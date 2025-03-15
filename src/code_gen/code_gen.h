@@ -20,11 +20,23 @@ struct IRType
     bool isSigned = false;
     llvm::Type *type = nullptr;
 };
-struct IRVariable
+
+struct IRSymbol
 {
-    Variable const *variabel = nullptr;
+    virtual ~IRSymbol() {};
+    virtual std::string GetName() = 0;
+    virtual llvm::Value *GetValue() = 0;
+    virtual llvm::Type *GetType() = 0;
+};
+
+struct IRVariable : public IRSymbol
+{
+    Variable *variabel = nullptr;
     llvm::Value *value = nullptr;
     IRType irType;
+    virtual std::string GetName() override { return variabel->GetName(); }
+    virtual llvm::Value *GetValue() override { return value; }
+    virtual llvm::Type *GetType() override { return irType.type; }
 };
 
 struct IRValue
@@ -39,12 +51,15 @@ struct IfStatementData
     llvm::Function *currentFunction = nullptr;
 };
 
-struct IRFunction
+struct IRFunction : public IRSymbol
 {
     llvm::FunctionType *fnType = nullptr;
     llvm::Function *fn = nullptr;
     llvm::BasicBlock *fnBB;
     Function *ztoonFn = nullptr;
+    virtual std::string GetName() override { return ztoonFn->GetName(); }
+    virtual llvm::Value *GetValue() override { return fn; }
+    virtual llvm::Type *GetType() override { return fnType; }
 };
 
 struct IRLoop
@@ -61,12 +76,9 @@ class CodeGen
     CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch);
     ~CodeGen();
     void GenIR();
-    void AddIRVariable(IRVariable *irVariable);
-    IRVariable *GetIRVariable(std::string name);
 
-    void AddIRFunction(IRFunction *irFunc);
-    IRFunction *GetIRFunction(std::string name, CodeErrString codeErrString);
-
+    void AddIRSymbol(IRSymbol *irSymbol);
+    IRSymbol *GetIRSymbol(std::string name);
     std::unique_ptr<llvm::LLVMContext> ctx;
     std::unique_ptr<llvm::Module> module;
     std::unique_ptr<llvm::IRBuilder<>> irBuilder;
@@ -94,10 +106,9 @@ class CodeGen
     IRValue CastIntToPtr(IRValue value, IRType castType);
     IRValue CastPtrToInt(IRValue value, IRType castType);
     std::unordered_map<Scope const *,
-                       std::unordered_map<std::string, IRVariable *>>
-        scopeToIRVariablesMap;
-    std::unordered_map<std::string, IRVariable *> irVariablesMap;
-    std::unordered_map<std::string, IRFunction *> irFunctionsMaps;
+                       std::unordered_map<std::string, IRSymbol *>>
+        scopeToIRSymbolsMap;
+    std::unordered_map<std::string, IRSymbol *> irSymbolsMap;
     IRLoop *currentLoop = nullptr;
     SemanticAnalyzer &semanticAnalyzer;
 };

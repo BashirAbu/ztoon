@@ -1,5 +1,6 @@
 #pragma once
 #include "lexer/lexer.h"
+#include <cmath>
 #include <format>
 #include <string>
 #include <unordered_map>
@@ -113,6 +114,8 @@ class DataTypeToken
         }
         return str;
     }
+    bool IsArray() { return isArray; }
+    bool IsFunctionPointer() { return isFnPointer; }
 
   private:
     Token const *dataType = nullptr;
@@ -125,7 +128,8 @@ class DataTypeToken
     DataTypeToken *fnRetType = nullptr;
 
     bool isArray = false;
-    size_t arraySize = 0;
+    Token const *leftSquareParenToken = nullptr;
+    class Expression *arrayIndexExpr = nullptr;
 
     friend class Parser;
     friend class DataType;
@@ -540,7 +544,7 @@ class FnCallExpression : public Expression
         CodeErrString es = {};
         es.firstToken = GetFirstToken();
 
-        es.str = std::format("{}(", identifier->GetLexeme());
+        es.str = std::format("{}(", expression->GetCodeErrString().str);
         for (Expression *expr : args)
         {
             es.str += std::format("{},", expr->GetCodeErrString().str);
@@ -552,14 +556,18 @@ class FnCallExpression : public Expression
         es.str += std::format(")");
         return es;
     }
-    Token const *GetFirstToken() const override { return identifier; }
+    Token const *GetFirstToken() const override
+    {
+        return expression->GetFirstToken();
+    }
 
-    Token const *GetIdentifier() const { return identifier; }
+    Expression *GetGetExpression() const { return expression; }
 
     std::vector<Expression *> &GetArgs() { return args; }
 
   private:
-    Token const *identifier = nullptr;
+    class Expression *expression = nullptr;
+
     std::vector<Expression *> args;
     friend class Parser;
     friend class SemanticAnalyzer;
@@ -655,10 +663,39 @@ class UnaryExpression : public Expression
     Expression *right = nullptr;
     Token const *op = nullptr;
     bool postfix = false;
+    //
     friend class Parser;
     friend class SemanticAnalyzer;
 };
 
+class SubscriptExpression : public Expression
+{
+  public:
+    // std::string PrettyString(std::string &prefix, bool isLeft) override;
+    Expression *GetExpression() const { return expression; }
+    Expression *GetIndexExpression() const { return expression; }
+    Token const *GetOperator() const { return token; }
+
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = GetFirstToken();
+
+        es.str = std::format("{}[{}]", expression->GetCodeErrString().str,
+                             index->GetCodeErrString().str);
+        return es;
+    }
+
+    Token const *GetFirstToken() const override { return token; }
+
+  private:
+    Expression *expression = nullptr;
+    Token const *token = nullptr;
+    Expression *index = nullptr;
+    //
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
 class GroupingExpression : public Expression
 {
   public:
@@ -786,6 +823,7 @@ class Parser
     Expression *ParseFactorExpression();
     Expression *ParseCastExpression();
     Expression *ParseUnaryExpression();
+    Expression *ParsePostfixExpression();
     Expression *ParseFnCallExpression();
     Expression *ParseRefExpression();
     Expression *ParseDerefExpression();

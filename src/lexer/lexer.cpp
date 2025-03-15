@@ -190,6 +190,8 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^\))"), TokenType::RIGHT_PAREN});
     patterns.push_back({std::regex(R"(^\{)"), TokenType::LEFT_CURLY_BRACKET});
     patterns.push_back({std::regex(R"(^\})"), TokenType::RIGHT_CURLY_BRACKET});
+    patterns.push_back({std::regex(R"(^\[)"), TokenType::RIGHT_SQUARE_BRACKET});
+    patterns.push_back({std::regex(R"(^\])"), TokenType::LEFT_SQUARE_BRACKET});
     patterns.push_back({std::regex(R"(^=)"), TokenType::EQUAL});
     patterns.push_back({std::regex(R"(^!)"), TokenType::EXCLAMATION});
     patterns.push_back({std::regex(R"(^~)"), TokenType::TILDE});

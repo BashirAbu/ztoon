@@ -128,8 +128,10 @@ class DataTypeToken
     DataTypeToken *fnRetType = nullptr;
 
     bool isArray = false;
+    // use this if arraySizeExpr is nullptr;
+    size_t arrSize = 0;
     Token const *leftSquareParenToken = nullptr;
-    class Expression *arrayIndexExpr = nullptr;
+    class Expression *arraySizeExpr = nullptr;
 
     friend class Parser;
     friend class DataType;
@@ -668,12 +670,44 @@ class UnaryExpression : public Expression
     friend class SemanticAnalyzer;
 };
 
+// Used on struct, arrays
+class InitializerListExpression : public Expression
+{
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = GetFirstToken();
+
+        es.str = "{";
+
+        for (Expression *expr : expressions)
+        {
+            es.str += expr->GetCodeErrString().str + ",";
+        }
+        if (es.str.ends_with(','))
+        {
+            es.str.pop_back();
+        }
+        es.str += "}";
+        return es;
+    }
+
+    Token const *GetFirstToken() const override { return token; }
+    std::vector<Expression *> &GetExpressions() { return expressions; }
+
+  private:
+    Token const *token = nullptr;
+    std::vector<Expression *> expressions;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
 class SubscriptExpression : public Expression
 {
   public:
     // std::string PrettyString(std::string &prefix, bool isLeft) override;
     Expression *GetExpression() const { return expression; }
-    Expression *GetIndexExpression() const { return expression; }
+    Expression *GetIndexExpression() const { return index; }
     Token const *GetOperator() const { return token; }
 
     CodeErrString GetCodeErrString() override
@@ -828,7 +862,7 @@ class Parser
     Expression *ParseRefExpression();
     Expression *ParseDerefExpression();
     Expression *ParsePrimaryExpression();
-
+    Expression *ParseInitializerListExpression();
     Expression *BuildBinaryExpression(Token const *op, Expression *left,
                                       Expression *right);
 

@@ -1,6 +1,7 @@
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser.h"
+#include "semantic_analyzer/semantic_analyzer.h"
 #include <format>
 #include <iostream>
 std::unordered_map<Token const *, Token const *> identifierMap;
@@ -49,7 +50,6 @@ Token const *Parser::Prev()
 
 DataTypeToken *Parser::ParseDataType()
 {
-
     DataTypeToken *dataType = gZtoonArena.Allocate<DataTypeToken>();
     if (Consume(TokenType::READONLY))
     {
@@ -72,12 +72,13 @@ DataTypeToken *Parser::ParseDataType()
     {
         dataType->asterisks.push_back(Prev());
     }
-
     if (Consume(TokenType::LEFT_SQUARE_BRACKET))
     {
         dataType->isArray = true;
-        dataType->leftSquareParenToken = Prev();
-        dataType->arrayIndexExpr = ParseExpression();
+        dataType->arraySizeExpr = ParseExpression();
+        auto asteriskToken = gZtoonArena.Allocate<Token>(TokenType::ASTERISK);
+        asteriskToken->lexeme = "*";
+        dataType->asterisks.push_back(asteriskToken);
         if (!Consume(TokenType::RIGHT_SQUARE_BRACKET))
         {
             CodeErrString ces = {};
@@ -309,17 +310,23 @@ Statement *Parser::ParseVarDeclStatement()
                 varDeclStatement->dataTypeToken = dataType;
                 if (Consume(TokenType::EQUAL))
                 {
+
                     varDeclStatement->expression = ParseExpression();
                     if (!varDeclStatement->expression)
                     {
-                        CodeErrString ces = {};
-                        ces.firstToken = varDeclStatement->identifier;
                         ReportError("Expected expression after '='.",
                                     varDeclStatement->GetCodeErrString());
                         return nullptr;
                     }
                 }
                 return varDeclStatement;
+            }
+            else
+            {
+                CodeErrString ces = {};
+                ces.firstToken = varDeclStatement->GetIdentifier();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Expected datatype after ':'", ces);
             }
         }
     }
@@ -787,8 +794,36 @@ Expression *Parser::BuildBinaryExpression(Token const *op, Expression *left,
     return expr;
 }
 
-Expression *Parser::ParseExpression() { return ParseTernaryExpression(); }
+Expression *Parser::ParseExpression()
+{
+    return ParseInitializerListExpression();
+}
+Expression *Parser::ParseInitializerListExpression()
+{
+    if (Consume(TokenType::LEFT_CURLY_BRACKET))
+    {
+        InitializerListExpression *initListExpr =
+            gZtoonArena.Allocate<InitializerListExpression>();
+        initListExpr->token = Prev();
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+            Expression *expr = ParseExpression();
+            initListExpr->expressions.push_back(expr);
+            if (!Consume(TokenType::COMMA))
+            {
+                if (Peek()->type == TokenType::RIGHT_CURLY_BRACKET)
+                {
+                    continue;
+                }
+                ReportError("Expected ',' after expression",
+                            expr->GetCodeErrString());
+            }
+        }
+        return initListExpr;
+    }
 
+    return ParseTernaryExpression();
+}
 Expression *Parser::ParseTernaryExpression()
 {
     Expression *expr = ParseORExpression();
@@ -798,7 +833,7 @@ Expression *Parser::ParseTernaryExpression()
         TernaryExpression *ternaryExpr =
             gZtoonArena.Allocate<TernaryExpression>();
         ternaryExpr->questionMarkToken = Prev();
-        ternaryExpr->trueExpr = ParseORExpression();
+        ternaryExpr->trueExpr = ParseExpression();
         if (!ternaryExpr->trueExpr)
         {
             CodeErrString ces = {};
@@ -808,7 +843,7 @@ Expression *Parser::ParseTernaryExpression()
         }
         if (Consume(TokenType::COLON))
         {
-            ternaryExpr->falseExpr = ParseORExpression();
+            ternaryExpr->falseExpr = ParseExpression();
 
             if (!ternaryExpr->falseExpr)
             {
@@ -837,7 +872,7 @@ Expression *Parser::ParseORExpression()
     while (Consume(TokenType::OR))
     {
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseANDExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -847,7 +882,7 @@ Expression *Parser::ParseANDExpression()
     while (Consume(TokenType::AND))
     {
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseBitwiseORExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -857,7 +892,7 @@ Expression *Parser::ParseBitwiseORExpression()
     while (Consume(TokenType::BITWISE_OR))
     {
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseBitwiseXORExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -867,7 +902,7 @@ Expression *Parser::ParseBitwiseXORExpression()
     while (Consume(TokenType::BITWISE_XOR))
     {
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseBitwiseANDExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -890,7 +925,7 @@ Expression *Parser::ParseEqualEqualNotEqualExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseLessGreaterExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -902,7 +937,7 @@ Expression *Parser::ParseLessGreaterExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseShiftExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -914,7 +949,7 @@ Expression *Parser::ParseShiftExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseTermExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -925,7 +960,7 @@ Expression *Parser::ParseTermExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseFactorExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -939,7 +974,7 @@ Expression *Parser::ParseFactorExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseCastExpression());
+        expr = BuildBinaryExpression(op, expr, ParseExpression());
     }
     return expr;
 }
@@ -982,7 +1017,7 @@ Expression *Parser::ParseUnaryExpression()
         if ((Prev()->GetType() == TokenType::SIZEOF) &&
             Consume(TokenType::LEFT_PAREN))
         {
-            unaryExpr->right = ParsePostfixExpression();
+            unaryExpr->right = ParseExpression();
             if (!unaryExpr->right)
             {
                 CodeErrString ces = {};
@@ -1005,7 +1040,7 @@ Expression *Parser::ParseUnaryExpression()
                 return nullptr;
             }
         }
-        unaryExpr->right = ParsePrimaryExpression();
+        unaryExpr->right = ParseExpression();
 
         if (TokenMatch(Peek()->GetType(), TokenType::DASH_DASH,
                        TokenType::PLUS_PLUS))
@@ -1067,7 +1102,7 @@ Expression *Parser::ParsePostfixExpression()
         return fnCallExpr;
     }
 
-    else if (Consume(TokenType::LEFT_SQUARE_BRACKET))
+    if (Consume(TokenType::LEFT_SQUARE_BRACKET))
     {
         // subscript stuff.
         SubscriptExpression *subExpr =
@@ -1075,7 +1110,7 @@ Expression *Parser::ParsePostfixExpression()
         subExpr->expression = expr;
         subExpr->token = Prev();
         subExpr->index = ParseExpression();
-
+        subExpr->isLvalue = true;
         if (!Consume(TokenType::RIGHT_SQUARE_BRACKET))
         {
             ReportError("Missing ']'", subExpr->GetCodeErrString());

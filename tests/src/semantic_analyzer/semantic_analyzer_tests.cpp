@@ -461,3 +461,36 @@ TEST(SemanticAnalyzerWhileLoopContinue)
     SemanticAnalyzer analyzer(stmts);
     analyzer.Analize();
 }
+TEST(SemanticAnalyzerArrayVarDecl)
+{
+    std::string source = R"(
+        fn main()
+        {
+            arr: i32[2];
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "array_decl.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+TEST(SemanticAnalyzerArrayVarDeclInitList)
+{
+    std::string source = R"(
+        fn main()
+        {
+            arr: u32[3] = {1,  2, 3};
+            arr [1] = 3;
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "array_decl.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}

@@ -26,7 +26,7 @@ class DataType
         UNION,
         FNPOINTER,
         POINTER,
-
+        InitList,
     };
     Type GetType() { return type; }
 
@@ -47,6 +47,19 @@ class DataType
     friend class CodeGen;
 };
 
+class InitListType : public DataType
+{
+
+  public:
+    InitListType() {}
+    std::vector<DataType *> &Datatype() { return dataTypes; }
+
+    std::vector<DataType *> dataTypes;
+    bool allSameType = false;
+    friend class Scope;
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
+};
 bool IsPrimaryDataType(TokenType type);
 class StructDataType : public DataType
 {

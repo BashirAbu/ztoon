@@ -178,53 +178,53 @@ TEST(CodeGen_ForLoopContinue)
     ASSERT_EQ(r, 15, "Result should be 15");
 }
 // Test 3: Nested loops (complex computation).
-// TEST(CodeGen_NestedLoops)
-// {
-//     llvm::InitializeNativeTarget();
-//     llvm::InitializeNativeTargetAsmPrinter();
-//     llvm::InitializeNativeTargetAsmParser();
+TEST(CodeGen_NestedLoops)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
 
-//     std::string source = R"(
-//         fn main() -> i32 {
-//             a: i32 = 0;
-//             for i: i32 = 0; i < 10; i++ {
-//                 for j: i32 = 0; j < 10; j++ {
-//                     for k: i32 = 0; k < 10; k++ {
-//                         b: i32 = 1;
-//                         while b < 123 {
-//                             a += i * b;
-//                             b++;
-//                         }
-//                     }
-//                 }
-//             }
-//             ret a;
-//         }
-//     )";
-//     // Expected result computed externally: 33763500
-//     Lexer lexer;
-//     lexer.Tokenize(source, "test.ztoon");
-//     Parser parser(lexer.GetTokens());
-//     auto stmts = parser.Parse();
-//     SemanticAnalyzer sa(stmts);
-//     sa.Analize();
-//     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
-//     codeGen.GenIR();
-//     if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
-//     {
-//         llvm::errs() << "Module verification failed\n";
-//     }
-//     // codeGen.module->print(llvm::outs(), nullptr);
-//     llvm::ExitOnError err;
-//     auto JIT = err(llvm::orc::LLJITBuilder().create());
-//     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
-//                                     std::move(codeGen.ctx));
-//     err(JIT->addIRModule(std::move(TSM)));
-//     auto Sym = err(JIT->lookup("main"));
-//     auto *Fp = (int (*)())Sym.getValue();
-//     int r = Fp();
-//     ASSERT_EQ(r, 33763500, "Nested loops should compute 33763500");
-// }
+    std::string source = R"(
+        fn main() -> i32 {
+            a: i32 = 0;
+            for i: i32 = 0; i < 10; i++ {
+                for j: i32 = 0; j < 10; j++ {
+                    for k: i32 = 0; k < 10; k++ {
+                        b: i32 = 1;
+                        while b < 123 {
+                            a += i * b;
+                            b++;
+                        }
+                    }
+                }
+            }
+            ret a;
+        }
+    )";
+    // Expected result computed externally: 33763500
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 33763500, "Nested loops should compute 33763500");
+}
 
 // Test 3: Nested loops (complex computation).
 TEST(CodeGen_NestedLoopsBreakContinue)

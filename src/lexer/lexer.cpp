@@ -190,8 +190,8 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^\))"), TokenType::RIGHT_PAREN});
     patterns.push_back({std::regex(R"(^\{)"), TokenType::LEFT_CURLY_BRACKET});
     patterns.push_back({std::regex(R"(^\})"), TokenType::RIGHT_CURLY_BRACKET});
-    patterns.push_back({std::regex(R"(^\[)"), TokenType::RIGHT_SQUARE_BRACKET});
-    patterns.push_back({std::regex(R"(^\])"), TokenType::LEFT_SQUARE_BRACKET});
+    patterns.push_back({std::regex(R"(^\[)"), TokenType::LEFT_SQUARE_BRACKET});
+    patterns.push_back({std::regex(R"(^\])"), TokenType::RIGHT_SQUARE_BRACKET});
     patterns.push_back({std::regex(R"(^=)"), TokenType::EQUAL});
     patterns.push_back({std::regex(R"(^!)"), TokenType::EXCLAMATION});
     patterns.push_back({std::regex(R"(^~)"), TokenType::TILDE});
@@ -206,7 +206,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^false\b)"), TokenType::FALSE});
     patterns.push_back({std::regex(R"(^true\b)"), TokenType::TRUE});
     patterns.push_back(
-        {std::regex(R"(^[a-zA-z][a-zA-z0-9_]*)"), TokenType::IDENTIFIER});
+        {std::regex(R"(^[a-zA-Z][a-zA-Z0-9_]*)"), TokenType::IDENTIFIER});
 }
 
 Lexer::~Lexer() {}

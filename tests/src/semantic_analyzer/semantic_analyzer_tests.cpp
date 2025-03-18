@@ -494,3 +494,25 @@ TEST(SemanticAnalyzerArrayVarDeclInitList)
     SemanticAnalyzer analyzer(stmts);
     analyzer.Analize();
 }
+TEST(SemanticAnalyzerFunctionPrototype)
+{
+    Lexer lexer;
+    std::string source =
+        "fn printf(str: readonly i8*) -> i32; fn main() { printf(\"Hi\"); }";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+TEST(SemanticAnalyzerFunctionPrototypeVarArgs)
+{
+    Lexer lexer;
+    std::string source = "fn printf(str: readonly i8*, ...) -> i32; fn main() "
+                         "{ printf(\"Hi\", 12); }";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}

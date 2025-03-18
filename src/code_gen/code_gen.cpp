@@ -24,7 +24,6 @@
 #include <cstddef>
 #include <format>
 #include <memory>
-#include <type_traits>
 IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
 {
     IRType irType = {};
@@ -106,7 +105,32 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
     {
         auto ptrZtoonType = dynamic_cast<PointerDataType *>(type);
         IRType dataType = ZtoonTypeToLLVMType(ptrZtoonType->dataType);
-        irType.type = dataType.type->getPointerTo();
+        if (ptrZtoonType->isArray)
+        {
+            if (ptrZtoonType->arrSizeExpr)
+            {
+                IRValue arrSize = GenExpressionIR(ptrZtoonType->arrSizeExpr);
+                if (!llvm::isa<llvm::Constant>(arrSize.value))
+                {
+                    ReportError("Array size must be constant",
+                                ptrZtoonType->arrSizeExpr->GetCodeErrString());
+                }
+
+                irType.type = llvm::ArrayType::get(
+                    dataType.type,
+                    llvm::dyn_cast<llvm::ConstantInt>(arrSize.value)
+                        ->getZExtValue());
+            }
+            else
+            {
+                irType.type =
+                    llvm::ArrayType::get(dataType.type, ptrZtoonType->arrSize);
+            }
+        }
+        else
+        {
+            irType.type = dataType.type->getPointerTo();
+        }
         break;
     }
     case DataType::Type::FNPOINTER:
@@ -325,34 +349,35 @@ IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
     }
 }
 
-IRValue CodeGen::GetLValue(Expression *expr)
-{
-    IRValue lValue = {};
-    if (!expr->IsLValue())
-    {
-        ReportError(std::format("Expression '{}' is not l-value",
-                                expr->GetCodeErrString().str),
-                    expr->GetCodeErrString());
-    }
-    if (dynamic_cast<PrimaryExpression *>(expr))
-    {
-        auto pe = dynamic_cast<PrimaryExpression *>(expr);
-        IRVariable *var = dynamic_cast<IRVariable *>(
-            GetIRSymbol(pe->GetPrimary()->GetLexeme()));
-        if (!var)
-        {
-            ReportError("Expression is not a variable", pe->GetCodeErrString());
-        }
-        lValue.value = var->value;
-        lValue.type = var->irType;
-    }
-    else if (dynamic_cast<UnaryExpression *>(expr))
-    {
-        auto unaryExpr = dynamic_cast<UnaryExpression *>(expr);
-        lValue = GenExpressionIR(unaryExpr->GetRightExpression());
-    }
-    return lValue;
-}
+// IRValue CodeGen::GenExpressionIR(Expression *expr)
+// {
+//     IRValue lValue = {};
+//     if (!expr->IsLValue())
+//     {
+//         ReportError(std::format("Expression '{}' is not l-value",
+//                                 expr->GetCodeErrString().str),
+//                     expr->GetCodeErrString());
+//     }
+//     if (dynamic_cast<PrimaryExpression *>(expr))
+//     {
+//         auto pe = dynamic_cast<PrimaryExpression *>(expr);
+//         IRVariable *var = dynamic_cast<IRVariable *>(
+//             GetIRSymbol(pe->GetPrimary()->GetLexeme()));
+//         if (!var)
+//         {
+//             ReportError("Expression is not a variable",
+//             pe->GetCodeErrString());
+//         }
+//         lValue.value = var->value;
+//         lValue.type = var->irType;
+//     }
+//     else if (dynamic_cast<UnaryExpression *>(expr))
+//     {
+//         auto unaryExpr = dynamic_cast<UnaryExpression *>(expr);
+//         lValue = GenExpressionIR(unaryExpr->GetRightExpression());
+//     }
+//     return lValue;
+// }
 
 CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
     : semanticAnalyzer(semanticAnalyzer)
@@ -362,6 +387,73 @@ CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
     module->setTargetTriple(targetArch);
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
+}
+
+llvm::Constant *
+CodeGen::InitListToArrayConstant(IRType arrayType,
+                                 InitializerListExpression *listExpr)
+{
+    std::vector<llvm::Constant *> consts;
+    for (Expression *expr : listExpr->GetExpressions())
+    {
+        IRValue value = GenExpressionIR(expr);
+        llvm::Constant *valueConst =
+            llvm::dyn_cast<llvm::Constant>(value.value);
+        if (!valueConst)
+        {
+            ReportError("Expression is not constant", expr->GetCodeErrString());
+        }
+
+        consts.push_back(valueConst);
+    }
+
+    return llvm::ConstantArray::get(
+        llvm::dyn_cast<llvm::ArrayType>(arrayType.type), consts);
+}
+void CodeGen::StoreInitListInArray(IRValue ptr,
+                                   InitializerListExpression *listExpr)
+{
+    if (listExpr)
+    {
+        size_t index = 0;
+        for (Expression *expr : listExpr->GetExpressions())
+        {
+            IRValue value = GenExpressionIR(expr);
+            llvm::Value *i = irBuilder->getInt32(index);
+            llvm::Value *GEP = irBuilder->CreateInBoundsGEP(
+                ptr.type.type, ptr.value, {irBuilder->getInt32(0), i},
+                std::format("element_{}", index));
+            irBuilder->CreateStore(value.value, GEP);
+            index++;
+        }
+    }
+}
+
+bool CodeGen::CheckArraySizeAtDeclaration(PointerDataType *type,
+                                          InitializerListExpression *initExpr)
+{
+    size_t size = 0;
+    if (type->arrSizeExpr)
+    {
+        IRValue sizeValue = GenExpressionIR(type->arrSizeExpr);
+        auto sizeConst = llvm::dyn_cast<llvm::ConstantInt>(sizeValue.value);
+        if (!sizeConst)
+        {
+            ReportError("Array size must be constant",
+                        initExpr->GetCodeErrString());
+        }
+        size = sizeConst->getZExtValue();
+    }
+    else
+    {
+        size = type->arrSize;
+    }
+
+    if (size == initExpr->GetExpressions().size())
+    {
+        return true;
+    }
+    return false;
 }
 CodeGen::~CodeGen() {}
 void CodeGen::GenIR()
@@ -378,8 +470,26 @@ void CodeGen::GenStatementIR(Statement *statement)
     {
         VarDeclStatement *varDeclStatement =
             dynamic_cast<VarDeclStatement *>(statement);
-        bool isArray = varDeclStatement->GetDataType()->IsArray();
+        PointerDataType *varPtrType = dynamic_cast<PointerDataType *>(
+            semanticAnalyzer.stmtToDataTypeMap[varDeclStatement]);
 
+        if (varPtrType && varPtrType->isArray && varPtrType->arrSizeExpr)
+        {
+            IRValue size = GenExpressionIR(varPtrType->arrSizeExpr);
+            llvm::ConstantInt *sizeConst =
+                llvm::dyn_cast<llvm::ConstantInt>(size.value);
+            if (sizeConst)
+            {
+                if (sizeConst->getSExtValue() <= 0)
+                {
+                    ReportError(
+                        std::format(
+                            "Array size '{}' expression cannot be <= 0",
+                            varPtrType->arrSizeExpr->GetCodeErrString().str),
+                        varPtrType->arrSizeExpr->GetCodeErrString());
+                }
+            }
+        }
         if (varDeclStatement->IsGlobal())
         {
             DataType *type =
@@ -388,37 +498,69 @@ void CodeGen::GenStatementIR(Statement *statement)
             llvm::GlobalVariable *globalVar;
             if (varDeclStatement->GetExpression())
             {
-                auto pe = dynamic_cast<PrimaryExpression *>(
-                    varDeclStatement->GetExpression());
-                bool isExprGlobalVar =
-                    pe ? pe->GetPrimary()->GetType() == TokenType::IDENTIFIER
-                       : false;
-                IRValue exprValue =
-                    GenExpressionIR(varDeclStatement->GetExpression());
-                if (!llvm::isa<llvm::Constant>(exprValue.value))
+                if (dynamic_cast<PointerDataType *>(type))
                 {
-                    ReportError(
-                        std::format("Expression '{}' is not constant",
-                                    varDeclStatement->GetExpression()
-                                        ->GetCodeErrString()
-                                        .str),
-                        varDeclStatement->GetExpression()->GetCodeErrString());
+                    auto ptrType = dynamic_cast<PointerDataType *>(type);
+                    if (ptrType->isArray)
+                    {
+                        auto listExpr =
+                            dynamic_cast<InitializerListExpression *>(
+                                varDeclStatement->GetExpression());
+                        if (!CheckArraySizeAtDeclaration(ptrType, listExpr))
+                        {
+                            ReportError("Initializer list size does not match "
+                                        "array size",
+                                        listExpr->GetCodeErrString());
+                        }
+
+                        llvm::Constant *consts = InitListToArrayConstant(
+                            ZtoonTypeToLLVMType(ptrType), listExpr);
+
+                        globalVar = new llvm::GlobalVariable(
+                            *module, ZtoonTypeToLLVMType(type).type,
+                            type->IsReadOnly(),
+                            llvm::GlobalValue::ExternalLinkage, consts,
+                            std::format("g_{}",
+                                        varDeclStatement->GetIdentifier()
+                                            ->GetLexeme()));
+                    }
                 }
-                llvm::Constant *constValue =
-                    llvm::cast<llvm::Constant>(exprValue.value);
-                globalVar = new llvm::GlobalVariable(
-                    *module, ZtoonTypeToLLVMType(type).type, type->IsReadOnly(),
-                    llvm::GlobalValue::ExternalLinkage,
-                    isExprGlobalVar
-                        ? llvm::cast<llvm::GlobalVariable>(exprValue.value)
-                              ->getInitializer()
-                        : constValue,
-                    std::format(
-                        "g_{}",
-                        varDeclStatement->GetIdentifier()->GetLexeme()));
+                else
+                {
+                    auto pe = dynamic_cast<PrimaryExpression *>(
+                        varDeclStatement->GetExpression());
+                    bool isExprGlobalVar = pe ? pe->GetPrimary()->GetType() ==
+                                                    TokenType::IDENTIFIER
+                                              : false;
+                    IRValue exprValue =
+                        GenExpressionIR(varDeclStatement->GetExpression());
+                    if (!llvm::isa<llvm::Constant>(exprValue.value))
+                    {
+                        ReportError(
+                            std::format("Expression '{}' is not constant",
+                                        varDeclStatement->GetExpression()
+                                            ->GetCodeErrString()
+                                            .str),
+                            varDeclStatement->GetExpression()
+                                ->GetCodeErrString());
+                    }
+                    llvm::Constant *constValue =
+                        llvm::cast<llvm::Constant>(exprValue.value);
+                    globalVar = new llvm::GlobalVariable(
+                        *module, ZtoonTypeToLLVMType(type).type,
+                        type->IsReadOnly(), llvm::GlobalValue::ExternalLinkage,
+                        isExprGlobalVar
+                            ? llvm::cast<llvm::GlobalVariable>(exprValue.value)
+                                  ->getInitializer()
+                            : constValue,
+                        std::format(
+                            "g_{}",
+                            varDeclStatement->GetIdentifier()->GetLexeme()));
+                }
             }
             else
             {
+
                 globalVar = new llvm::GlobalVariable(
                     *module, ZtoonTypeToLLVMType(type).type, type->IsReadOnly(),
                     llvm::GlobalValue::CommonLinkage,
@@ -458,10 +600,22 @@ void CodeGen::GenStatementIR(Statement *statement)
 
             if (varDeclStatement->GetExpression())
             {
-                // evaluate expression;
-                IRValue value =
-                    GenExpressionIR(varDeclStatement->GetExpression());
-                irBuilder->CreateStore(value.value, inst);
+                if (varPtrType && varPtrType->isArray)
+                {
+                    IRValue ptr;
+                    ptr.value = inst;
+                    ptr.type = ZtoonTypeToLLVMType(varPtrType);
+                    auto listExpr = dynamic_cast<InitializerListExpression *>(
+                        varDeclStatement->GetExpression());
+                    CheckArraySizeAtDeclaration(varPtrType, listExpr);
+                    StoreInitListInArray(ptr, listExpr);
+                }
+                else
+                {
+                    IRValue value =
+                        GenExpressionIR(varDeclStatement->GetExpression());
+                    irBuilder->CreateStore(value.value, inst);
+                }
             }
             else
             {
@@ -479,7 +633,8 @@ void CodeGen::GenStatementIR(Statement *statement)
         VarAssignmentStatement *varAssignmentStatement =
             dynamic_cast<VarAssignmentStatement *>(statement);
 
-        IRValue lValue = GetLValue(varAssignmentStatement->GetLValue());
+        IRValue lValue =
+            GenExpressionIR(varAssignmentStatement->GetLValue(), true);
 
         // Assign value to predefined variable.
         IRValue rValue = GenExpressionIR(varAssignmentStatement->GetRValue());
@@ -490,7 +645,8 @@ void CodeGen::GenStatementIR(Statement *statement)
     {
         VarCompoundAssignmentStatement *varComAssignStatement =
             dynamic_cast<VarCompoundAssignmentStatement *>(statement);
-        IRValue lValue = GetLValue(varComAssignStatement->GetLValue());
+        IRValue lValue =
+            GenExpressionIR(varComAssignStatement->GetLValue(), true);
 
         // Assign value to predefined variable.
         IRValue rValue = GenExpressionIR(varComAssignStatement->GetRValue());
@@ -898,7 +1054,7 @@ CodeGen::CMPZtoonTypeToCMPLLVM(TokenType type, IRValue value, bool isNaN)
         return llvm::CmpInst::Predicate::FCMP_FALSE;
     }
 }
-IRValue CodeGen::GenExpressionIR(Expression *expression)
+IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
 {
     IRValue irValue = {};
     if (dynamic_cast<FnCallExpression *>(expression))
@@ -926,6 +1082,34 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
             std::format(
                 "{}_call",
                 fnCallExpr->GetGetExpression()->GetCodeErrString().str));
+    }
+    else if (dynamic_cast<SubscriptExpression *>(expression))
+    {
+        SubscriptExpression *subExpr =
+            dynamic_cast<SubscriptExpression *>(expression);
+
+        IRValue ptr = GenExpressionIR(subExpr->GetExpression(), true);
+        IRValue index = GenExpressionIR(subExpr->GetIndexExpression());
+        irValue.type =
+            ZtoonTypeToLLVMType(semanticAnalyzer.exprToDataTypeMap[subExpr]);
+        llvm::Value *GEP = irBuilder->CreateInBoundsGEP(
+            irValue.type.type, ptr.value, index.value,
+            std::format("ptr__{}__at_index__{}",
+                        subExpr->GetExpression()->GetCodeErrString().str,
+                        subExpr->GetIndexExpression()->GetCodeErrString().str));
+        if (isWrite)
+        {
+            irValue.value = GEP;
+        }
+        else
+        {
+            irValue.value = irBuilder->CreateLoad(
+                irValue.type.type, GEP,
+                std::format(
+                    "{}__at_index__{}",
+                    subExpr->GetExpression()->GetCodeErrString().str,
+                    subExpr->GetIndexExpression()->GetCodeErrString().str));
+        }
     }
     else if (dynamic_cast<TernaryExpression *>(expression))
     {
@@ -1310,9 +1494,10 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         }
         case TokenType::DASH_DASH:
         {
-            // rvalue here is unary right expression, not meaning the expr is
-            // right value expression. my brain.
-            IRValue lValue = GetLValue(unaryExpression->GetRightExpression());
+            // rvalue here is unary right expression, not meaning the expr
+            // is right value expression. my brain.
+            IRValue lValue =
+                GenExpressionIR(unaryExpression->GetRightExpression());
             rValue.value =
                 irBuilder->CreateLoad(lValue.type.type, lValue.value);
             rValue.type = lValue.type;
@@ -1345,9 +1530,10 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
         case TokenType::PLUS_PLUS:
         {
 
-            // rvalue here is unary right expression, not meaning the expr is
-            // right value expression. my brain.
-            IRValue lValue = GetLValue(unaryExpression->GetRightExpression());
+            // rvalue here is unary right expression, not meaning the expr
+            // is right value expression. my brain.
+            IRValue lValue =
+                GenExpressionIR(unaryExpression->GetRightExpression());
             rValue.value =
                 irBuilder->CreateLoad(lValue.type.type, lValue.value);
             rValue.type = lValue.type;
@@ -1396,17 +1582,27 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
             PointerDataType *ptr = dynamic_cast<PointerDataType *>(
                 semanticAnalyzer
                     .exprToDataTypeMap[unaryExpression->GetRightExpression()]);
-            irValue.type = ZtoonTypeToLLVMType(ptr->dataType);
-            irValue.value = irBuilder->CreateLoad(
-                irValue.type.type, rValue.value,
-                std::format("deref_{}", unaryExpression->GetRightExpression()
-                                            ->GetCodeErrString()
-                                            .str));
+            if (isWrite)
+            {
+                irValue = rValue;
+            }
+            else
+            {
+
+                irValue.type = ZtoonTypeToLLVMType(ptr->dataType);
+                irValue.value = irBuilder->CreateLoad(
+                    irValue.type.type, rValue.value,
+                    std::format("deref_{}",
+                                unaryExpression->GetRightExpression()
+                                    ->GetCodeErrString()
+                                    .str));
+            }
             break;
         }
         case TokenType::BITWISE_AND:
         {
-            irValue = GetLValue(unaryExpression->GetRightExpression());
+            irValue =
+                GenExpressionIR(unaryExpression->GetRightExpression(), true);
             break;
         }
         default:
@@ -1498,10 +1694,20 @@ IRValue CodeGen::GenExpressionIR(Expression *expression)
                 IRVariable *var = dynamic_cast<IRVariable *>(symbol);
                 if (var)
                 {
-                    irValue.type = var->irType;
-                    irValue.value = irBuilder->CreateLoad(symbol->GetType(),
-                                                          symbol->GetValue(),
-                                                          "load_var_value");
+                    if (isWrite)
+                    {
+
+                        irValue.type.type = symbol->GetType()->getPointerTo();
+                        irValue.value = symbol->GetValue();
+                    }
+                    else
+                    {
+
+                        irValue.type = var->irType;
+                        irValue.value = irBuilder->CreateLoad(
+                            symbol->GetType(), symbol->GetValue(),
+                            "load_var_value");
+                    }
                 }
                 else
                 {

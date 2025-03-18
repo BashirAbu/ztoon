@@ -79,6 +79,8 @@ enum class TokenType
     END_OF_FILE,
     LEFT_PAREN,
     RIGHT_PAREN,
+    DOT,
+    VAR_ARGS,
 
     LEFT_CURLY_BRACKET,
     RIGHT_CURLY_BRACKET,

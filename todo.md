@@ -1,6 +1,6 @@
 ##Todo
 - arrays
-    -[] operator. it should work on pointers. arrays are pointers. 
+    -mulitple dimensions array. 
 - string
 - fn pointer variable.
     - should be able to pass as function argument.

@@ -210,10 +210,32 @@ Statement *Parser::ParseFnStatement()
                 Statement *varDeclStatement = ParseVarDeclStatement();
                 if (!dynamic_cast<VarDeclStatement *>(varDeclStatement))
                 {
-                    ReportError(
-                        std::format("Expect function paramter but found '{}'",
-                                    varDeclStatement->GetCodeErrString().str),
-                        varDeclStatement->GetCodeErrString());
+                    if (Consume(TokenType::VAR_ARGS))
+                    {
+                        fnStmt->isVarArgs = true;
+                        if (Consume(TokenType::RIGHT_PAREN))
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            CodeErrString ces;
+                            ces.firstToken = Prev();
+                            ces.str = ces.firstToken->GetLexeme();
+                            ReportError(
+                                std::format("'...' token can only be the last "
+                                            "function paramter"),
+                                ces);
+                        }
+                    }
+                    else
+                    {
+                        ReportError(
+                            std::format(
+                                "Expect function paramter but found '{}'",
+                                varDeclStatement->GetCodeErrString().str),
+                            varDeclStatement->GetCodeErrString());
+                    }
                 }
                 if (((VarDeclStatement *)varDeclStatement)->expression)
                 {
@@ -618,7 +640,6 @@ Statement *Parser::ParseVarAssignmentStatement(Expression *lValueExpr)
         VarAssignmentStatement *statement =
             gZtoonArena.Allocate<VarAssignmentStatement>();
         statement->lValue = lValueExpr;
-
         statement->rValue = ParseExpression();
         return statement;
     }
@@ -1060,7 +1081,6 @@ Expression *Parser::ParseUnaryExpression()
         Advance();
         UnaryExpression *unaryExpr = gZtoonArena.Allocate<UnaryExpression>();
         unaryExpr->op = Prev();
-
         unaryExpr->right = expr;
         unaryExpr->postfix = true;
         return unaryExpr;
@@ -1181,6 +1201,7 @@ Expression *Parser::ParsePrimaryExpression()
         PrimaryExpression *expr = gZtoonArena.Allocate<PrimaryExpression>();
         expr->primary = Prev();
         retExpr = expr;
+        retExpr->isLvalue = true;
         break;
     }
     case TokenType::LEFT_PAREN:

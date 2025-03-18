@@ -169,6 +169,15 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 gZtoonArena.Allocate<PointerDataType>();
 
             ptrDataType->type = DataType::Type::POINTER;
+            if (dataTypeToken->IsArray())
+            {
+                ptrDataType->isArray = true;
+                ptrDataType->arrSizeExpr = dataTypeToken->arraySizeExpr;
+                if (!ptrDataType->arrSizeExpr)
+                {
+                    ptrDataType->arrSize = dataTypeToken->arrSize;
+                }
+            }
             DataTypeToken *token = gZtoonArena.Allocate<DataTypeToken>();
             *token = *dataTypeToken;
             token->asterisks.pop_back();
@@ -178,8 +187,10 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
             {
                 ptrDataType->isReadOnly = true;
             }
-
-            datatypesMap[ptrDataType->ToString()] = ptrDataType;
+            if (!ptrDataType->isArray)
+            {
+                datatypesMap[ptrDataType->ToString()] = ptrDataType;
+            }
             return ptrDataType;
         }
         else if (dataTypeToken->readOnly)
@@ -428,7 +439,25 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             dynamic_cast<VarDeclStatement *>(statement);
         stmtToDataTypeMap[varDeclStatement] =
             currentScope->GetDataType(varDeclStatement->GetDataType());
+        if (dynamic_cast<PointerDataType *>(
+                stmtToDataTypeMap[varDeclStatement]))
+        {
+            auto ptrType = dynamic_cast<PointerDataType *>(
+                stmtToDataTypeMap[varDeclStatement]);
+            if (ptrType && ptrType->isArray && ptrType->arrSizeExpr)
+            {
+                EvaluateAndAssignDataTypeToExpression(ptrType->arrSizeExpr);
+            }
 
+            if (ptrType && ptrType->isArray && !ptrType->arrSizeExpr)
+            {
+                if (!varDeclStatement->GetExpression())
+                {
+                    ReportError("Array size expression cannot be empty",
+                                varDeclStatement->GetCodeErrString());
+                }
+            }
+        }
         if (varDeclStatement->GetExpression())
         {
             EvaluateAndAssignDataTypeToExpression(
@@ -451,6 +480,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
                         varDeclStatement->GetDataType()->arrSize =
                             listType->dataTypes.size();
+                        varDataType->arrSize = listType->dataTypes.size();
                     }
                     else
                     {
@@ -1139,7 +1169,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             EvaluateAndAssignDataTypeToExpression(arg);
         }
         size_t index = 0;
-        for (Expression *argExpr : fnCallExpr->GetArgs())
+        for (DataType *argDataType : fnDataType->GetParameters())
         {
             PrimaryExpression *id = gZtoonArena.Allocate<PrimaryExpression>();
             id->primary = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
@@ -1153,15 +1183,22 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                 ReportError(
                     std::format(
                         "Argument '{}' of type '{}' is not compatible "
-                        "with paramter '{}' of type '{}'",
+                        "with paramter of type '{}'",
                         fnCallExpr->args[index]->GetCodeErrString().str,
-
                         exprToDataTypeMap[fnCallExpr->args[index]]->ToString(),
-                        argExpr->GetCodeErrString().str,
                         exprToDataTypeMap[fnCallExpr->args[index]]->ToString()),
                     fnCallExpr->args[index]->GetCodeErrString());
             }
             index++;
+        }
+        if (fnCallExpr->GetArgs().size() > fnDataType->GetParameters().size())
+        {
+            if (!fnDataType->IsVarArgs())
+            {
+                ReportError("function call expression arguments are not "
+                            "compatible with function paramters",
+                            fnCallExpr->GetCodeErrString());
+            }
         }
     }
     else if (dynamic_cast<InitializerListExpression *>(expression))
@@ -1171,7 +1208,15 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         bool allSameType = true;
         DataType *prevType = nullptr;
         InitListType *listType = gZtoonArena.Allocate<InitListType>();
+        listType->isReadOnly = true;
         listType->type = DataType::Type::InitList;
+
+        if (initListExpr->GetExpressions().empty())
+        {
+            ReportError("Initializer list cannot be empty",
+                        initListExpr->GetCodeErrString());
+        }
+
         for (auto expr : initListExpr->expressions)
         {
             EvaluateAndAssignDataTypeToExpression(expr);

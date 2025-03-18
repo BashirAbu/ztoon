@@ -128,6 +128,9 @@ class PointerDataType : public DataType
     DataType *PointedToDatatype() { return dataType; }
 
     DataType *dataType;
+    bool isArray = false;
+    Expression *arrSizeExpr;
+    size_t arrSize = 0;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;

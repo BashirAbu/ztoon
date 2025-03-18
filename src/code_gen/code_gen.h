@@ -85,14 +85,20 @@ class CodeGen
     std::unique_ptr<llvm::DataLayout> moduleDataLayout;
 
   private:
-    IRValue GetLValue(Expression *expr);
+    // IRValue GetLValue(Expression *expr);
     uint32_t GetPtrBitWidth()
     {
         return moduleDataLayout->getPointerSizeInBits();
     }
+    bool CheckArraySizeAtDeclaration(PointerDataType *type,
+                                     InitializerListExpression *initExpr);
+    void StoreInitListInArray(IRValue ptr, InitializerListExpression *listExpr);
+    llvm::Constant *
+    InitListToArrayConstant(IRType arrayType,
+                            InitializerListExpression *listExpr);
     void GenStatementIR(Statement *statement);
     void GenIfStatementIR(Statement *statement, IfStatementData *ifData);
-    IRValue GenExpressionIR(Expression *expression);
+    IRValue GenExpressionIR(Expression *expression, bool isWrite = false);
     IRValue CastIRValue(IRValue value, IRType castType);
     IRType ZtoonTypeToLLVMType(DataType *type);
     bool IsNaN(llvm::Value *value);

@@ -115,6 +115,7 @@ class DataTypeToken
         return str;
     }
     bool IsArray() { return isArray; }
+    class Expression *GetArraySizeExpression() { return arraySizeExpr; }
     bool IsFunctionPointer() { return isFnPointer; }
 
   private:

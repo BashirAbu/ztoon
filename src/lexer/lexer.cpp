@@ -152,6 +152,8 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^break\b)"), TokenType::BREAK});
     patterns.push_back({std::regex(R"(^continue\b)"), TokenType::CONTINUE});
 
+    patterns.push_back({std::regex(R"(^\.\.\.)"), TokenType::VAR_ARGS});
+    patterns.push_back({std::regex(R"(^\.)"), TokenType::DOT});
     patterns.push_back({std::regex(R"(^->)"), TokenType::ARROW});
     patterns.push_back({std::regex(R"(^--)"), TokenType::DASH_DASH});
     patterns.push_back({std::regex(R"(^\+=)"), TokenType::PLUS_EQUAL});

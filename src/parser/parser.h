@@ -112,32 +112,48 @@ class DataTypeToken
         {
             str += "*";
         }
+
+        auto arr = arrayDesc;
+        while (arr)
+        {
+            str += "*";
+            arr = arr->dataTypeToken->arrayDesc;
+        }
+
         return str;
     }
-    bool IsArray() { return isArray; }
-    class Expression *GetArraySizeExpression() { return arraySizeExpr; }
-    bool IsFunctionPointer() { return isFnPointer; }
 
   private:
     Token const *dataType = nullptr;
     Token const *readOnly = nullptr;
     std::vector<Token const *> asterisks;
 
-    bool isFnPointer = false;
-    Token const *fnToken = nullptr;
-    std::vector<DataTypeToken *> fnParametersTypes;
-    DataTypeToken *fnRetType = nullptr;
-
-    bool isArray = false;
-    // use this if arraySizeExpr is nullptr;
-    size_t arrSize = 0;
-    Token const *leftSquareParenToken = nullptr;
-    class Expression *arraySizeExpr = nullptr;
-
+    struct FnPtrDesc
+    {
+        bool isFnPointer = false;
+        Token const *fnToken = nullptr;
+        std::vector<DataTypeToken *> fnParametersTypes;
+        DataTypeToken *fnRetType = nullptr;
+    };
+    FnPtrDesc *fnPtrDesc = nullptr;
+    struct ArrayDesc
+    {
+        // use this if arraySizeExpr is nullptr;
+        size_t arrSize = 0;
+        Token const *token = nullptr;
+        class Expression *arraySizeExpr = nullptr;
+        DataTypeToken *dataTypeToken = nullptr;
+    };
+    ArrayDesc *arrayDesc = nullptr;
     friend class Parser;
     friend class DataType;
     friend class Scope;
     friend class SemanticAnalyzer;
+    friend class PointerDataType;
+
+  public:
+    FnPtrDesc *GetFnPtrDesc() { return fnPtrDesc; }
+    ArrayDesc *GetArraDesc() { return arrayDesc; }
 };
 
 class Expression

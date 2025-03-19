@@ -86,15 +86,15 @@ class CodeGen
 
   private:
     // IRValue GetLValue(Expression *expr);
+    void LocalVarArrayDecl(IRValue ptr, Expression *expr,
+                           PointerDataType *arrType,
+                           std::vector<llvm::Value *> &index);
     uint32_t GetPtrBitWidth()
     {
         return moduleDataLayout->getPointerSizeInBits();
     }
-    bool CheckArraySizeAtDeclaration(PointerDataType *type,
-                                     InitializerListExpression *initExpr);
-    void StoreInitListInArray(IRValue ptr, InitializerListExpression *listExpr);
     llvm::Constant *
-    InitListToArrayConstant(IRType arrayType,
+    InitListToArrayConstant(PointerDataType *arrType,
                             InitializerListExpression *listExpr);
     void GenStatementIR(Statement *statement);
     void GenIfStatementIR(Statement *statement, IfStatementData *ifData);

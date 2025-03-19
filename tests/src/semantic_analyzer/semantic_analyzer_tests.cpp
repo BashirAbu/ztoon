@@ -494,6 +494,23 @@ TEST(SemanticAnalyzerArrayVarDeclInitList)
     SemanticAnalyzer analyzer(stmts);
     analyzer.Analize();
 }
+TEST(SemanticAnalyzerArrayVarDecl2D)
+{
+    std::string source = R"(
+        fn main()
+        {
+            arr: u32[2][2][2] = {{{1, 3}, {4, 5}}, {{1, 3}, {4, 5}}};
+            arr[0][0][1] = 23;
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "array_decl.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
 TEST(SemanticAnalyzerFunctionPrototype)
 {
     Lexer lexer;

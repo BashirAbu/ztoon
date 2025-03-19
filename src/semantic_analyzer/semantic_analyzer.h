@@ -128,9 +128,13 @@ class PointerDataType : public DataType
     DataType *PointedToDatatype() { return dataType; }
 
     DataType *dataType;
-    bool isArray = false;
-    Expression *arrSizeExpr;
-    size_t arrSize = 0;
+
+    struct ArrayDesc
+    {
+        size_t arrSize;
+        Expression *arrSizeExpr;
+    };
+    ArrayDesc *arrDesc = nullptr;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -210,6 +214,9 @@ class SemanticAnalyzer
 
   private:
     void AnalizeStatement(Statement *statement);
+
+    void VarArrayDecl(Expression *expr, PointerDataType *arrType);
+
     void PreAnalizeStatement(Statement *statement, size_t index);
     DataType::Type DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);

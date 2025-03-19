@@ -72,17 +72,22 @@ DataTypeToken *Parser::ParseDataType()
     {
         dataType->asterisks.push_back(Prev());
     }
-    if (Consume(TokenType::LEFT_SQUARE_BRACKET))
+
+    while (Consume(TokenType::LEFT_SQUARE_BRACKET))
     {
-        dataType->isArray = true;
-        dataType->arraySizeExpr = ParseExpression();
-        auto asteriskToken = gZtoonArena.Allocate<Token>(TokenType::ASTERISK);
-        asteriskToken->lexeme = "*";
-        dataType->asterisks.push_back(asteriskToken);
+        DataTypeToken::ArrayDesc *arrDesc =
+            gZtoonArena.Allocate<DataTypeToken::ArrayDesc>();
+        arrDesc->token = Prev();
+        arrDesc->arraySizeExpr = ParseExpression();
+        auto innerDataType = gZtoonArena.Allocate<DataTypeToken>();
+        innerDataType->dataType = dataType->dataType;
+        innerDataType->arrayDesc = arrDesc;
+        arrDesc->dataTypeToken = dataType;
+        dataType = innerDataType;
         if (!Consume(TokenType::RIGHT_SQUARE_BRACKET))
         {
             CodeErrString ces = {};
-            ces.firstToken = dataType->leftSquareParenToken;
+            ces.firstToken = arrDesc->token;
             ces.str = ces.firstToken->GetLexeme();
 
             ReportError("Missing ']'", ces);
@@ -1122,7 +1127,7 @@ Expression *Parser::ParsePostfixExpression()
         return fnCallExpr;
     }
 
-    if (Consume(TokenType::LEFT_SQUARE_BRACKET))
+    while (Consume(TokenType::LEFT_SQUARE_BRACKET))
     {
         // subscript stuff.
         SubscriptExpression *subExpr =
@@ -1135,7 +1140,7 @@ Expression *Parser::ParsePostfixExpression()
         {
             ReportError("Missing ']'", subExpr->GetCodeErrString());
         }
-        return subExpr;
+        expr = subExpr;
     }
     return expr;
 }

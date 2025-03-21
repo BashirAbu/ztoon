@@ -137,14 +137,17 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 
     DataType *result = nullptr;
     Scope *currentScope = this;
-    while (currentScope)
+    if (!dataTypeToken->arrayDesc)
     {
-        if (currentScope->datatypesMap.contains(typeStr))
+        while (currentScope)
         {
-            return datatypesMap[typeStr];
-        }
+            if (currentScope->datatypesMap.contains(typeStr))
+            {
+                return datatypesMap[typeStr];
+            }
 
-        currentScope = currentScope->parent;
+            currentScope = currentScope->parent;
+        }
     }
 
     bool dataTypeFound = false;

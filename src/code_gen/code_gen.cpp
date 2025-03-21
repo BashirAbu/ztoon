@@ -312,36 +312,42 @@ IRValue CodeGen::CastPtrToInt(IRValue value, IRType castType)
 IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
 {
     // int to int
-    if (value.type.type->isIntegerTy() && castType.type->isIntegerTy())
+    if (value.value->getType()->isIntegerTy() && castType.type->isIntegerTy())
     {
         return CastIntToInt(value, castType);
     }
     // float to float
-    else if (value.type.type->isFloatingPointTy() &&
+    else if (value.value->getType()->isFloatingPointTy() &&
              castType.type->isFloatingPointTy())
     {
         return CastFloatToFloat(value, castType);
     }
     // float to int
-    else if (value.type.type->isFloatingPointTy() &&
+    else if (value.value->getType()->isFloatingPointTy() &&
              castType.type->isIntegerTy())
     {
         return CastFloatToInt(value, castType);
     }
-    else if (value.type.type->isIntegerTy() &&
+    else if (value.value->getType()->isIntegerTy() &&
              castType.type->isFloatingPointTy())
     {
         return CastIntToFloat(value, castType);
     }
-    else if (value.type.type->isPointerTy() && castType.type->isPointerTy())
+    // ptr to ptr
+    else if (value.value->getType()->isPointerTy() &&
+             castType.type->isPointerTy())
     {
         return CastPtrToPtr(value, castType);
     }
-    else if (value.type.type->isIntegerTy() && castType.type->isPointerTy())
+    // int to ptr
+    else if (value.value->getType()->isIntegerTy() &&
+             castType.type->isPointerTy())
     {
         return CastIntToPtr(value, castType);
     }
-    else if (value.type.type->isPointerTy() && castType.type->isIntegerTy())
+    // ptr to int
+    else if (value.value->getType()->isPointerTy() &&
+             castType.type->isIntegerTy())
     {
         return CastPtrToInt(value, castType);
     }
@@ -1114,16 +1120,18 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         SubscriptExpression *subExpr =
             dynamic_cast<SubscriptExpression *>(expression);
 
-        IRValue ptr = GenExpressionIR(subExpr->GetExpression(), true);
+        IRValue ptr = GenExpressionIR(subExpr->GetExpression());
         IRValue index = GenExpressionIR(subExpr->GetIndexExpression());
         irValue.type =
             ZtoonTypeToLLVMType(semanticAnalyzer.exprToDataTypeMap[subExpr]);
+
         llvm::Value *GEP = irBuilder->CreateInBoundsGEP(
             irValue.type.type, ptr.value, index.value,
             std::format("ptr__{}__at_index__{}",
                         subExpr->GetExpression()->GetCodeErrString().str,
                         subExpr->GetIndexExpression()->GetCodeErrString().str));
-        if (isWrite)
+
+        if (isWrite || irValue.type.type->isArrayTy())
         {
             irValue.value = GEP;
         }
@@ -1659,6 +1667,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         IRType originalType = ZtoonTypeToLLVMType(
             semanticAnalyzer
                 .exprToDataTypeMap[castExpression->GetExpression()]);
+
         irValue = CastIRValue(toCastValue, castType);
     }
     else if (dynamic_cast<PrimaryExpression *>(expression))
@@ -1710,7 +1719,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         }
         case TokenType::IDENTIFIER:
         {
-            // are we in global scope?i
+            // are we in global scope?
             llvm::BasicBlock *block = irBuilder->GetInsertBlock();
             if (block)
             {
@@ -1720,10 +1729,20 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                 IRVariable *var = dynamic_cast<IRVariable *>(symbol);
                 if (var)
                 {
-                    if (isWrite)
+                    if (dynamic_cast<PointerDataType *>(primaryDataType) &&
+                        dynamic_cast<PointerDataType *>(primaryDataType)
+                            ->arrDesc)
                     {
-
-                        irValue.type.type = symbol->GetType()->getPointerTo();
+                        PointerDataType *arrType =
+                            dynamic_cast<PointerDataType *>(primaryDataType);
+                        irValue.value = irBuilder->CreateInBoundsGEP(
+                            var->GetType(), var->value,
+                            {irBuilder->getInt32(0), irBuilder->getInt32(0)});
+                        irValue.type.type = irValue.value->getType();
+                    }
+                    else if (isWrite)
+                    {
+                        irValue.type.type = symbol->GetType();
                         irValue.value = symbol->GetValue();
                     }
                     else
@@ -1737,20 +1756,9 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                 }
                 else
                 {
+                    // fn type
                     irValue.type.type = symbol->GetType()->getPointerTo();
                     irValue.value = symbol->GetValue();
-                }
-            }
-            else
-            {
-                IRSymbol *symbol =
-                    GetIRSymbol(primaryExpression->GetPrimary()->GetLexeme());
-                irValue.value = symbol->GetValue();
-                irValue.type.type = symbol->GetType();
-                IRVariable *var = dynamic_cast<IRVariable *>(symbol);
-                if (var)
-                {
-                    irValue.type = var->irType;
                 }
             }
         }

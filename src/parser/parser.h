@@ -97,27 +97,35 @@ class DataTypeToken
     }
     std::string ToString()
     {
-        std::string str = "";
+        std::string str;
         if (readOnly)
         {
             str += "readonly ";
         }
 
-        str += dataType->GetLexeme();
-        if (dataType->GetLexeme().empty())
+        if (arrayDesc)
         {
-            str += "notype";
+            auto arr = arrayDesc;
+            while (arr)
+            {
+                str += arr->dataTypeToken->ToString();
+                str += "[]";
+                arr = arr->dataTypeToken->arrayDesc;
+            }
         }
-        for (auto ast : asterisks)
+        else if (pointerDesc)
         {
-            str += "*";
+            auto ptr = pointerDesc;
+            while (ptr)
+            {
+                str += ptr->dataTypeToken->ToString();
+                str += "*";
+                ptr = ptr->dataTypeToken->pointerDesc;
+            }
         }
-
-        auto arr = arrayDesc;
-        while (arr)
+        else
         {
-            str += "*";
-            arr = arr->dataTypeToken->arrayDesc;
+            str += dataType->GetLexeme();
         }
 
         return str;
@@ -126,7 +134,6 @@ class DataTypeToken
   private:
     Token const *dataType = nullptr;
     Token const *readOnly = nullptr;
-    std::vector<Token const *> asterisks;
 
     struct FnPtrDesc
     {
@@ -145,6 +152,14 @@ class DataTypeToken
         DataTypeToken *dataTypeToken = nullptr;
     };
     ArrayDesc *arrayDesc = nullptr;
+    struct PointerDesc
+    {
+        Token const *token = nullptr;
+        DataTypeToken *dataTypeToken = nullptr;
+    };
+
+    PointerDesc *pointerDesc = nullptr;
+
     friend class Parser;
     friend class DataType;
     friend class Scope;

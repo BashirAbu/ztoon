@@ -15,7 +15,8 @@
 // 2. Provide a source string.
 // 3. Run lexing, parsing, semantic analysis.
 // 4. Generate IR via CodeGen.
-// 5. Verify the module, add it to a LLJIT instance, lookup "main", run it and
+// 5. Verify the module, add it to a LLJIT instance, lookup "main", run it
+// and
 // check the result.
 
 // Test 1: Simple arithmetic.
@@ -1073,6 +1074,119 @@ TEST(CodeGen_ArrayDecl)
     int r = Fp();
     ASSERT_EQ(r, 0, "Value should be 0");
 }
+TEST(CodeGenArrayCopy)
+{
+    std::string source = R"(
+        fn main() -> u32
+        {
+            arr: u32[3] = {1,  2, 3};
+            arr2: u32[3] = arr;
+            arr[1] = 2222;
+            arr2[1] = arr[1] * arr2[1];
+            ret arr2[1];
+            
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "array_decl.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 4444, "Value should be 4444");
+}
+TEST(CodeGenArrayReference)
+{
+    std::string source = R"(
+        fn main() -> u32
+        {
+            arr: u32[3] = {1,  2, 3};
+            arr2: u32[3]* = &arr;
+            arr[1] = 2222;
+            arr[1]--;
+            ret (*arr2)[1];
+            
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "array_decl.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 2221, "Value should be 2221");
+}
+
+TEST(CodeGenArrayInitializerListReAssignment)
+{
+    std::string source = R"(
+        fn main() -> u32
+        {
+            arr: u32[3] = {1,  2, 3};
+            arr = {4, 5,4};
+            ret arr[1];
+            
+        }
+    )";
+    Lexer lexer;
+    lexer.Tokenize(source, "array_decl.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto &stmts = parser.Parse();
+
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 5, "Value should be 5");
+}
 TEST(CodeGen_ArrayDeclEmptySizeExpression)
 {
     llvm::InitializeNativeTarget();
@@ -1123,9 +1237,9 @@ TEST(CodeGen_ArrayToPointerType)
 
         fn main() -> i32
         {
-            arr: i32[2][2] = { {1,5},{7,21}};
-            ptr: i32** = arr;
-            ret ptr[1][1];
+            arr: i32[2] = { 1,5};
+            ptr: i32* = arr as i32*;
+            ret ptr[1];
         }
     )";
 
@@ -1141,7 +1255,7 @@ TEST(CodeGen_ArrayToPointerType)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    // codeGen.module->print(llvm::outs(), nullptr);
+    codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -1151,7 +1265,7 @@ TEST(CodeGen_ArrayToPointerType)
     auto Sym = err(JIT->lookup("main"));
     auto *Fp = (int (*)())Sym.getValue();
     int r = Fp();
-    ASSERT_EQ(r, 3, "Value should be 0");
+    ASSERT_EQ(r, 5, "Value should be 5");
 }
 TEST(CodeGen_ArrayDeclWithInitializerList)
 {
@@ -1242,7 +1356,7 @@ TEST(CodeGen_ArrayDecl3D)
         fn main() -> i32
         {
             arr: i32[2][2][2] = {{{1,2},{3,4}},{{1212,6},{7,8}}};
-            
+
             ret arr[0][1][1];
         }
     )";
@@ -1440,7 +1554,8 @@ TEST(CodeGen_SubscriptWriteValue)
 // TEST(CodeGenFunctionPrototypeVarArgs)
 // {
 //     Lexer lexer;
-//     std::string source = "fn printf(str: readonly i8*, ...) -> i32; fn main()
+//     std::string source = "fn printf(str: readonly i8*, ...) -> i32; fn
+// main()
 //     "
 //                          "{ printf(\"Hi %d\", 12); }";
 //     lexer.Tokenize(source, "test.ztoon");

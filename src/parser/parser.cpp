@@ -70,7 +70,14 @@ DataTypeToken *Parser::ParseDataType()
 
     while (Consume(TokenType::ASTERISK))
     {
-        dataType->asterisks.push_back(Prev());
+        auto ptrDesc = gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
+        auto ptrType = gZtoonArena.Allocate<DataTypeToken>();
+        *ptrType = *dataType;
+        ptrType->readOnly = nullptr;
+        ptrDesc->dataTypeToken = dataType;
+        ptrDesc->token = Prev();
+        ptrType->pointerDesc = ptrDesc;
+        dataType = ptrType;
     }
 
     while (Consume(TokenType::LEFT_SQUARE_BRACKET))
@@ -80,7 +87,8 @@ DataTypeToken *Parser::ParseDataType()
         arrDesc->token = Prev();
         arrDesc->arraySizeExpr = ParseExpression();
         auto innerDataType = gZtoonArena.Allocate<DataTypeToken>();
-        innerDataType->dataType = dataType->dataType;
+        *innerDataType = *dataType;
+        innerDataType->readOnly = nullptr;
         innerDataType->arrayDesc = arrDesc;
         arrDesc->dataTypeToken = dataType;
         dataType = innerDataType;
@@ -92,6 +100,16 @@ DataTypeToken *Parser::ParseDataType()
 
             ReportError("Missing ']'", ces);
         }
+    }
+    while (Consume(TokenType::ASTERISK))
+    {
+        auto ptrDesc = gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
+        auto ptrType = gZtoonArena.Allocate<DataTypeToken>();
+        ptrDesc->dataTypeToken = dataType;
+        ptrDesc->token = Prev();
+        ptrType->dataType = dataType->dataType;
+        ptrType->pointerDesc = ptrDesc;
+        dataType = ptrType;
     }
     return dataType;
 }

@@ -86,9 +86,9 @@ class CodeGen
 
   private:
     // IRValue GetLValue(Expression *expr);
-    void LocalVarArrayDecl(IRValue ptr, Expression *expr,
-                           PointerDataType *arrType,
-                           std::vector<llvm::Value *> &index);
+    void AssignValueToVarArray(IRValue ptr, Expression *expr,
+                               ArrayDataType *arrType,
+                               std::vector<llvm::Value *> &index);
     uint32_t GetPtrBitWidth()
     {
         return moduleDataLayout->getPointerSizeInBits();

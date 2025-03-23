@@ -26,6 +26,7 @@ class DataType
         UNION,
         FNPOINTER,
         POINTER,
+        ARRAY,
         InitList,
     };
     Type GetType() { return type; }
@@ -121,6 +122,14 @@ class FnPointerDataType : public DataType
     friend class CodeGen;
 };
 
+class ArrayDataType : public DataType
+{
+  public:
+    ArrayDataType() {}
+    DataType *dataType = nullptr;
+    size_t size = 0;
+    Expression *sizeExpr = nullptr;
+};
 class PointerDataType : public DataType
 {
   public:
@@ -128,13 +137,6 @@ class PointerDataType : public DataType
     DataType *PointedToDatatype() { return dataType; }
 
     DataType *dataType;
-
-    struct ArrayDesc
-    {
-        size_t arrSize;
-        Expression *arrSizeExpr;
-    };
-    ArrayDesc *arrDesc = nullptr;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -189,9 +191,9 @@ class Function : public Symbol
 class Scope
 {
   public:
+    Scope(class SemanticAnalyzer *semanticAnalyzer, Scope *parent = nullptr);
     Symbol *GetSymbol(std::string name, CodeErrString codeErrString);
     void AddSymbol(Symbol *symbol, CodeErrString codeErrString);
-    Scope(Scope *parent = nullptr);
 
     Scope const *GetParent() const { return parent; }
 
@@ -201,6 +203,7 @@ class Scope
     Scope *parent = nullptr;
     std::unordered_map<std::string, Symbol *> symbolsMap;
     std::unordered_map<std::string, DataType *> datatypesMap;
+    class SemanticAnalyzer *semanticAnalyzer;
     friend class SemanticAnalyzer;
     friend class CodeGen;
 };
@@ -215,7 +218,8 @@ class SemanticAnalyzer
   private:
     void AnalizeStatement(Statement *statement);
 
-    void VarArrayDecl(Expression *expr, PointerDataType *arrType);
+    void ValidateAssignValueToVarArray(Expression *expr,
+                                       ArrayDataType *arrType);
 
     void PreAnalizeStatement(Statement *statement, size_t index);
     DataType::Type DecideDataType(Expression **left, Expression **right);
@@ -230,4 +234,5 @@ class SemanticAnalyzer
     Function *currentFunction = nullptr;
     size_t inLoop = 0;
     friend class CodeGen;
+    friend class Scope;
 };

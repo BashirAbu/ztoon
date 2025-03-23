@@ -92,7 +92,20 @@ std::string DataType::ToString()
         str += "*";
         break;
     }
-
+    case DataType::Type::ARRAY:
+    {
+        auto arrType = (ArrayDataType *)this;
+        str += arrType->dataType->ToString();
+        if (arrType->size != 0)
+        {
+            str += std::format("[{}]", arrType->size);
+        }
+        else
+        {
+            str += "[]";
+        }
+    }
+    break;
     case DataType::Type::InitList:
     {
         auto listType = dynamic_cast<InitListType *>(this);
@@ -136,6 +149,10 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
     std::string typeStr = dataTypeToken->ToString();
 
     DataType *result = nullptr;
+    if (typeStr.empty())
+    {
+        typeStr = "notype";
+    }
     Scope *currentScope = this;
     if (!dataTypeToken->arrayDesc)
     {
@@ -165,40 +182,39 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
     }
     if (dataTypeFound)
     {
-        // Build type
-        PointerDataType *ptrDataType = nullptr;
         if (dataTypeToken->arrayDesc)
         {
-            ptrDataType = gZtoonArena.Allocate<PointerDataType>();
-            ptrDataType->type = DataType::Type::POINTER;
-            auto arrDesc = gZtoonArena.Allocate<PointerDataType::ArrayDesc>();
-            ptrDataType->arrDesc = arrDesc;
-            arrDesc->arrSizeExpr = dataTypeToken->arrayDesc->arraySizeExpr;
+            auto arrType = gZtoonArena.Allocate<ArrayDataType>();
+            arrType->type = DataType::Type::ARRAY;
 
-            ptrDataType->dataType =
-                GetDataType(dataTypeToken->arrayDesc->dataTypeToken);
-            result = ptrDataType;
-        }
-        if (dataTypeToken->asterisks.size() > 0)
-        {
-            if (!ptrDataType)
+            arrType->sizeExpr = dataTypeToken->arrayDesc->arraySizeExpr;
+            if (arrType->sizeExpr)
             {
-                ptrDataType = gZtoonArena.Allocate<PointerDataType>();
+                semanticAnalyzer->EvaluateAndAssignDataTypeToExpression(
+                    arrType->sizeExpr);
             }
+            arrType->dataType =
+                GetDataType(dataTypeToken->arrayDesc->dataTypeToken);
+            result = arrType;
+        }
+        if (dataTypeToken->pointerDesc)
+        {
+
+            PointerDataType *ptrDataType =
+                gZtoonArena.Allocate<PointerDataType>();
+
             ptrDataType->type = DataType::Type::POINTER;
             DataTypeToken *token = gZtoonArena.Allocate<DataTypeToken>();
-            *token = *dataTypeToken;
-            token->asterisks.pop_back();
+            *token = *(dataTypeToken->pointerDesc->dataTypeToken);
             ptrDataType->dataType = GetDataType(token);
 
             if (dataTypeToken->readOnly)
             {
                 ptrDataType->isReadOnly = true;
             }
-            if (!ptrDataType->arrDesc)
-            {
-                datatypesMap[ptrDataType->ToString()] = ptrDataType;
-            }
+
+            datatypesMap[ptrDataType->ToString()] = ptrDataType;
+
             result = ptrDataType;
         }
         else if (dataTypeToken->readOnly)
@@ -220,10 +236,10 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
     return result;
 }
 
-Scope::Scope(Scope *parent)
+Scope::Scope(SemanticAnalyzer *semanticAnalyzer, Scope *parent)
 {
     this->parent = parent;
-
+    this->semanticAnalyzer = semanticAnalyzer;
     datatypesMap["i8"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["i8"]->type = DataType::Type::I8;
 
@@ -411,47 +427,55 @@ void Scope::AddSymbol(Symbol *symbol, CodeErrString codeErrString)
     }
 }
 
-void SemanticAnalyzer::VarArrayDecl(Expression *expr, PointerDataType *arrType)
+void SemanticAnalyzer::ValidateAssignValueToVarArray(Expression *expr,
+                                                     ArrayDataType *arrType)
 {
     auto initListExpr = dynamic_cast<InitializerListExpression *>(expr);
-    if (!initListExpr)
+    auto rValueArrType = dynamic_cast<ArrayDataType *>(exprToDataTypeMap[expr]);
+    if (initListExpr)
     {
-        ReportError("Only  initializer list can be assigned"
-                    " to an array",
-                    expr->GetCodeErrString());
-    }
-
-    if (!arrType->arrDesc->arrSizeExpr)
-    {
-        arrType->arrDesc->arrSize = initListExpr->GetExpressions().size();
-    }
-    auto innerType = dynamic_cast<PointerDataType *>(arrType->dataType);
-
-    for (auto elementExpr : initListExpr->GetExpressions())
-    {
-        if (innerType && innerType->arrDesc)
+        if (!arrType->sizeExpr)
         {
-            // recurse
-            VarArrayDecl(elementExpr, innerType);
+            arrType->size = initListExpr->GetExpressions().size();
         }
-        else
-        {
-            auto leftExpr = gZtoonArena.Allocate<PrimaryExpression>();
-            leftExpr->primary =
-                gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
-            leftExpr->isLvalue = true;
-            exprToDataTypeMap[leftExpr] = arrType->dataType;
-            Expression *e = leftExpr;
+        auto innerType = dynamic_cast<ArrayDataType *>(arrType->dataType);
 
-            DataType::Type type = DecideDataType(&e, &elementExpr);
-            if (type == DataType::Type::UNKNOWN)
+        for (auto elementExpr : initListExpr->GetExpressions())
+        {
+            if (innerType)
             {
-                ReportError(
-                    std::format("Types '{}' and '{}' are not compatible",
-                                arrType->PointedToDatatype()->ToString(),
-                                exprToDataTypeMap[elementExpr]->ToString()),
-                    elementExpr->GetCodeErrString());
+                // recurse
+                ValidateAssignValueToVarArray(elementExpr, innerType);
             }
+            else
+            {
+                auto leftExpr = gZtoonArena.Allocate<PrimaryExpression>();
+                leftExpr->primary =
+                    gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+                leftExpr->isLvalue = true;
+                exprToDataTypeMap[leftExpr] = arrType->dataType;
+                Expression *e = leftExpr;
+
+                DataType::Type type = DecideDataType(&e, &elementExpr);
+                if (type == DataType::Type::UNKNOWN)
+                {
+                    ReportError(
+                        std::format("Types '{}' and '{}' are not compatible",
+                                    arrType->dataType->ToString(),
+                                    exprToDataTypeMap[elementExpr]->ToString()),
+                        elementExpr->GetCodeErrString());
+                }
+            }
+        }
+    }
+    else if (rValueArrType)
+    {
+        if (rValueArrType->ToString() != arrType->ToString())
+        {
+            ReportError(std::format("Types '{}' and '{}' are not compatible",
+                                    arrType->ToString(),
+                                    rValueArrType->ToString()),
+                        expr->GetCodeErrString());
         }
     }
 }
@@ -459,7 +483,7 @@ void SemanticAnalyzer::VarArrayDecl(Expression *expr, PointerDataType *arrType)
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Statement *> &statements)
     : statements(statements)
 {
-    currentScope = gZtoonArena.Allocate<Scope>();
+    currentScope = gZtoonArena.Allocate<Scope>(this);
 }
 SemanticAnalyzer::~SemanticAnalyzer() {}
 void SemanticAnalyzer::Analize()
@@ -491,39 +515,31 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             dynamic_cast<VarDeclStatement *>(statement);
         stmtToDataTypeMap[varDeclStatement] =
             currentScope->GetDataType(varDeclStatement->GetDataType());
-        if (dynamic_cast<PointerDataType *>(
-                stmtToDataTypeMap[varDeclStatement]))
-        {
-            auto ptrType = dynamic_cast<PointerDataType *>(
-                stmtToDataTypeMap[varDeclStatement]);
-            if (ptrType && ptrType->arrDesc && ptrType->arrDesc->arrSizeExpr)
-            {
-                auto innerPtrType = ptrType;
-                while (innerPtrType && innerPtrType->arrDesc)
-                {
-                    if (innerPtrType->arrDesc->arrSizeExpr)
-                    {
-                        EvaluateAndAssignDataTypeToExpression(
-                            innerPtrType->arrDesc->arrSizeExpr);
-                    }
-                    innerPtrType =
-                        dynamic_cast<PointerDataType *>(innerPtrType->dataType);
-                }
-            }
-        }
+
         if (varDeclStatement->GetExpression())
         {
             EvaluateAndAssignDataTypeToExpression(
                 varDeclStatement->GetExpression());
-            auto varDataType = stmtToDataTypeMap[varDeclStatement];
-            if (dynamic_cast<PointerDataType *>(varDataType))
+            auto arrType = dynamic_cast<ArrayDataType *>(
+                stmtToDataTypeMap[varDeclStatement]);
+            if (arrType)
             {
-                auto ptrDataType = dynamic_cast<PointerDataType *>(varDataType);
-                if (ptrDataType->arrDesc)
+                if (arrType && arrType->sizeExpr)
                 {
-                    VarArrayDecl(varDeclStatement->GetExpression(),
-                                 ptrDataType);
+                    auto innerPtrType = arrType;
+                    while (innerPtrType)
+                    {
+                        if (innerPtrType->sizeExpr)
+                        {
+                            EvaluateAndAssignDataTypeToExpression(
+                                innerPtrType->sizeExpr);
+                        }
+                        innerPtrType = dynamic_cast<ArrayDataType *>(
+                            innerPtrType->dataType);
+                    }
                 }
+                ValidateAssignValueToVarArray(varDeclStatement->GetExpression(),
+                                              arrType);
             }
             else
             {
@@ -596,7 +612,6 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             varAssignmentStatement->GetLValue());
         if (varAssignmentStatement->GetLValue()->IsLValue())
         {
-
             stmtToDataTypeMap[varAssignmentStatement] =
                 exprToDataTypeMap[varAssignmentStatement->GetLValue()];
             if (stmtToDataTypeMap[varAssignmentStatement]->IsReadOnly())
@@ -614,19 +629,29 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
         EvaluateAndAssignDataTypeToExpression(
             varAssignmentStatement->GetRValue());
-
-        DataType::Type dataType = DecideDataType(
-            &(varAssignmentStatement->lValue), &varAssignmentStatement->rValue);
-        if (dataType == DataType::Type::UNKNOWN)
+        ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(
+            exprToDataTypeMap[varAssignmentStatement->GetLValue()]);
+        if (arrType)
         {
-            ReportError(
-                std::format(
-                    "Cannot assign value of type '{}' to variable "
-                    "of type '{}'",
-                    exprToDataTypeMap[varAssignmentStatement->rValue]
-                        ->ToString(),
-                    stmtToDataTypeMap[varAssignmentStatement]->ToString()),
-                varAssignmentStatement->GetCodeErrString());
+            ValidateAssignValueToVarArray(varAssignmentStatement->GetRValue(),
+                                          arrType);
+        }
+        else
+        {
+            DataType::Type dataType =
+                DecideDataType(&(varAssignmentStatement->lValue),
+                               &varAssignmentStatement->rValue);
+            if (dataType == DataType::Type::UNKNOWN)
+            {
+                ReportError(
+                    std::format(
+                        "Cannot assign value of type '{}' to variable "
+                        "of type '{}'",
+                        exprToDataTypeMap[varAssignmentStatement->rValue]
+                            ->ToString(),
+                        stmtToDataTypeMap[varAssignmentStatement]->ToString()),
+                    varAssignmentStatement->GetCodeErrString());
+            }
         }
     }
     else if (dynamic_cast<VarCompoundAssignmentStatement *>(statement))
@@ -678,7 +703,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         BlockStatement *blockStatement =
             dynamic_cast<BlockStatement *>(statement);
 
-        Scope *scope = gZtoonArena.Allocate<Scope>(currentScope);
+        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
         Scope *temp = currentScope;
 
         BlockStatement *blockTemp = currentBlockStatement;
@@ -1637,6 +1662,26 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     castExpression->GetCodeErrString());
             }
         }
+        else if (castType->GetType() == DataType::Type::ARRAY)
+        {
+            ReportError(std::format("Cannot cast to array type"),
+                        castExpression->GetCodeErrString());
+        }
+        else if ((valueType->GetType() == DataType::Type::ARRAY) &&
+                 castType->GetType() == DataType::Type::POINTER)
+        {
+            // check if the pointer is a pointer to the inner type of the array.
+            auto arrType = dynamic_cast<ArrayDataType *>(valueType);
+            auto ptrType = dynamic_cast<PointerDataType *>(castType);
+
+            if (arrType->dataType->ToString() != ptrType->dataType->ToString())
+            {
+                ReportError(std::format("Cannot cast from '{}' to '{}'",
+                                        arrType->ToString(),
+                                        ptrType->ToString()),
+                            castExpression->GetCodeErrString());
+            }
+        }
         // ptr stuff
         //  ptr to ptr ok
         //  int to ptr ok
@@ -1666,12 +1711,14 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             dynamic_cast<SubscriptExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(subExpr->GetExpression());
 
-        PointerDataType *ptrDataType = dynamic_cast<PointerDataType *>(
-            exprToDataTypeMap[subExpr->GetExpression()]);
-        if (!ptrDataType)
+        DataType *exprDataType = exprToDataTypeMap[subExpr->GetExpression()];
+        auto ptrType = dynamic_cast<PointerDataType *>(exprDataType);
+        auto arrType = dynamic_cast<ArrayDataType *>(exprDataType);
+        if (!ptrType && !arrType)
         {
-            ReportError("Subscript operator only works on pointer type",
-                        subExpr->GetExpression()->GetCodeErrString());
+            ReportError(
+                "Subscript operator only works on pointer and array type",
+                subExpr->GetExpression()->GetCodeErrString());
         }
         EvaluateAndAssignDataTypeToExpression(subExpr->GetIndexExpression());
         DataType *indexDataType =
@@ -1681,7 +1728,14 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             ReportError("Index expression must be integer type",
                         subExpr->GetIndexExpression()->GetCodeErrString());
         }
-        exprToDataTypeMap[subExpr] = ptrDataType->PointedToDatatype();
+        if (ptrType)
+        {
+            exprToDataTypeMap[subExpr] = ptrType->PointedToDatatype();
+        }
+        else if (arrType)
+        {
+            exprToDataTypeMap[subExpr] = arrType->dataType;
+        }
     }
     else if (dynamic_cast<PrimaryExpression *>(expression))
     {

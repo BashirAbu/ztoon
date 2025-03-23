@@ -495,7 +495,6 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
     }
     else if (rValueArrType)
     {
-        IRType rZtoonType = ZtoonTypeToLLVMType(rValueArrType);
         if (rValueArrType->ToString() != arrType->ToString())
         {
             ReportError(std::format("Type {} and type {} are not compatible",
@@ -510,6 +509,17 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
         llvm::Value *sizeValue = irBuilder->getInt64(arraySizeInBytes);
         llvm::Align alignment(elementType.type->getScalarSizeInBits() / 8);
         IRValue src = GenExpressionIR(expr);
+        if (src.type.type->isArrayTy())
+        {
+            llvm::Value *arrAlloca =
+                irBuilder->CreateAlloca(ZtoonTypeToLLVMType(rValueArrType).type,
+                                        nullptr, expr->GetCodeErrString().str);
+            irBuilder->CreateStore(src.value, arrAlloca);
+            src.value = irBuilder->CreateInBoundsGEP(
+                ZtoonTypeToLLVMType(rValueArrType).type, arrAlloca,
+                {irBuilder->getInt32(0), irBuilder->getInt32(0)});
+            src.type.type = ptr.value->getType();
+        }
         IRValue dest = ptr;
         irBuilder->CreateMemCpy(dest.value, alignment, src.value, alignment,
                                 sizeValue);
@@ -1125,10 +1135,34 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         IRValue exprValue = GenExpressionIR(fnCallExpr->GetGetExpression());
 
         std::vector<llvm::Value *> args;
-
+        size_t index = 0;
         for (auto *arg : fnCallExpr->GetArgs())
         {
-            args.push_back(GenExpressionIR(arg).value);
+            IRValue argIrValue = GenExpressionIR(arg);
+            auto fnPtrType = dynamic_cast<FnPointerDataType *>(
+                semanticAnalyzer
+                    .exprToDataTypeMap[fnCallExpr->GetGetExpression()]);
+            auto paramArrayType = dynamic_cast<ArrayDataType *>(
+                fnPtrType->GetParameters()[index]);
+            // Copy array "pass by value"
+            if (paramArrayType)
+            {
+                llvm::Value *arrAlloca = irBuilder->CreateAlloca(
+                    ZtoonTypeToLLVMType(paramArrayType).type, nullptr,
+                    arg->GetCodeErrString().str);
+
+                std::vector<llvm::Value *> index;
+                index.push_back(irBuilder->getInt32(0));
+                AssignValueToVarArray(
+                    {arrAlloca, ZtoonTypeToLLVMType(paramArrayType->dataType)},
+                    arg, paramArrayType, index);
+                argIrValue.value = irBuilder->CreateLoad(
+                    ZtoonTypeToLLVMType(paramArrayType).type, arrAlloca);
+            }
+
+            args.push_back(argIrValue.value);
+
+            index++;
         }
         // Get fnPointerDatatype
         auto retDataType = dynamic_cast<DataType *>(
@@ -1149,23 +1183,43 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         SubscriptExpression *subExpr =
             dynamic_cast<SubscriptExpression *>(expression);
 
-        IRValue ptr = GenExpressionIR(subExpr->GetExpression());
+        auto exprDataType = dynamic_cast<ArrayDataType *>(
+            semanticAnalyzer.exprToDataTypeMap[subExpr->GetExpression()]);
+
+        IRValue ptr = GenExpressionIR(subExpr->GetExpression(), exprDataType);
         IRValue index = GenExpressionIR(subExpr->GetIndexExpression());
         irValue.type =
             ZtoonTypeToLLVMType(semanticAnalyzer.exprToDataTypeMap[subExpr]);
-        auto exprDataType = dynamic_cast<ArrayDataType *>(
-            semanticAnalyzer.exprToDataTypeMap[subExpr->GetExpression()]);
-        if (exprDataType)
+        if (isWrite && ptr.value->getType()->isArrayTy())
         {
-            // Array type. Bound check.
+            assert(0);
         }
+        if (exprDataType && !ptr.value->getType()->isArrayTy())
+        {
+            ptr.value = irBuilder->CreateInBoundsGEP(
+                ZtoonTypeToLLVMType(exprDataType).type, ptr.value,
+                {irBuilder->getInt32(0), irBuilder->getInt32(0)});
+            ptr.type.type = ptr.value->getType();
+        }
+        else if (ptr.value->getType()->isArrayTy())
+        {
+            llvm::Value *arrAlloca = irBuilder->CreateAlloca(
+                ZtoonTypeToLLVMType(exprDataType).type, nullptr,
+                subExpr->GetExpression()->GetCodeErrString().str);
+            irBuilder->CreateStore(ptr.value, arrAlloca);
+            ptr.value = irBuilder->CreateInBoundsGEP(
+                ZtoonTypeToLLVMType(exprDataType).type, arrAlloca,
+                {irBuilder->getInt32(0), irBuilder->getInt32(0)});
+            ptr.type.type = ptr.value->getType();
+        }
+
         llvm::Value *GEP = irBuilder->CreateInBoundsGEP(
             irValue.type.type, ptr.value, index.value,
             std::format("ptr__{}__at_index__{}",
                         subExpr->GetExpression()->GetCodeErrString().str,
                         subExpr->GetIndexExpression()->GetCodeErrString().str));
 
-        if (isWrite || irValue.type.type->isArrayTy())
+        if (isWrite)
         {
             irValue.value = GEP;
         }
@@ -1650,15 +1704,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
             PointerDataType *ptr = dynamic_cast<PointerDataType *>(
                 semanticAnalyzer
                     .exprToDataTypeMap[unaryExpression->GetRightExpression()]);
-            if (dynamic_cast<ArrayDataType *>(ptr->PointedToDatatype()))
-            {
-                irValue.value = irBuilder->CreateInBoundsGEP(
-                    ZtoonTypeToLLVMType(ptr->PointedToDatatype()).type,
-                    rValue.value,
-                    {irBuilder->getInt32(0), irBuilder->getInt32(0)});
-                irValue.type.type = irValue.value->getType();
-            }
-            else if (isWrite)
+            if (isWrite)
             {
                 irValue = rValue;
             }
@@ -1695,7 +1741,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         GroupingExpression *groupingExpression =
             dynamic_cast<GroupingExpression *>(expression);
 
-        irValue = GenExpressionIR(groupingExpression->GetExpression());
+        irValue = GenExpressionIR(groupingExpression->GetExpression(), isWrite);
     }
     else if (dynamic_cast<CastExpression *>(expression))
     {
@@ -1770,25 +1816,18 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                 IRVariable *var = dynamic_cast<IRVariable *>(symbol);
                 if (var)
                 {
-                    if (dynamic_cast<ArrayDataType *>(primaryDataType))
-                    {
-                        irValue.value = irBuilder->CreateInBoundsGEP(
-                            var->GetType(), var->value,
-                            {irBuilder->getInt32(0), irBuilder->getInt32(0)});
-                        irValue.type.type = irValue.value->getType();
-                    }
-                    else if (isWrite)
+                    if (isWrite)
                     {
                         irValue.type.type = symbol->GetType();
                         irValue.value = symbol->GetValue();
                     }
                     else
                     {
-
-                        irValue.type = var->irType;
                         irValue.value = irBuilder->CreateLoad(
                             symbol->GetType(), symbol->GetValue(),
                             "load_var_value");
+                        irValue.type.type = irValue.value->getType();
+                        irValue.type.isSigned = var->irType.isSigned;
                     }
                 }
                 else

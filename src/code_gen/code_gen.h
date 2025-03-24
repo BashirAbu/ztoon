@@ -85,7 +85,6 @@ class CodeGen
     std::unique_ptr<llvm::DataLayout> moduleDataLayout;
 
   private:
-    // IRValue GetLValue(Expression *expr);
     void AssignValueToVarArray(IRValue ptr, Expression *expr,
                                ArrayDataType *arrType,
                                std::vector<llvm::Value *> &index);
@@ -94,7 +93,7 @@ class CodeGen
         return moduleDataLayout->getPointerSizeInBits();
     }
     llvm::Constant *
-    InitListToArrayConstant(PointerDataType *arrType,
+    InitListToArrayConstant(ArrayDataType *arrType,
                             InitializerListExpression *listExpr);
     void GenStatementIR(Statement *statement);
     void GenIfStatementIR(Statement *statement, IfStatementData *ifData);

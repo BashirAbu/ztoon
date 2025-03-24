@@ -24,7 +24,7 @@ extern std::unordered_map<std::string, std::function<void()>> test_funcs;
     if ((value) != (result))                                                   \
     {                                                                          \
         std::cout << std::format("Test \"{}\" at {}:{} failed.\n"              \
-                                 "Result is \"{}\".\nMessage: {}.\n",          \
+                                 "Message: {}.\n",                             \
                                  __FUNCTION__, __FILE__, __LINE__, #result,    \
                                  fail_msg);                                    \
         exit(-1);                                                              \
@@ -33,7 +33,7 @@ extern std::unordered_map<std::string, std::function<void()>> test_funcs;
     if ((value) == (result))                                                   \
     {                                                                          \
         std::cout << std::format("Test \"{}\" at {}:{} failed.\n"              \
-                                 "Result is \"{}\".\nMessage: {}.\n",          \
+                                 "Message: {}.\n",                             \
                                  __FUNCTION__, __FILE__, __LINE__, #result,    \
                                  fail_msg);                                    \
         exit(-1);                                                              \

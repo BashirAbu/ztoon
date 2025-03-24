@@ -565,36 +565,35 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                         varDeclStatement->GetCodeErrString());
                 }
             }
-        }
-
-        // meaning in global scope.
-        if (varDeclStatement->IsGlobal())
-        {
-            if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
-                     ->IsReadOnly() &&
-                (!dynamic_cast<PrimaryExpression *>(
-                    varDeclStatement->GetExpression())))
+            // meaning in global scope.
+            if (varDeclStatement->IsGlobal())
             {
-                ReportError(
-                    std::format("ReadOnly or compile time expression are "
-                                "allowd to be "
-                                "assigned to global variables"),
-                    varDeclStatement->GetExpression()->GetCodeErrString());
-            }
-            else if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
-                          ->IsReadOnly() &&
-                     (!dynamic_cast<PrimaryExpression *>(
-                         varDeclStatement->GetExpression())) &&
-                     dynamic_cast<PrimaryExpression *>(
-                         varDeclStatement->GetExpression())
-                             ->primary->GetType() == TokenType::IDENTIFIER)
-            {
+                if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
+                         ->IsReadOnly() &&
+                    (!dynamic_cast<PrimaryExpression *>(
+                        varDeclStatement->GetExpression())))
+                {
+                    ReportError(
+                        std::format("ReadOnly or compile time expression are "
+                                    "allowd to be "
+                                    "assigned to global variables"),
+                        varDeclStatement->GetExpression()->GetCodeErrString());
+                }
+                else if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
+                              ->IsReadOnly() &&
+                         (!dynamic_cast<PrimaryExpression *>(
+                             varDeclStatement->GetExpression())) &&
+                         dynamic_cast<PrimaryExpression *>(
+                             varDeclStatement->GetExpression())
+                                 ->primary->GetType() == TokenType::IDENTIFIER)
+                {
 
-                ReportError(
-                    std::format("ReadOnly or compile time expression are "
-                                "allowd to be "
-                                "assigned to global variables"),
-                    varDeclStatement->GetExpression()->GetCodeErrString());
+                    ReportError(
+                        std::format("ReadOnly or compile time expression are "
+                                    "allowd to be "
+                                    "assigned to global variables"),
+                        varDeclStatement->GetExpression()->GetCodeErrString());
+                }
             }
         }
 

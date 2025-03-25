@@ -115,7 +115,10 @@ DataTypeToken *Parser::ParseDataType()
 }
 
 bool Parser::IsDataType(TokenType type) { return ::IsDataType(type); }
-Parser::Parser(const std::vector<Token *> &tokens) : tokens(tokens) {}
+Parser::Parser(const std::vector<Token *> &tokens) : tokens(tokens)
+{
+    currentStage = Stage::PARSER;
+}
 
 Parser::~Parser() {}
 

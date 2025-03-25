@@ -7,6 +7,14 @@
 #define ZTOON_ARENA_SIZE 1024ull * 1024ull * 100ull
 extern MemoryArena gZtoonArena;
 
+enum class Stage
+{
+    LEXER,
+    PARSER,
+    SEMANTIC_ANALYZER,
+    CODE_GEN
+};
+extern Stage currentStage;
 enum class TokenType
 {
     UNKNOWN = 0,

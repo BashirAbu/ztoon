@@ -372,6 +372,7 @@ IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
 CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
     : semanticAnalyzer(semanticAnalyzer)
 {
+    currentStage = Stage::CODE_GEN;
     ctx = std::make_unique<llvm::LLVMContext>();
     module = std::make_unique<llvm::Module>("ztoon module", *ctx);
     module->setTargetTriple(targetArch);
@@ -1086,8 +1087,27 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
             auto fnPtrType = dynamic_cast<FnPointerDataType *>(
                 semanticAnalyzer
                     .exprToDataTypeMap[fnCallExpr->GetGetExpression()]);
-            auto paramArrayType = dynamic_cast<ArrayDataType *>(
-                fnPtrType->GetParameters()[index]);
+            ArrayDataType *paramArrayType;
+            if (index < fnPtrType->GetParameters().size())
+            {
+                paramArrayType = dynamic_cast<ArrayDataType *>(
+                    fnPtrType->GetParameters()[index]);
+            }
+            else
+            {
+                if (fnPtrType->IsVarArgs())
+                {
+                    paramArrayType = dynamic_cast<ArrayDataType *>(
+                        semanticAnalyzer.exprToDataTypeMap[arg]);
+                }
+                else
+                {
+                    ReportError(
+                        "Arguments are not compatible with function parameters",
+                        fnCallExpr->GetCodeErrString());
+                }
+            }
+
             // Copy array "pass by value"
             if (paramArrayType)
             {
@@ -1791,6 +1811,18 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         break;
         case TokenType::STRING_LITERAL:
         {
+            TokenLiteral<std::string> const *literal =
+                dynamic_cast<TokenLiteral<std::string> const *>(
+                    primaryExpression->GetPrimary());
+            irValue.value =
+                llvm::ConstantDataArray::getString(*ctx, literal->GetValue());
+            llvm::AllocaInst *inst =
+                irBuilder->CreateAlloca(irValue.value->getType());
+            irBuilder->CreateStore(irValue.value, inst);
+            irValue.value = irBuilder->CreateInBoundsGEP(
+                irValue.value->getType(), inst,
+                {irBuilder->getInt32(0), irBuilder->getInt32(0)});
+            irValue.type.type = irValue.value->getType();
         }
         break;
         default:

@@ -1311,7 +1311,8 @@ TEST(CodeGen_ArrayDeclEmptySizeExpression)
 
         fn main() -> i32
         {
-            arr: i32[] = { 1, 3, 4};
+            arr: i32[] = { 1, 3};
+            arr2: i32[][2] = {arr, {3,5}};
             ret arr[1];
         }
     )";
@@ -1704,32 +1705,35 @@ TEST(CodeGen_GlobalArray2DDeclWithInitializerList)
     auto *Fp = (int (*)())Sym.getValue();
     int r = Fp();
     ASSERT_EQ(r, 9, "Value should be 9");
-} // TEST(CodeGenFunctionPrototypeVarArgs)
-// {
-//     Lexer lexer;
-//     std::string source = "fn printf(str: readonly i8*, ...) -> i32; fn
-// main()
-//     "
-//                          "{ printf(\"Hi %d\", 12); }";
-//     lexer.Tokenize(source, "test.ztoon");
-//     Parser parser(lexer.GetTokens());
-//     auto stmts = parser.Parse();
-//     SemanticAnalyzer sa(stmts);
-//     sa.Analize();
-//     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
-//     codeGen.GenIR();
-//     if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
-//     {
-//         llvm::errs() << "Module verification failed\n";
-//     }
-//     codeGen.module->print(llvm::outs(), nullptr);
+}
+TEST(CodeGenFunctionPrototypeVarArgs)
+{
+    Lexer lexer;
+    std::string source = R"(
+        fn printf(str: readonly i8*, ...) -> i32;
+        fn main()
+        {
+            printf("\\Hello \t\"World\" \'from\' \n%s", "ZTOOOOOOOn");
+        })";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
 
-//     llvm::ExitOnError err;
-//     auto JIT = err(llvm::orc::LLJITBuilder().create());
-//     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
-//                                     std::move(codeGen.ctx));
-//     err(JIT->addIRModule(std::move(TSM)));
-//     auto Sym = err(JIT->lookup("main"));
-//     auto *Fp = (int (*)())Sym.getValue();
-//     Fp();
-// }
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    Fp();
+}

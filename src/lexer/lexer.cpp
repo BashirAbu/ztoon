@@ -10,7 +10,7 @@
 #include <unordered_map>
 
 MemoryArena gZtoonArena(ZTOON_ARENA_SIZE);
-
+Stage currentStage;
 uint32_t TokenDataTypeBitWidth(TokenType type)
 {
 
@@ -125,7 +125,7 @@ bool IsCompoundAssignment(TokenType type)
 }
 Lexer::Lexer()
 {
-
+    currentStage = Stage::LEXER;
     patterns.push_back({std::regex(R"(^\r\n|\n)"), TokenType::NEW_LINE});
     patterns.push_back({std::regex(R"(^\s+)"), TokenType::WHITE_SPACE});
     patterns.push_back({std::regex(R"(^/\*[\s\S]*?\*/)"), TokenType::COMMENT});
@@ -203,7 +203,8 @@ Lexer::Lexer()
     patterns.push_back(
         {std::regex(R"(^(\d+\.\d+)|(\.\d+))"), TokenType::FLOAT_LITERAL});
     patterns.push_back({std::regex(R"(^\d+)"), TokenType::INTEGER_LITERAL});
-    patterns.push_back({std::regex(R"(^".*")"), TokenType::STRING_LITERAL});
+    patterns.push_back(
+        {std::regex("^\"(.*?)(?:^|[^\\\\])\""), TokenType::STRING_LITERAL});
     patterns.push_back({std::regex(R"(^'.')"), TokenType::CHARACTER_LITERAL});
     patterns.push_back({std::regex(R"(^false\b)"), TokenType::FALSE});
     patterns.push_back({std::regex(R"(^true\b)"), TokenType::TRUE});
@@ -270,9 +271,34 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                             pattern.type, match.str()[1]);
                         break;
                     case TokenType::STRING_LITERAL:
+                    {
+                        std::string str = match.str();
+                        str.pop_back();
+                        str.erase(str.begin());
+                        str =
+                            std::regex_replace(str, std::regex("\\\\n"), "\n");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\t"), "\t");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\r"), "\r");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\b"), "\b");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\f"), "\f");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\a"), "\a");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\v"), "\v");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\\""), "\"");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\'"), "\'");
+                        str = std::regex_replace(str, std::regex("\\\\\\\\"),
+                                                 "\\");
                         token = gZtoonArena.Allocate<TokenLiteral<std::string>>(
-                            pattern.type, match.str());
-                        break;
+                            pattern.type, str);
+                    }
+                    break;
                     case TokenType::TRUE:
                         token = gZtoonArena.Allocate<TokenLiteral<bool>>(
                             pattern.type, true);
@@ -346,10 +372,10 @@ void Lexer::DebugPrint()
     size_t index = 0;
     for (Token *t : tokens)
     {
-        std::cout << std::format(
-            "No.: {}, Token: {}, Line: {}, Col: {},  File: {}, Code Line: {}\n",
-            index, t->GetLexeme(), t->GetLineNumber(), t->colNumber,
-            t->filename, t->lineStr);
+        std::cout << std::format("No.: {}, Token: {}, Line: {}, Col: {},  "
+                                 "File: {}, Code Line: {}\n",
+                                 index, t->GetLexeme(), t->GetLineNumber(),
+                                 t->colNumber, t->filename, t->lineStr);
         index++;
     }
 }

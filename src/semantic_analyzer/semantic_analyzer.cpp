@@ -96,7 +96,7 @@ std::string DataType::ToString()
     {
         auto arrType = (ArrayDataType *)this;
         str += arrType->dataType->ToString();
-        if (arrType->size != 0)
+        if (currentStage == Stage::CODE_GEN)
         {
             str += std::format("[{}]", arrType->size);
         }
@@ -483,6 +483,7 @@ void SemanticAnalyzer::ValidateAssignValueToVarArray(Expression *expr,
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Statement *> &statements)
     : statements(statements)
 {
+    currentStage = Stage::SEMANTIC_ANALYZER;
     currentScope = gZtoonArena.Allocate<Scope>(this);
 }
 SemanticAnalyzer::~SemanticAnalyzer() {}

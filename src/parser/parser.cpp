@@ -1069,12 +1069,18 @@ Expression *Parser::ParseUnaryExpression()
             unaryExpr->right = ParseExpression();
             if (!unaryExpr->right)
             {
-                CodeErrString ces = {};
-                ces.firstToken = unaryExpr->op;
-                ces.str = unaryExpr->op->GetLexeme();
-                ReportError(std::format("Expect expression after '{}'",
-                                        unaryExpr->op->GetLexeme()),
-                            ces);
+                DataTypeToken *dataType = ParseDataType();
+                if (!dataType)
+                {
+                    CodeErrString ces = {};
+                    ces.firstToken = unaryExpr->op;
+                    ces.str = unaryExpr->op->GetLexeme();
+                    ReportError(std::format("Expect expression after '{}'",
+                                            unaryExpr->op->GetLexeme()),
+                                ces);
+                }
+
+                unaryExpr->sizeOfDataTypeToken = dataType;
             }
 
             if (Consume(TokenType::RIGHT_PAREN))

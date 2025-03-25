@@ -551,3 +551,26 @@ TEST(SemanticAnalyzerFunctionPrototypeVarArgs)
     SemanticAnalyzer analyzer(stmts);
     analyzer.Analize();
 }
+// TEST(SemanticAnalyzerFunctionPointer)
+// {
+//     Lexer lexer;
+//     std::string source = R"(
+
+//         fn add (a: i32, b: i32) -> i32
+//         {
+//             ret a + b;
+//         }
+
+//         fn main()
+//         {
+//             fnPtr: fn (i32,i32) -> i32 = add;
+
+//             res: i32 = fnPtr(1,2);
+//         }
+//     )";
+//     lexer.Tokenize(source, "test.ztoon");
+//     Parser parser(lexer.GetTokens());
+//     auto stmts = parser.Parse();
+//     SemanticAnalyzer analyzer(stmts);
+//     analyzer.Analize();
+// }

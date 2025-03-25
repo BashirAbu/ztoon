@@ -1532,8 +1532,13 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
     {
         UnaryExpression *unaryExpression =
             dynamic_cast<UnaryExpression *>(expression);
-        IRValue rValue = GenExpressionIR(unaryExpression->GetRightExpression());
-        irValue.type = rValue.type;
+        IRValue rValue;
+        if (!unaryExpression->GetSizeOfDataTypeToken())
+        {
+            rValue = GenExpressionIR(unaryExpression->GetRightExpression());
+            irValue.type = rValue.type;
+        }
+
         DataType *unaryDataType =
             semanticAnalyzer.exprToDataTypeMap[unaryExpression];
         switch (unaryExpression->GetOperator()->GetType())
@@ -1657,8 +1662,13 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         {
             irValue.type = ZtoonTypeToLLVMType(
                 semanticAnalyzer.currentScope->datatypesMap["u64"]);
-            uint64_t size =
-                moduleDataLayout->getTypeAllocSize(rValue.value->getType());
+            uint64_t size = moduleDataLayout->getTypeAllocSize(
+                rValue.value
+                    ? rValue.value->getType()
+                    : ZtoonTypeToLLVMType(
+                          semanticAnalyzer.currentScope->GetDataType(
+                              unaryExpression->GetSizeOfDataTypeToken()))
+                          .type);
             irValue.value =
                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(*ctx), size);
             break;

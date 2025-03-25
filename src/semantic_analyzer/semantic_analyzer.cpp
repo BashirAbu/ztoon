@@ -1442,10 +1442,21 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
     {
         UnaryExpression *unaryExpression =
             dynamic_cast<UnaryExpression *>(expression);
-        EvaluateAndAssignDataTypeToExpression(
-            unaryExpression->GetRightExpression());
-        DataType *rightDataType = exprToDataTypeMap[unaryExpression->right];
-        exprToDataTypeMap[unaryExpression] = rightDataType;
+        DataType *rightDataType = nullptr;
+        if (!unaryExpression->GetSizeOfDataTypeToken())
+        {
+
+            EvaluateAndAssignDataTypeToExpression(
+                unaryExpression->GetRightExpression());
+            rightDataType = exprToDataTypeMap[unaryExpression->right];
+            exprToDataTypeMap[unaryExpression] = rightDataType;
+        }
+        else
+        {
+            exprToDataTypeMap[unaryExpression] =
+                currentScope->datatypesMap["u64"];
+        }
+
         switch (unaryExpression->GetOperator()->GetType())
         {
         case TokenType::DASH:
@@ -1583,7 +1594,9 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         }
         case TokenType::SIZEOF:
         {
-            if (rightDataType->type == DataType::Type::UNKNOWN)
+            if (rightDataType &&
+                rightDataType->type == DataType::Type::UNKNOWN &&
+                !unaryExpression->sizeOfDataTypeToken)
             {
                 ReportError(
                     std::format("Cannot perform unary operator '{}' on "
@@ -1592,6 +1605,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                                 rightDataType->ToString()),
                     unaryExpression->GetCodeErrString());
             }
+
             break;
         }
 

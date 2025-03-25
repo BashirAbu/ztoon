@@ -567,7 +567,7 @@ TEST(CodeGen_UnarySizeOf)
     llvm::InitializeNativeTargetAsmParser();
 
     std::string source =
-        "fn main() -> i32 { arr: i32[10]; ret sizeof(arr) as i32; }";
+        "fn main() -> i32 { arr: i32[10]; ret sizeof(i32[10]) as i32; }";
     Lexer lexer;
     lexer.Tokenize(source, "test.ztoon");
     Parser parser(lexer.GetTokens());

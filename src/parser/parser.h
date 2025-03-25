@@ -693,10 +693,13 @@ class UnaryExpression : public Expression
 
     bool IsPostfix() { return postfix; }
 
+    DataTypeToken *GetSizeOfDataTypeToken() { return sizeOfDataTypeToken; }
+
   private:
     Expression *right = nullptr;
     Token const *op = nullptr;
     bool postfix = false;
+    DataTypeToken *sizeOfDataTypeToken = nullptr;
     //
     friend class Parser;
     friend class SemanticAnalyzer;

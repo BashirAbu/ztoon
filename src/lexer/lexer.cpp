@@ -84,7 +84,7 @@ bool IsLiteralToken(TokenType type)
     return TokenMatch(type, TokenType::FLOAT_LITERAL,
                       TokenType::INTEGER_LITERAL, TokenType::STRING_LITERAL,
                       TokenType::CHARACTER_LITERAL, TokenType::FALSE,
-                      TokenType::TRUE);
+                      TokenType::TRUE, TokenType::RAW_STRING_LITERAL);
 }
 
 bool IsNumerical(TokenType type) { return IsInteger(type) || IsFloat(type); }
@@ -203,9 +203,13 @@ Lexer::Lexer()
     patterns.push_back(
         {std::regex(R"(^(\d+\.\d+)|(\.\d+))"), TokenType::FLOAT_LITERAL});
     patterns.push_back({std::regex(R"(^\d+)"), TokenType::INTEGER_LITERAL});
+
     patterns.push_back(
         {std::regex("^\"(.*?)(?:^|[^\\\\])\""), TokenType::STRING_LITERAL});
-    patterns.push_back({std::regex(R"(^'.')"), TokenType::CHARACTER_LITERAL});
+    patterns.push_back({std::regex("^R\"\\((.*?)(?:^|[^\\\\])\\)\""),
+                        TokenType::RAW_STRING_LITERAL});
+    patterns.push_back({std::regex("^\'\\\\?.?(?:^|[^\\\\])\'"),
+                        TokenType::CHARACTER_LITERAL});
     patterns.push_back({std::regex(R"(^false\b)"), TokenType::FALSE});
     patterns.push_back({std::regex(R"(^true\b)"), TokenType::TRUE});
     patterns.push_back(
@@ -267,9 +271,46 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                             pattern.type, std::stod(match.str()));
                         break;
                     case TokenType::CHARACTER_LITERAL:
+                    {
+                        std::string literal = match.str();
+
+                        literal.pop_back();
+                        literal.erase(literal.begin());
+                        literal = std::regex_replace(literal,
+                                                     std::regex("\\\\n"), "\n");
+
+                        literal = std::regex_replace(literal,
+                                                     std::regex("\\\\t"), "\t");
+                        literal = std::regex_replace(literal,
+                                                     std::regex("\\\\r"), "\r");
+                        literal = std::regex_replace(literal,
+                                                     std::regex("\\\\b"), "\b");
+                        literal = std::regex_replace(literal,
+                                                     std::regex("\\\\f"), "\f");
+                        literal = std::regex_replace(literal,
+                                                     std::regex("\\\\a"), "\a");
+                        literal = std::regex_replace(literal,
+                                                     std::regex("\\\\v"), "\v");
+                        literal = std::regex_replace(
+                            literal, std::regex("\\\\\""), "\"");
+                        literal = std::regex_replace(literal,
+                                                     std::regex("\\\\'"), "\'");
+                        literal = std::regex_replace(
+                            literal, std::regex("\\\\\\\\"), "\\");
+                        char character = *literal.begin();
+                        if (!literal.empty())
+                        {
+                            literal = std::regex_replace(
+                                literal, std::regex("\\\\0"), "\0");
+                            if (literal.empty())
+                            {
+                                character = '\0';
+                            }
+                        }
                         token = gZtoonArena.Allocate<TokenLiteral<int8_t>>(
-                            pattern.type, match.str()[1]);
-                        break;
+                            pattern.type, character);
+                    }
+                    break;
                     case TokenType::STRING_LITERAL:
                     {
                         std::string str = match.str();
@@ -277,6 +318,8 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                         str.erase(str.begin());
                         str =
                             std::regex_replace(str, std::regex("\\\\n"), "\n");
+                        str =
+                            std::regex_replace(str, std::regex("\\\\0"), "\0");
                         str =
                             std::regex_replace(str, std::regex("\\\\t"), "\t");
                         str =
@@ -297,6 +340,18 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                                                  "\\");
                         token = gZtoonArena.Allocate<TokenLiteral<std::string>>(
                             pattern.type, str);
+                    }
+                    break;
+                    case TokenType::RAW_STRING_LITERAL:
+                    {
+                        std::string str = match.str();
+                        str.pop_back();
+                        str.pop_back();
+                        str.erase(str.begin());
+                        str.erase(str.begin());
+                        str.erase(str.begin());
+                        token = gZtoonArena.Allocate<TokenLiteral<std::string>>(
+                            TokenType::STRING_LITERAL, str);
                     }
                     break;
                     case TokenType::TRUE:

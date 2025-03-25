@@ -136,8 +136,8 @@ TEST(LexerStringLiteralTest)
     auto *strToken = dynamic_cast<TokenLiteral<std::string> *>(token);
     ASSERT_NE(strToken, nullptr,
               "Token should be of type TokenLiteral<std::string>");
-    ASSERT_EQ(strToken->GetValue(), "\"hello\"",
-              "String literal value should be '\"hello\"'");
+    ASSERT_EQ(strToken->GetValue(), "hello",
+              "String literal value should be 'hello'");
 }
 
 // Test that character literals are parsed as CHARACTER_LITERAL tokens.

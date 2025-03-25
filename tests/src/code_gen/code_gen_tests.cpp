@@ -1730,7 +1730,7 @@ TEST(CodeGenStrings)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -1762,7 +1762,106 @@ TEST(CodeGenFunctionPrototypeVarArgs)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    Fp();
+}
+
+TEST(CodeGenHeapAllocation)
+{
+    Lexer lexer;
+    std::string source = R"(
+        fn printf(str: readonly i8*, ...) -> i32;
+        fn malloc(size: u64) -> i8*;
+
+        // struct vector
+        // {
+        //     x: f32 = 0.0;
+        //     y: f32 = 0.0;
+
+        //     fn Len() ->f32
+        //     {
+        //         return sqrt( x * x - y * y );
+        //     }
+        // }
+        
+        fn main()
+        {
+            buffer: i32* = malloc(4 * 12) as i32*;
+            for i: i32 = 0; i < 12; i++ {
+                buffer[i] = i;
+                if i == 5
+                {
+                    continue;
+                }else if i == 10
+                {
+                    break;
+                
+                }
+                printf("%d\n", buffer[i]);
+            }
+            printf("%d", buffer[11]);
+            
+        })";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    Fp();
+}
+TEST(CodeGenRandomStuff)
+{
+    Lexer lexer;
+    std::string source = R"(
+        fn printf(str: readonly i8*, ...) -> i32;
+        fn strcmp(str1: readonly i8*, str2: readonly i8*) -> i32;
+        fn main()
+        {
+            str1 : i8* = "bashir";
+            str2 : i8* = "bashir";
+            if !(strcmp(str1, str2) as bool) {
+                printf("Same");
+            }
+            else
+            {
+                printf("Not Same");
+            }
+        })";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());

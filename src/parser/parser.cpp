@@ -73,7 +73,7 @@ DataTypeToken *Parser::ParseDataType()
         auto ptrDesc = gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
         auto ptrType = gZtoonArena.Allocate<DataTypeToken>();
         *ptrType = *dataType;
-        ptrType->readOnly = nullptr;
+        dataType->readOnly = nullptr;
         ptrDesc->dataTypeToken = dataType;
         ptrDesc->token = Prev();
         ptrType->pointerDesc = ptrDesc;
@@ -88,7 +88,7 @@ DataTypeToken *Parser::ParseDataType()
         arrDesc->arraySizeExpr = ParseExpression();
         auto innerDataType = gZtoonArena.Allocate<DataTypeToken>();
         *innerDataType = *dataType;
-        innerDataType->readOnly = nullptr;
+        dataType->readOnly = nullptr;
         innerDataType->arrayDesc = arrDesc;
         arrDesc->dataTypeToken = dataType;
         dataType = innerDataType;
@@ -109,6 +109,8 @@ DataTypeToken *Parser::ParseDataType()
         ptrDesc->token = Prev();
         ptrType->dataType = dataType->dataType;
         ptrType->pointerDesc = ptrDesc;
+        ptrType->readOnly = dataType->readOnly;
+        dataType->readOnly = nullptr;
         dataType = ptrType;
     }
     return dataType;

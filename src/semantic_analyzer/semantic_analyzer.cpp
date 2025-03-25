@@ -160,7 +160,8 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         {
             if (currentScope->datatypesMap.contains(typeStr))
             {
-                return datatypesMap[typeStr];
+                DataType *type = currentScope->datatypesMap[typeStr];
+                return type;
             }
 
             currentScope = currentScope->parent;
@@ -193,8 +194,11 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 semanticAnalyzer->EvaluateAndAssignDataTypeToExpression(
                     arrType->sizeExpr);
             }
+            arrType->isReadOnly = dataTypeToken->readOnly;
+            dataTypeToken->arrayDesc->dataTypeToken->readOnly = nullptr;
             arrType->dataType =
                 GetDataType(dataTypeToken->arrayDesc->dataTypeToken);
+
             result = arrType;
         }
         if (dataTypeToken->pointerDesc)
@@ -204,17 +208,18 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 gZtoonArena.Allocate<PointerDataType>();
 
             ptrDataType->type = DataType::Type::POINTER;
-            DataTypeToken *token = gZtoonArena.Allocate<DataTypeToken>();
-            *token = *(dataTypeToken->pointerDesc->dataTypeToken);
-            ptrDataType->dataType = GetDataType(token);
-
             if (dataTypeToken->readOnly)
             {
                 ptrDataType->isReadOnly = true;
             }
+            DataTypeToken *token = gZtoonArena.Allocate<DataTypeToken>();
+            *token = *(dataTypeToken->pointerDesc->dataTypeToken);
+            token->readOnly = nullptr;
+            ptrDataType->dataType = GetDataType(token);
 
             datatypesMap[ptrDataType->ToString()] = ptrDataType;
 
+            ptrDataType->isReadOnly = dataTypeToken->readOnly;
             result = ptrDataType;
         }
         else if (dataTypeToken->readOnly)
@@ -274,12 +279,11 @@ Scope::Scope(SemanticAnalyzer *semanticAnalyzer, Scope *parent)
 
     datatypesMap["notype"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["notype"]->type = DataType::Type::NOTYPE;
-
-    auto strPtr = gZtoonArena.Allocate<PointerDataType>();
-    strPtr->dataType = datatypesMap["i8"];
-    strPtr->type = DataType::Type::POINTER;
-    strPtr->isReadOnly = true;
-    datatypesMap["readonly i8*"] = strPtr;
+    PointerDataType *strType = gZtoonArena.Allocate<PointerDataType>();
+    strType->type = DataType::Type::POINTER;
+    strType->dataType = datatypesMap["i8"];
+    strType->isReadOnly = true;
+    datatypesMap["readonly i8*"] = strType;
 }
 
 bool DataType::IsNumerical()
@@ -548,9 +552,12 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                     gZtoonArena.Allocate<PrimaryExpression>();
                 varExpr->primary = varDeclStatement->GetIdentifier();
                 varExpr->isLvalue = true;
-                Expression *variableRawExpression = varExpr;
+                auto dt = stmtToDataTypeMap[varDeclStatement];
                 exprToDataTypeMap[varExpr] =
                     stmtToDataTypeMap[varDeclStatement];
+                dt = exprToDataTypeMap[varExpr];
+                Expression *variableRawExpression = varExpr;
+
                 // check if types are compatible.
                 DataType::Type dataType = DecideDataType(
                     &(variableRawExpression), &varDeclStatement->expression);
@@ -1211,6 +1218,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             size_t size = params.size();
             exprToDataTypeMap[id] = params[index];
             Expression *exprId = id;
+            exprId->isLvalue = true;
             if (DecideDataType(&exprId, &fnCallExpr->args[index]) ==
                 DataType::Type::UNKNOWN)
             {
@@ -1220,7 +1228,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                         "with paramter of type '{}'",
                         fnCallExpr->args[index]->GetCodeErrString().str,
                         exprToDataTypeMap[fnCallExpr->args[index]]->ToString(),
-                        exprToDataTypeMap[fnCallExpr->args[index]]->ToString()),
+                        params[index]->ToString()),
                     fnCallExpr->args[index]->GetCodeErrString());
             }
             index++;
@@ -1698,10 +1706,11 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         }
 
         else if ((valueType->GetType() == DataType::Type::POINTER) &&
-                 !castType->IsInteger())
+                 !castType->IsInteger() &&
+                 castType->GetType() != DataType::Type::POINTER)
         {
             ReportError(std::format("Pointer datatype can only be casted to an "
-                                    "integer datatype"),
+                                    "integer or pointer datatype"),
                         castExpression->GetCodeErrString());
         }
     }
@@ -1759,7 +1768,6 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         {
             auto strLiteral = dynamic_cast<TokenLiteral<std::string> const *>(
                 primaryExpression->primary);
-
             exprToDataTypeMap[primaryExpression] =
                 currentScope->datatypesMap["readonly i8*"];
             break;

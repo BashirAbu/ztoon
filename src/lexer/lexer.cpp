@@ -128,8 +128,10 @@ Lexer::Lexer()
     currentStage = Stage::LEXER;
     patterns.push_back({std::regex(R"(^\r\n|\n)"), TokenType::NEW_LINE});
     patterns.push_back({std::regex(R"(^\s+)"), TokenType::WHITE_SPACE});
-    patterns.push_back({std::regex(R"(^/\*[\s\S]*?\*/)"), TokenType::COMMENT});
-    patterns.push_back({std::regex(R"(^//.*[^\n])"), TokenType::COMMENT});
+    // patterns.push_back({std::regex(R"(^/\*[\s\S]*?\*/)"),
+    // TokenType::COMMENT});
+    patterns.push_back(
+        {std::regex(R"(//.*|/\*[\s\S]*?\*/)"), TokenType::COMMENT});
     patterns.push_back({std::regex(R"(^i8\b)"), TokenType::I8});
     patterns.push_back({std::regex(R"(^i16\b)"), TokenType::I16});
     patterns.push_back({std::regex(R"(^i32\b)"), TokenType::I32});

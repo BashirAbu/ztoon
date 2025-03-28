@@ -95,57 +95,23 @@ class DataTypeToken
     {
         return readOnly ? readOnly : dataType;
     }
-    std::string ToString()
-    {
-        std::string str;
-        if (readOnly)
-        {
-            str += "readonly ";
-        }
-
-        if (arrayDesc)
-        {
-            auto arr = arrayDesc;
-            while (arr)
-            {
-                str += arr->dataTypeToken->ToString();
-                str += "[]";
-                arr = arr->dataTypeToken->arrayDesc;
-            }
-        }
-        else if (pointerDesc)
-        {
-            auto ptr = pointerDesc;
-            while (ptr)
-            {
-                str += ptr->dataTypeToken->ToString();
-                str += "*";
-                ptr = ptr->dataTypeToken->pointerDesc;
-            }
-        }
-        else
-        {
-            str += dataType->GetLexeme();
-        }
-
-        return str;
-    }
+    std::string ToString();
 
   private:
     Token const *dataType = nullptr;
     Token const *readOnly = nullptr;
 
-    struct FnPtrDesc
-    {
-        bool isFnPointer = false;
-        Token const *fnToken = nullptr;
-        std::vector<DataTypeToken *> fnParametersTypes;
-        DataTypeToken *fnRetType = nullptr;
-    };
-    FnPtrDesc *fnPtrDesc = nullptr;
+    class FnStatement *fnStatement = nullptr;
+    // struct FnPtrDesc
+    // {
+    //     Token const *fnToken = nullptr;
+    //     std::vector<DataTypeToken *> fnParametersTypes;
+    //     bool isVarArgs = false;
+    //     DataTypeToken *fnRetType = nullptr;
+    // };
+    // FnPtrDesc *fnPtrDesc = nullptr;
     struct ArrayDesc
     {
-        // use this if arraySizeExpr is nullptr;
         size_t arrSize = 0;
         Token const *token = nullptr;
         class Expression *arraySizeExpr = nullptr;
@@ -167,7 +133,7 @@ class DataTypeToken
     friend class PointerDataType;
 
   public:
-    FnPtrDesc *GetFnPtrDesc() { return fnPtrDesc; }
+    class FnStatement *GetFnStatement() { return fnStatement; }
     ArrayDesc *GetArraDesc() { return arrayDesc; }
 };
 
@@ -255,10 +221,10 @@ class VarDeclStatement : public Statement
         ces.firstToken = identifier;
         ces.str = expression
                       ? std::format("{} : {} = {}", identifier->GetLexeme(),
-                                    dataTypeToken->GetDataType()->GetLexeme(),
+                                    dataTypeToken->ToString(),
                                     expression->GetCodeErrString().str)
                       : std::format("{} : {}", identifier->GetLexeme(),
-                                    dataTypeToken->GetDataType()->GetLexeme());
+                                    dataTypeToken->ToString());
         return ces;
     }
 
@@ -538,6 +504,10 @@ class FnStatement : public Statement
         for (VarDeclStatement *s : parameters)
         {
             es.str += std::format("{}, ", s->GetCodeErrString().str);
+        }
+        if (isVarArgs)
+        {
+            es.str += "...";
         }
         if (es.str.ends_with(','))
         {

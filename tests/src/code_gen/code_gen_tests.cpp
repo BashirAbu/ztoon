@@ -1872,3 +1872,184 @@ TEST(CodeGenRandomStuff)
     auto *Fp = (int (*)())Sym.getValue();
     Fp();
 }
+TEST(CodeGenFunctionPointer)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        fn printf(str: readonly i8*, ...) -> i32;
+        fn add (a: i32, b: i32) -> i32
+        {
+            ret a + b;
+        }
+
+        fn main()
+        {
+            fnPtr: (fn (a: i32, b: i32) -> i32) = add;
+
+            res: i32 = fnPtr(1,2);
+
+            printf("%d", res);
+        }
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    Fp();
+}
+TEST(CodeGenGlobalFunctionPointer)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        fn printf(str: readonly i8*, ...) -> i32;
+        fn add (a: i32, b: i32) -> i32
+        {
+            ret a + b;
+        }
+
+        fnPtr: (fn (a: i32, d: i32) -> i32);
+        fn main()
+        {
+            fnPtr = add;
+            res: i32 = fnPtr(1,2);
+
+            printf("%d", res);
+        }
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    Fp();
+}
+TEST(CodeGenFunctionPointerAsParameter)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        fn printf(str: readonly i8*, ...) -> i32;
+        fn add (a: i32, b: i32) -> i32
+        {
+            ret a + b;
+        }
+
+        fn call_add (fnPtr: (fn (a: i32, b: i32)->i32)) -> i32
+        {
+            ret fnPtr(1,2);
+        }
+
+        fn main()
+        {
+            
+            res: i32 = call_add(add);
+
+            printf("%d", res);
+        }
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    Fp();
+}
+TEST(CodeGenArrayOfFunctionPointers)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        fn printf(str: readonly i8*, ...) -> i32;
+        fn print_hi () -> i8*
+        {
+            ret "hi";
+        }
+
+        fn print_hello() ->i8*
+        {
+            ret "hello";
+        }
+
+        fn main()
+        {
+            fnPtrArr: (fn () -> i8*)[2];
+            fnPtrArr[0] = print_hi;
+            fnPtrArr[1] = print_hello;
+
+            for i:i32 = 0; i < 2; i++ {
+
+                printf("%s\n", fnPtrArr[i]());
+            }
+            
+        }
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    Fp();
+}

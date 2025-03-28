@@ -147,9 +147,9 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
         }
     }
     break;
-    case DataType::Type::FNPOINTER:
+    case DataType::Type::FN:
     {
-        auto fnPtr = dynamic_cast<FnPointerDataType *>(type);
+        auto fnPtr = dynamic_cast<FnDataType *>(type);
         llvm::Type *retType = ZtoonTypeToLLVMType(fnPtr->returnDataType).type;
 
         std::vector<llvm::Type *> fnParams;
@@ -503,7 +503,9 @@ void CodeGen::GenStatementIR(Statement *statement)
             dynamic_cast<VarDeclStatement *>(statement);
         DataType *type = semanticAnalyzer.stmtToDataTypeMap[varDeclStatement];
         ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(type);
-
+        IRType varDeclType = {};
+        varDeclType.type = ZtoonTypeToLLVMType(type).type;
+        varDeclType.isSigned = type->IsSigned();
         if (varDeclStatement->IsGlobal())
         {
             llvm::GlobalVariable *globalVar;
@@ -524,9 +526,8 @@ void CodeGen::GenStatementIR(Statement *statement)
                         InitListToArrayConstant(arrType, listExpr);
 
                     globalVar = new llvm::GlobalVariable(
-                        *module, ZtoonTypeToLLVMType(type).type,
-                        type->IsReadOnly(), llvm::GlobalValue::ExternalLinkage,
-                        consts,
+                        *module, varDeclType.type, type->IsReadOnly(),
+                        llvm::GlobalValue::ExternalLinkage, consts,
                         std::format(
                             "g_{}",
                             varDeclStatement->GetIdentifier()->GetLexeme()));
@@ -540,21 +541,23 @@ void CodeGen::GenStatementIR(Statement *statement)
                                               : false;
                     IRValue exprValue =
                         GenExpressionIR(varDeclStatement->GetExpression());
-                    if (!llvm::isa<llvm::Constant>(exprValue.value))
+                    if (!llvm::isa<llvm::Constant>(exprValue.value) ||
+                        type->GetType() == DataType::Type::FN)
                     {
                         ReportError(
-                            std::format("Expression '{}' is not constant",
-                                        varDeclStatement->GetExpression()
-                                            ->GetCodeErrString()
-                                            .str),
+                            std::format(
+                                "Expression '{}' is not known at compile time",
+                                varDeclStatement->GetExpression()
+                                    ->GetCodeErrString()
+                                    .str),
                             varDeclStatement->GetExpression()
                                 ->GetCodeErrString());
                     }
                     llvm::Constant *constValue =
                         llvm::cast<llvm::Constant>(exprValue.value);
                     globalVar = new llvm::GlobalVariable(
-                        *module, ZtoonTypeToLLVMType(type).type,
-                        type->IsReadOnly(), llvm::GlobalValue::ExternalLinkage,
+                        *module, varDeclType.type, type->IsReadOnly(),
+                        llvm::GlobalValue::ExternalLinkage,
                         isExprGlobalVar
                             ? llvm::cast<llvm::GlobalVariable>(exprValue.value)
                                   ->getInitializer()
@@ -568,10 +571,9 @@ void CodeGen::GenStatementIR(Statement *statement)
             {
 
                 globalVar = new llvm::GlobalVariable(
-                    *module, ZtoonTypeToLLVMType(type).type, type->IsReadOnly(),
+                    *module, varDeclType.type, type->IsReadOnly(),
                     llvm::GlobalValue::CommonLinkage,
-                    llvm::Constant::getNullValue(
-                        ZtoonTypeToLLVMType(type).type),
+                    llvm::Constant::getNullValue(varDeclType.type),
                     std::format(
                         "g_{}",
                         varDeclStatement->GetIdentifier()->GetLexeme()));
@@ -583,15 +585,14 @@ void CodeGen::GenStatementIR(Statement *statement)
                 semanticAnalyzer.currentScope->GetSymbol(
                     varDeclStatement->GetIdentifier()->GetLexeme(),
                     varDeclStatement->GetCodeErrString()));
-            irVariable->irType = ZtoonTypeToLLVMType(
-                semanticAnalyzer.stmtToDataTypeMap[varDeclStatement]);
+            irVariable->irType = varDeclType;
             AddIRSymbol(irVariable);
         }
         else
         {
 
             llvm::AllocaInst *inst = irBuilder->CreateAlloca(
-                ZtoonTypeToLLVMType(type).type, nullptr,
+                varDeclType.type, nullptr,
                 varDeclStatement->GetIdentifier()->GetLexeme());
             IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
             irVariable->value = inst;
@@ -599,7 +600,7 @@ void CodeGen::GenStatementIR(Statement *statement)
                 semanticAnalyzer.currentScope->GetSymbol(
                     varDeclStatement->GetIdentifier()->GetLexeme(),
                     varDeclStatement->GetCodeErrString()));
-            irVariable->irType = ZtoonTypeToLLVMType(type);
+            irVariable->irType = varDeclType;
             AddIRSymbol(irVariable);
 
             if (varDeclStatement->GetExpression())
@@ -847,7 +848,7 @@ void CodeGen::GenStatementIR(Statement *statement)
                 fnStmt->GetIdentifier()->GetLexeme(),
                 fnStmt->GetCodeErrString()));
 
-        FnPointerDataType *fnDataType = fn->fnPointer;
+        FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
         llvm::FunctionType *fnType = llvm::dyn_cast<llvm::FunctionType>(
             ZtoonTypeToLLVMType(fnDataType).type);
         llvm::Function *function = llvm::Function::Create(
@@ -883,8 +884,8 @@ void CodeGen::GenStatementIR(Statement *statement)
 
             if (!term || !llvm::isa<llvm::ReturnInst>(term))
             {
-                if (irFunc->ztoonFn->fnPointer->returnDataType->type !=
-                    DataType::Type::NOTYPE)
+                if (irFunc->ztoonFn->GetFnDataTypeFromFnPTR()
+                        ->returnDataType->type != DataType::Type::NOTYPE)
                 {
                     irBuilder->CreateRet(
                         GenExpressionIR(
@@ -1079,23 +1080,25 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
 
         IRValue exprValue = GenExpressionIR(fnCallExpr->GetGetExpression());
 
+        auto fnPtrType = dynamic_cast<PointerDataType *>(
+            semanticAnalyzer.exprToDataTypeMap[fnCallExpr->GetGetExpression()]);
+        auto fnType =
+            dynamic_cast<FnDataType *>(fnPtrType->PointedToDatatype());
         std::vector<llvm::Value *> args;
         size_t index = 0;
         for (auto *arg : fnCallExpr->GetArgs())
         {
             IRValue argIrValue = GenExpressionIR(arg);
-            auto fnPtrType = dynamic_cast<FnPointerDataType *>(
-                semanticAnalyzer
-                    .exprToDataTypeMap[fnCallExpr->GetGetExpression()]);
+
             ArrayDataType *paramArrayType;
-            if (index < fnPtrType->GetParameters().size())
+            if (index < fnType->GetParameters().size())
             {
                 paramArrayType = dynamic_cast<ArrayDataType *>(
-                    fnPtrType->GetParameters()[index]);
+                    fnType->GetParameters()[index]);
             }
             else
             {
-                if (fnPtrType->IsVarArgs())
+                if (fnType->IsVarArgs())
                 {
                     paramArrayType = dynamic_cast<ArrayDataType *>(
                         semanticAnalyzer.exprToDataTypeMap[arg]);
@@ -1131,13 +1134,12 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         // Get fnPointerDatatype
         auto retDataType = dynamic_cast<DataType *>(
             semanticAnalyzer.exprToDataTypeMap[fnCallExpr]);
-        IRType fnPtrType = ZtoonTypeToLLVMType(
-            semanticAnalyzer.exprToDataTypeMap[fnCallExpr->GetGetExpression()]);
-        llvm::FunctionType *fnType =
-            llvm::cast<llvm::FunctionType>(fnPtrType.type);
+        IRType fnIrType = ZtoonTypeToLLVMType(fnType);
+        llvm::FunctionType *fnIrTypeCast =
+            llvm::cast<llvm::FunctionType>(fnIrType.type);
         irValue.type = ZtoonTypeToLLVMType(retDataType);
         irValue.value = irBuilder->CreateCall(
-            fnType, exprValue.value, args,
+            fnIrTypeCast, exprValue.value, args,
             std::format(
                 "{}_call",
                 fnCallExpr->GetGetExpression()->GetCodeErrString().str));
@@ -1824,13 +1826,16 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
             TokenLiteral<std::string> const *literal =
                 dynamic_cast<TokenLiteral<std::string> const *>(
                     primaryExpression->GetPrimary());
-            irValue.value =
+            auto str_const =
                 llvm::ConstantDataArray::getString(*ctx, literal->GetValue());
-            llvm::AllocaInst *inst =
-                irBuilder->CreateAlloca(irValue.value->getType());
-            irBuilder->CreateStore(irValue.value, inst);
+            llvm::GlobalVariable *varInReadOnlySection =
+                new llvm::GlobalVariable(*module, str_const->getType(), true,
+                                         llvm::GlobalValue::PrivateLinkage,
+                                         str_const, "str_ro_section");
+            varInReadOnlySection->setSection(".rodata");
+            varInReadOnlySection->setAlignment(llvm::Align(1));
             irValue.value = irBuilder->CreateInBoundsGEP(
-                irValue.value->getType(), inst,
+                varInReadOnlySection->getType(), varInReadOnlySection,
                 {irBuilder->getInt32(0), irBuilder->getInt32(0)});
             irValue.type.type = irValue.value->getType();
         }

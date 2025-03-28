@@ -2,7 +2,6 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "semantic_analyzer.h"
-#include "llvm/IR/Intrinsics.h"
 #include <cstring>
 #include <format>
 #include <functional>
@@ -81,15 +80,15 @@ std::string DataType::ToString()
     case DataType::Type::ENUM:
     case DataType::Type::UNION:
     {
-        str += AggregateTypeToString();
+        str += "";
         break;
     }
     case DataType::Type::POINTER:
     {
-
         auto ptrType = (PointerDataType *)this;
         str += ptrType->dataType->ToString();
-        str += "*";
+        auto fnType = dynamic_cast<FnDataType *>(ptrType->dataType);
+        str += fnType ? "" : "*";
         break;
     }
     case DataType::Type::ARRAY:
@@ -121,6 +120,33 @@ std::string DataType::ToString()
         str += "}";
     }
     break;
+    case DataType::Type::FN:
+    {
+        auto fnPtr = dynamic_cast<FnDataType *>(this);
+        str += "(fn";
+        str += "(";
+        for (auto t : fnPtr->GetParameters())
+        {
+            str += t->ToString();
+            str += ",";
+        }
+        if (fnPtr->IsVarArgs())
+        {
+            str += "...";
+        }
+        if (str.ends_with(','))
+        {
+            str.pop_back();
+        }
+        str += ")";
+        if (fnPtr->GetReturnDataType())
+        {
+            str += "->";
+            str += fnPtr->GetReturnDataType()->ToString();
+        }
+        str += ")";
+    }
+    break;
     default:
     {
         str += "Unknown type";
@@ -129,19 +155,6 @@ std::string DataType::ToString()
     }
 
     return str;
-}
-
-std::string FnPointerDataTypeToStringKey(FnPointerDataType *fnDataType)
-{
-
-    std::string fpDatatypeStringKey = "fn ";
-    for (DataType *paramDatatype : fnDataType->GetParameters())
-    {
-        fpDatatypeStringKey += std::format("{} ", paramDatatype->ToString());
-    }
-    fpDatatypeStringKey +=
-        std::format("-> {}", fnDataType->GetReturnDataType()->ToString());
-    return fpDatatypeStringKey;
 }
 
 DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
@@ -153,6 +166,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
     {
         typeStr = "notype";
     }
+
     Scope *currentScope = this;
     if (!dataTypeToken->arrayDesc)
     {
@@ -168,74 +182,73 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         }
     }
 
-    bool dataTypeFound = false;
-    currentScope = this;
-    while (currentScope)
+    if (dataTypeToken->fnStatement)
     {
-        if (currentScope->datatypesMap.contains(
-                dataTypeToken->GetDataType()->GetLexeme()))
+        auto fnType = gZtoonArena.Allocate<FnDataType>();
+        fnType->type = DataType::Type::FN;
+
+        for (auto param : dataTypeToken->fnStatement->GetParameters())
         {
-            dataTypeFound = true;
-            break;
+            fnType->paramters.push_back(GetDataType(param->GetDataType()));
         }
 
-        currentScope = currentScope->parent;
+        if (dataTypeToken->fnStatement->GetReturnDatatype())
+        {
+            fnType->returnDataType =
+                GetDataType(dataTypeToken->fnStatement->GetReturnDatatype());
+        }
+        fnType->isVarArgs = dataTypeToken->fnStatement->IsVarArgs();
+        auto fnPtrType = fnType->GetFnPtrType();
+        datatypesMap[fnPtrType->ToString()];
+        return fnPtrType;
     }
-    if (dataTypeFound)
+
+    if (dataTypeToken->arrayDesc)
     {
-        if (dataTypeToken->arrayDesc)
+        auto arrType = gZtoonArena.Allocate<ArrayDataType>();
+        arrType->type = DataType::Type::ARRAY;
+
+        arrType->sizeExpr = dataTypeToken->arrayDesc->arraySizeExpr;
+        if (arrType->sizeExpr)
         {
-            auto arrType = gZtoonArena.Allocate<ArrayDataType>();
-            arrType->type = DataType::Type::ARRAY;
-
-            arrType->sizeExpr = dataTypeToken->arrayDesc->arraySizeExpr;
-            if (arrType->sizeExpr)
-            {
-                semanticAnalyzer->EvaluateAndAssignDataTypeToExpression(
-                    arrType->sizeExpr);
-            }
-            arrType->isReadOnly = dataTypeToken->readOnly;
-            dataTypeToken->arrayDesc->dataTypeToken->readOnly = nullptr;
-            arrType->dataType =
-                GetDataType(dataTypeToken->arrayDesc->dataTypeToken);
-
-            result = arrType;
+            semanticAnalyzer->EvaluateAndAssignDataTypeToExpression(
+                arrType->sizeExpr);
         }
-        if (dataTypeToken->pointerDesc)
-        {
+        arrType->isReadOnly = dataTypeToken->readOnly;
+        dataTypeToken->arrayDesc->dataTypeToken->readOnly = nullptr;
+        arrType->dataType =
+            GetDataType(dataTypeToken->arrayDesc->dataTypeToken);
 
-            PointerDataType *ptrDataType =
-                gZtoonArena.Allocate<PointerDataType>();
-
-            ptrDataType->type = DataType::Type::POINTER;
-            if (dataTypeToken->readOnly)
-            {
-                ptrDataType->isReadOnly = true;
-            }
-            DataTypeToken *token = gZtoonArena.Allocate<DataTypeToken>();
-            *token = *(dataTypeToken->pointerDesc->dataTypeToken);
-            token->readOnly = nullptr;
-            ptrDataType->dataType = GetDataType(token);
-
-            datatypesMap[ptrDataType->ToString()] = ptrDataType;
-
-            ptrDataType->isReadOnly = dataTypeToken->readOnly;
-            result = ptrDataType;
-        }
-        else if (dataTypeToken->readOnly)
-        {
-            DataType *type = gZtoonArena.Allocate<DataType>();
-            *type = *(datatypesMap[dataTypeToken->GetDataType()->GetLexeme()]);
-
-            type->isReadOnly = true;
-            datatypesMap[type->ToString()] = type;
-            result = type;
-        }
+        result = arrType;
     }
-    else
+    if (dataTypeToken->pointerDesc)
     {
-        ReportError("Datatype is not defined.",
-                    dataTypeToken->GetCodeErrString());
+
+        PointerDataType *ptrDataType = gZtoonArena.Allocate<PointerDataType>();
+
+        ptrDataType->type = DataType::Type::POINTER;
+        if (dataTypeToken->readOnly)
+        {
+            ptrDataType->isReadOnly = true;
+        }
+        DataTypeToken *token = gZtoonArena.Allocate<DataTypeToken>();
+        *token = *(dataTypeToken->pointerDesc->dataTypeToken);
+        token->readOnly = nullptr;
+        ptrDataType->dataType = GetDataType(token);
+
+        datatypesMap[ptrDataType->ToString()] = ptrDataType;
+
+        ptrDataType->isReadOnly = dataTypeToken->readOnly;
+        result = ptrDataType;
+    }
+    else if (dataTypeToken->readOnly)
+    {
+        DataType *type = gZtoonArena.Allocate<DataType>();
+        *type = *(datatypesMap[dataTypeToken->GetDataType()->GetLexeme()]);
+
+        type->isReadOnly = true;
+        datatypesMap[type->ToString()] = type;
+        result = type;
     }
 
     return result;
@@ -856,11 +869,15 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             Function *fn = (Function *)currentFunction;
             PrimaryExpression *primaryExpr =
                 gZtoonArena.Allocate<PrimaryExpression>();
-            primaryExpr->primary = gZtoonArena.Allocate<Token>(
-                fn->fnPointer->GetReturnDataType()->ToTokenType());
+            primaryExpr->primary =
+                gZtoonArena.Allocate<Token>(fn->GetFnDataTypeFromFnPTR()
+                                                ->GetReturnDataType()
+                                                ->ToTokenType());
             Expression *expr = primaryExpr;
-            exprToDataTypeMap[expr] = fn->fnPointer->GetReturnDataType();
-            stmtToDataTypeMap[retStmt] = fn->fnPointer->GetReturnDataType();
+            exprToDataTypeMap[expr] =
+                fn->GetFnDataTypeFromFnPTR()->GetReturnDataType();
+            stmtToDataTypeMap[retStmt] =
+                fn->GetFnDataTypeFromFnPTR()->GetReturnDataType();
             DataType::Type type = DecideDataType(&expr, &retStmt->expression);
             fn->retStmt = retStmt;
             retStmt->fnStmt = fn->GetFnStatement();
@@ -871,33 +888,35 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                         "Return expression '{}' is not compatible with "
                         "function return type '{}'",
                         retStmt->GetExpression()->GetCodeErrString().str,
-                        currentFunction->fnPointer->returnDataType->ToString()),
+                        currentFunction->GetFnDataTypeFromFnPTR()
+                            ->returnDataType->ToString()),
                     retStmt->GetCodeErrString());
             }
         }
         else
         {
             DataType::Type type = DataType::Type::NOTYPE;
-            if (type !=
-                currentFunction->fnPointer->GetReturnDataType()->GetType())
+            if (type != currentFunction->GetFnDataTypeFromFnPTR()
+                            ->GetReturnDataType()
+                            ->GetType())
             {
                 ReportError(
-                    std::format(
-                        "Return expression '{}' is not compatible with "
-                        "function return type '{}'",
-                        retStmt->GetExpression()
-                            ? retStmt->GetCodeErrString().str
-                            : TokenDataTypeToString(TokenType::NOTYPE),
-                        currentFunction->fnPointer->returnDataType->ToString()),
+                    std::format("Return expression '{}' is not compatible with "
+                                "function return type '{}'",
+                                retStmt->GetExpression()
+                                    ? retStmt->GetCodeErrString().str
+                                    : TokenDataTypeToString(TokenType::NOTYPE),
+                                currentFunction->GetFnDataTypeFromFnPTR()
+                                    ->returnDataType->ToString()),
                     retStmt->GetCodeErrString());
             }
             else if (retStmt->expression)
             {
 
                 ReportError(
-                    std::format(
-                        "Function '{}' does not return a value.",
-                        currentFunction->fnPointer->returnDataType->ToString()),
+                    std::format("Function '{}' does not return a value.",
+                                currentFunction->GetFnDataTypeFromFnPTR()
+                                    ->returnDataType->ToString()),
                     retStmt->GetCodeErrString());
             }
         }
@@ -907,14 +926,14 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         FnStatement *fnStmt = dynamic_cast<FnStatement *>(statement);
         Function *fp = gZtoonArena.Allocate<Function>();
         fp->name = fnStmt->identifier->GetLexeme();
-        FnPointerDataType *fpDataType =
-            gZtoonArena.Allocate<FnPointerDataType>();
-        fpDataType->type = DataType::Type::FNPOINTER;
+        FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
+        fpDataType->type = DataType::Type::FN;
         fpDataType->returnDataType =
             currentScope->GetDataType(fnStmt->returnDataTypeToken);
         fpDataType->isVarArgs = fnStmt->IsVarArgs();
         fp->fnStmt = fnStmt;
-        fp->fnPointer = fpDataType;
+        fp->fnPointer = fpDataType->GetFnPtrType();
+
         currentScope->AddSymbol(fp, fnStmt->GetCodeErrString());
         Function *temp = currentFunction;
         currentFunction = fp;
@@ -1050,8 +1069,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             }
         }
 
-        currentScope->datatypesMap[FnPointerDataTypeToStringKey(fpDataType)] =
-            fpDataType;
+        currentScope->datatypesMap[fp->fnPointer->ToString()] = fp->fnPointer;
     }
 }
 void removeReadonlyPrefix(std::string &str)
@@ -1196,8 +1214,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             dynamic_cast<FnCallExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(fnCallExpr->GetGetExpression());
         // id or epxr
-        FnPointerDataType *fnDataType = dynamic_cast<FnPointerDataType *>(
+        PointerDataType *fnPtrType = dynamic_cast<PointerDataType *>(
             exprToDataTypeMap[fnCallExpr->GetGetExpression()]);
+        FnDataType *fnDataType = dynamic_cast<FnDataType *>(
+            fnPtrType ? fnPtrType->dataType : nullptr);
         if (!fnDataType)
         {
             ReportError("Expression is not of function pointer type",

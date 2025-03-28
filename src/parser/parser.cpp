@@ -5,6 +5,72 @@
 #include <format>
 #include <iostream>
 std::unordered_map<Token const *, Token const *> identifierMap;
+std::string DataTypeToken::ToString()
+{
+    std::string str;
+    if (readOnly)
+    {
+        str += "readonly ";
+    }
+
+    if (arrayDesc)
+    {
+        auto arr = arrayDesc;
+        while (arr)
+        {
+            str += arr->dataTypeToken->ToString();
+            str += "[]";
+            arr = arr->dataTypeToken->arrayDesc;
+        }
+    }
+    else if (pointerDesc)
+    {
+        auto ptr = pointerDesc;
+        while (ptr)
+        {
+            str += ptr->dataTypeToken->ToString();
+            str += "*";
+            ptr = ptr->dataTypeToken->pointerDesc;
+        }
+    }
+    else
+    {
+
+        if (fnStatement)
+        {
+            str += "(fn";
+            str += "(";
+            for (auto t : fnStatement->GetParameters())
+            {
+                str += t->GetDataType()->ToString();
+                str += ",";
+            }
+            if (fnStatement->IsVarArgs())
+            {
+                str += "...";
+            }
+            if (str.ends_with(','))
+            {
+                str.pop_back();
+            }
+            str += ")";
+
+            if (fnStatement->GetReturnDatatype())
+            {
+                str += "->";
+                str += fnStatement->GetReturnDatatype()->ToString();
+            }
+            str += ")";
+        }
+        else
+        {
+
+            str += dataType->GetLexeme();
+        }
+    }
+
+    return str;
+}
 
 bool Parser::Consume(TokenType type)
 {
@@ -50,12 +116,119 @@ Token const *Parser::Prev()
 
 DataTypeToken *Parser::ParseDataType()
 {
+
     DataTypeToken *dataType = gZtoonArena.Allocate<DataTypeToken>();
     if (Consume(TokenType::READONLY))
     {
         dataType->readOnly = Prev();
     }
-    if (IsDataType(Peek()->GetType()))
+    if (Consume(TokenType::LEFT_PAREN))
+    {
+
+        if (Peek()->GetType() != (TokenType::FN))
+        {
+            CodeErrString ces = {};
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError(std::format("Expected 'fn' after '('"), ces);
+        }
+        if (Consume(TokenType::FN))
+        {
+            FnStatement *fnStmt = gZtoonArena.Allocate<FnStatement>();
+            fnStmt->fnToken = Prev();
+
+            if (Consume(TokenType::LEFT_PAREN))
+            {
+                while (!Consume(TokenType::RIGHT_PAREN))
+                {
+                    Statement *varDeclStatement = ParseVarDeclStatement();
+                    if (!dynamic_cast<VarDeclStatement *>(varDeclStatement))
+                    {
+                        if (Consume(TokenType::VAR_ARGS))
+                        {
+                            fnStmt->isVarArgs = true;
+                            if (Consume(TokenType::RIGHT_PAREN))
+                            {
+                                break;
+                            }
+                            else
+                            {
+                                CodeErrString ces;
+                                ces.firstToken = Prev();
+                                ces.str = ces.firstToken->GetLexeme();
+                                ReportError(
+                                    std::format(
+                                        "'...' token can only be the last "
+                                        "function paramter"),
+                                    ces);
+                            }
+                        }
+                        else
+                        {
+                            ReportError(
+                                std::format(
+                                    "Expect function paramter but found '{}'",
+                                    varDeclStatement->GetCodeErrString().str),
+                                varDeclStatement->GetCodeErrString());
+                        }
+                    }
+                    if (((VarDeclStatement *)varDeclStatement)->expression)
+                    {
+                        ReportError("Default parameters are not supported",
+                                    varDeclStatement->GetCodeErrString());
+                    }
+                    ((VarDeclStatement *)varDeclStatement)->isParamter = true;
+                    fnStmt->parameters.push_back(
+                        (VarDeclStatement *)varDeclStatement);
+                    if (Peek()->GetType() != TokenType::RIGHT_PAREN)
+                    {
+                        if (!Consume(TokenType::COMMA))
+                        {
+                            ReportError(
+                                std::format(
+                                    "Expect ',' after function paramter '{}'",
+                                    varDeclStatement->GetCodeErrString().str),
+                                varDeclStatement->GetCodeErrString());
+                        }
+                    }
+                }
+            }
+
+            if (Consume(TokenType::ARROW))
+            {
+                DataTypeToken *retDataType = ParseDataType();
+                if (!retDataType)
+                {
+                    CodeErrString ces = {};
+                    ces.firstToken = Prev();
+                    ces.str = ces.firstToken->GetLexeme();
+
+                    ReportError(
+                        std::format("Expect datatype after '->'", ces.str),
+                        ces);
+                }
+
+                fnStmt->returnDataTypeToken = retDataType;
+            }
+            else
+            {
+                DataTypeToken *noType = gZtoonArena.Allocate<DataTypeToken>();
+                noType->dataType =
+                    gZtoonArena.Allocate<Token>(TokenType::NOTYPE);
+                fnStmt->returnDataTypeToken = noType;
+            }
+            dataType->fnStatement = fnStmt;
+
+            if (!Consume(TokenType::RIGHT_PAREN))
+            {
+                CodeErrString ces = {};
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError(std::format("Expected ')' after 'fn'"), ces);
+            }
+        }
+    }
+    else if (IsDataType(Peek()->GetType()))
     {
         Advance();
         dataType->dataType = Prev();
@@ -73,6 +246,8 @@ DataTypeToken *Parser::ParseDataType()
         auto ptrDesc = gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
         auto ptrType = gZtoonArena.Allocate<DataTypeToken>();
         *ptrType = *dataType;
+        ptrType->fnStatement = nullptr;
+        ptrType->arrayDesc = nullptr;
         dataType->readOnly = nullptr;
         ptrDesc->dataTypeToken = dataType;
         ptrDesc->token = Prev();
@@ -88,6 +263,8 @@ DataTypeToken *Parser::ParseDataType()
         arrDesc->arraySizeExpr = ParseExpression();
         auto innerDataType = gZtoonArena.Allocate<DataTypeToken>();
         *innerDataType = *dataType;
+        innerDataType->fnStatement = nullptr;
+        innerDataType->pointerDesc = nullptr;
         dataType->readOnly = nullptr;
         innerDataType->arrayDesc = arrDesc;
         arrDesc->dataTypeToken = dataType;
@@ -113,6 +290,7 @@ DataTypeToken *Parser::ParseDataType()
         dataType->readOnly = nullptr;
         dataType = ptrType;
     }
+
     return dataType;
 }
 
@@ -1125,52 +1303,58 @@ Expression *Parser::ParseUnaryExpression()
 Expression *Parser::ParsePostfixExpression()
 {
     Expression *expr = ParsePrimaryExpression();
-
-    if (Consume(TokenType::LEFT_PAREN))
+    while (TokenMatch(Peek()->GetType(), TokenType::LEFT_PAREN,
+                      TokenType::LEFT_SQUARE_BRACKET))
     {
-        FnCallExpression *fnCallExpr = gZtoonArena.Allocate<FnCallExpression>();
-        fnCallExpr->expression = expr;
-        while (!Consume(TokenType::RIGHT_PAREN))
+        if (Consume(TokenType::LEFT_PAREN))
         {
-            Expression *expr = ParseExpression();
-            if (!expr)
+            FnCallExpression *fnCallExpr =
+                gZtoonArena.Allocate<FnCallExpression>();
+            fnCallExpr->expression = expr;
+            while (!Consume(TokenType::RIGHT_PAREN))
             {
-                ReportError("Expect expression after '('",
-                            expr->GetCodeErrString());
-            }
-            fnCallExpr->args.push_back(expr);
-            if (!Consume(TokenType::COMMA))
-            {
-                if (Peek()->GetType() == TokenType::RIGHT_PAREN)
+                Expression *expr = ParseExpression();
+                if (!expr)
                 {
-                    continue;
-                }
-                else
-                {
-                    ReportError(std::format("Expect ',' after argument '{}'",
-                                            expr->GetCodeErrString().str),
+                    ReportError("Expect expression after '('",
                                 expr->GetCodeErrString());
                 }
+                fnCallExpr->args.push_back(expr);
+                if (!Consume(TokenType::COMMA))
+                {
+                    if (Peek()->GetType() == TokenType::RIGHT_PAREN)
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        ReportError(
+                            std::format("Expect ',' after argument '{}'",
+                                        expr->GetCodeErrString().str),
+                            expr->GetCodeErrString());
+                    }
+                }
             }
+            expr = fnCallExpr;
         }
-        return fnCallExpr;
+
+        else if (Consume(TokenType::LEFT_SQUARE_BRACKET))
+        {
+            // subscript stuff.
+            SubscriptExpression *subExpr =
+                gZtoonArena.Allocate<SubscriptExpression>();
+            subExpr->expression = expr;
+            subExpr->token = Prev();
+            subExpr->index = ParseExpression();
+            subExpr->isLvalue = true;
+            if (!Consume(TokenType::RIGHT_SQUARE_BRACKET))
+            {
+                ReportError("Missing ']'", subExpr->GetCodeErrString());
+            }
+            expr = subExpr;
+        }
     }
 
-    while (Consume(TokenType::LEFT_SQUARE_BRACKET))
-    {
-        // subscript stuff.
-        SubscriptExpression *subExpr =
-            gZtoonArena.Allocate<SubscriptExpression>();
-        subExpr->expression = expr;
-        subExpr->token = Prev();
-        subExpr->index = ParseExpression();
-        subExpr->isLvalue = true;
-        if (!Consume(TokenType::RIGHT_SQUARE_BRACKET))
-        {
-            ReportError("Missing ']'", subExpr->GetCodeErrString());
-        }
-        expr = subExpr;
-    }
     return expr;
 }
 
@@ -1264,316 +1448,3 @@ Expression *Parser::ParsePrimaryExpression()
     }
     return retExpr;
 }
-
-// void Parser::PrettyPrintAST()
-// {
-//     for (Statement *s : statements)
-//     {
-//         std::string prefix = "";
-//         std::string astStr = s->PrettyString(prefix);
-//         std::cout << astStr << std::endl;
-//     }
-// }
-// std::string BlockStatement::PrettyString(std::string &prefix)
-// {
-
-//     bool isLeft = prefix.empty() ? false : *(prefix.end() - 1) == '|';
-//     if (isLeft)
-//         prefix.pop_back();
-//     std::string str = prefix;
-//     str += isLeft ? "|-" : "|_";
-//     str += "(Block)\n";
-//     prefix += isLeft ? "|   " : "    ";
-//     for (auto s : statements)
-//     {
-//         str += s->PrettyString(prefix);
-//     }
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string IfStatement::PrettyString(std::string &prefix)
-// {
-//     std::string str = prefix;
-//     str += "|_(if)\n";
-//     prefix += "|   |";
-//     str += blockStatement->PrettyString(prefix);
-//     str += expression->PrettyString(prefix, false);
-
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     for (auto s : nextElseIforElseStatements)
-//     {
-//         str += s->PrettyString(prefix);
-//     }
-//     return str;
-// }
-
-// std::string ElseIfStatement::PrettyString(std::string &prefix)
-// {
-
-//     std::string str = prefix;
-//     str += "|_(else if)\n";
-//     prefix += "|   |";
-//     str += blockStatement->PrettyString(prefix);
-//     str += expression->PrettyString(prefix, false);
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string ElseStatement::PrettyString(std::string &prefix)
-// {
-
-//     std::string str = prefix;
-//     str += "|_(else)\n";
-//     prefix += "    ";
-//     str += blockStatement->PrettyString(prefix);
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string VarDeclStatement::PrettyString(std::string &prefix)
-// {
-//     std::string str = prefix;
-//     str += "|_(=)\n";
-//     prefix += "    ";
-//     if (expression)
-//     {
-//         str += expression->PrettyString(prefix, true);
-//     }
-//     str += prefix;
-//     str += "|_";
-//     str += "var_decl(" + identifier->GetLexeme() + " (" +
-//            dataTypeToken->ToString() + ")" + ")\n";
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string VarAssignmentStatement::PrettyString(std::string &prefix)
-// {
-//     std::string str = prefix;
-//     str += "|_(=)\n";
-//     prefix += "    ";
-//     str += expression ? expression->PrettyString(prefix, true) : "";
-//     str += prefix;
-//     str += "|_";
-//     str += "var_assign(" + identifier->GetLexeme() + ")\n";
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string VarCompoundAssignmentStatement::PrettyString(std::string &prefix)
-// {
-//     std::string str = prefix;
-//     str += "|_(=)\n";
-//     prefix += "    ";
-//     str += expression->PrettyString(prefix, true);
-//     str += prefix;
-//     str += "|_";
-//     str += "var_assign(" + identifier->GetLexeme() + " (datatype" + ")" +
-//     ")\n"; prefix.pop_back(); prefix.pop_back(); prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string WhileLoopStatement::PrettyString(std::string &prefix)
-// {
-
-//     std::string str = prefix;
-//     str += "|_(while)\n";
-//     prefix += "    ";
-//     str += condition->PrettyString(prefix, true);
-//     str += blockStatement->PrettyString(prefix);
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string ForLoopStatement::PrettyString(std::string &prefix)
-// {
-
-//     std::string str = prefix;
-//     str += "|_(for)\n";
-//     prefix += "    ";
-//     str += init ? init->PrettyString(prefix) : prefix + "|-\n";
-//     str += prefix;
-
-//     str += condition ? condition->PrettyString(prefix, true)
-//                      : prefix + "|-true(empty)\n";
-
-//     str += prefix;
-//     str += update ? update->PrettyString(prefix) : prefix + "|-\n";
-//     str += blockStatement->PrettyString(prefix);
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-// std::string FnStatement::PrettyString(std::string &prefix)
-// {
-//     std::string str = "";
-//     str += prefix;
-//     str = "|_";
-//     str += (std::string) "(Lambda)\n";
-//     prefix += "    ";
-//     for (Statement *s : parameters)
-//     {
-//         str += s->PrettyString(prefix);
-//     }
-//     str += prefix + "|_ret_type(" +
-//            (returnDataTypeToken ? returnDataTypeToken->ToString() : "NoRet ")
-//            +
-//            ")\n";
-//     if (blockStatement)
-//         str += blockStatement->PrettyString(prefix);
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-// std::string RetStatement::PrettyString(std::string &prefix)
-// {
-//     std::string str = prefix + "ret\n";
-//     prefix += "    ";
-//     str += expression->PrettyString(prefix, false);
-//     return str;
-// }
-
-// std::string ExpressionStatement::PrettyString(std::string &prefix)
-// {
-//     std::string str = "";
-//     str += expression ? expression->PrettyString(prefix, false) : "";
-//     return str;
-// }
-
-// std::string FnCallExpression::PrettyString(std::string &prefix, bool isLeft)
-// {
-//     std::string str = "";
-//     str += prefix;
-//     str += isLeft ? "|-" : "|_";
-//     str += (std::string) "FnCall(" + identifier->GetLexeme() + ")\n";
-//     prefix += isLeft ? "|   " : "    ";
-//     for (Expression *s : args)
-//     {
-//         str += s->PrettyString(prefix, true);
-//     }
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string TernaryExpression::PrettyString(std::string &prefix, bool isLeft)
-// {
-//     std::string str = "";
-//     str += prefix;
-//     str += isLeft ? "|-" : "|_";
-//     str += (std::string) "Ternary\n";
-//     prefix += isLeft ? "|   " : "    ";
-//     str += condition->PrettyString(prefix, true);
-//     str += trueExpr->PrettyString(prefix, true);
-//     str += falseExpr->PrettyString(prefix, false);
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string BinaryExpression::PrettyString(std::string &prefix, bool isLeft)
-// {
-//     std::string str = "";
-//     str += prefix;
-//     str += isLeft ? "|-" : "|_";
-//     str += (std::string) "(" + op->GetLexeme() + ")\n";
-//     prefix += isLeft ? "|   " : "    ";
-//     str += left->PrettyString(prefix, true);
-//     str += right->PrettyString(prefix, false);
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string UnaryExpression::PrettyString(std::string &prefix, bool isLeft)
-// {
-//     std::string str = "";
-//     str += prefix;
-//     str += isLeft ? "|-" : "|_";
-//     str += (std::string) "(" + op->GetLexeme() + ")\n";
-//     prefix += isLeft ? "|   " : "    ";
-//     str += right->PrettyString(prefix, false);
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-
-//     return str;
-// }
-
-// std::string GroupingExpression::PrettyString(std::string &prefix, bool
-// isLeft)
-// {
-//     std::string str = "";
-//     str += prefix;
-//     str += isLeft ? "|-" : "|_";
-//     str += "()\n";
-//     prefix += isLeft ? "|   " : "    ";
-//     str += expression ? expression->PrettyString(prefix, false) : "";
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string CastExpression::PrettyString(std::string &prefix, bool isLeft)
-// {
-//     std::string str = "";
-//     str += prefix;
-//     str += isLeft ? "|-" : "|_";
-//     str += (std::string) "as" + "\n";
-//     prefix += isLeft ? "|   " : "    ";
-//     str += prefix;
-//     str += "|-";
-//     str += castToTypeToken->ToString() + "\n";
-//     str += expression ? expression->PrettyString(prefix, true) : "";
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     prefix.pop_back();
-//     return str;
-// }
-
-// std::string PrimaryExpression::PrettyString(std::string &prefix, bool isleft)
-// {
-//     std::string str = "";
-
-//     str += prefix;
-//     str += isleft ? "|-" : "|_";
-//     str += primary->GetLexeme() + "\n";
-//     return str;
-// }

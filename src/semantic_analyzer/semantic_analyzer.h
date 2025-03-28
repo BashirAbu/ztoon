@@ -6,6 +6,8 @@
 class DataType
 {
   public:
+    virtual ~DataType() {}
+
     enum class Type
     {
         UNKNOWN,
@@ -24,7 +26,7 @@ class DataType
         STRUCT,
         ENUM,
         UNION,
-        FNPOINTER,
+        FN,
         POINTER,
         ARRAY,
         InitList,
@@ -39,8 +41,6 @@ class DataType
     bool IsReadOnly() { return isReadOnly; }
     TokenType ToTokenType();
 
-  protected:
-    virtual std::string AggregateTypeToString() { return ""; }
     Type type;
     bool isReadOnly = false;
     friend class Scope;
@@ -65,8 +65,6 @@ bool IsPrimaryDataType(TokenType type);
 class StructDataType : public DataType
 {
   public:
-    virtual std::string AggregateTypeToString() override { return name; }
-
   private:
     std::string name = "";
     std::vector<class Variable *> fields;
@@ -74,8 +72,6 @@ class StructDataType : public DataType
 class UnionDataType : public DataType
 {
   public:
-    virtual std::string AggregateTypeToString() override { return name; }
-
   private:
     std::string name = "";
     std::vector<class Variable *> fields;
@@ -89,8 +85,6 @@ class EnumDataType : public DataType
 {
 
   public:
-    virtual std::string AggregateTypeToString() override { return name; }
-
   private:
     std::string name = "";
     struct Field
@@ -99,24 +93,6 @@ class EnumDataType : public DataType
         T value;
     };
     std::vector<Field> fields;
-    friend class Scope;
-    friend class SemanticAnalyzer;
-    friend class CodeGen;
-};
-
-std::string FnPointerDataTypeToStringKey(class FnPointerDataType *fnDataType);
-
-class FnPointerDataType : public DataType
-{
-  public:
-    std::vector<DataType *> GetParameters() { return paramters; }
-    DataType *GetReturnDataType() { return returnDataType; }
-    bool IsVarArgs() { return isVarArgs; }
-
-  private:
-    DataType *returnDataType;
-    std::vector<DataType *> paramters;
-    bool isVarArgs = false;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -142,6 +118,28 @@ class PointerDataType : public DataType
     friend class CodeGen;
 };
 
+class FnDataType : public DataType
+{
+  public:
+    std::vector<DataType *> GetParameters() { return paramters; }
+    DataType *GetReturnDataType() { return returnDataType; }
+    bool IsVarArgs() { return isVarArgs; }
+    PointerDataType *GetFnPtrType()
+    {
+        PointerDataType *fnPtr = gZtoonArena.Allocate<PointerDataType>();
+        fnPtr->type = DataType::Type::POINTER;
+        fnPtr->dataType = this;
+        return fnPtr;
+    }
+
+  private:
+    DataType *returnDataType;
+    std::vector<DataType *> paramters;
+    bool isVarArgs = false;
+    friend class Scope;
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
+};
 class Symbol
 {
   public:
@@ -178,12 +176,16 @@ class Function : public Symbol
     void AddParamter(Variable *var, CodeErrString codeErrString);
 
     DataType *GetDataType() override { return fnPointer; }
+    FnDataType *GetFnDataTypeFromFnPTR()
+    {
+        return dynamic_cast<FnDataType *>(fnPointer->dataType);
+    }
 
   private:
     std::string name;
     class FnStatement *fnStmt = nullptr;
     class RetStatement *retStmt = nullptr;
-    FnPointerDataType *fnPointer = nullptr;
+    PointerDataType *fnPointer = nullptr;
     friend class SemanticAnalyzer;
     friend class CodeGen;
 };

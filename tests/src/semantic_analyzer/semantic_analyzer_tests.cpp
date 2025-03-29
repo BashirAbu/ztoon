@@ -551,3 +551,132 @@ TEST(SemanticAnalyzerFunctionPrototypeVarArgs)
     SemanticAnalyzer analyzer(stmts);
     analyzer.Analize();
 }
+TEST(SemanticAnalyzerStructDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        struct Vector2 {
+            x: f32 = 0.0;
+            y: f32 = 0.0;
+
+            inner: Vector2*[2];
+        }
+
+        fn main() -> i32 {
+
+            ret 0;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+TEST(SemanticAnalyzerStructVariableDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        struct Vector2 {
+            x: f32 = 0.0;
+            y: f32 = 0.0;
+
+        }
+
+        fn main() -> i32 {
+
+            v: Vector2 = { 1.0, 2.0};
+            ret 0;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+TEST(SemanticAnalyzerMemberAccessOperator)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        struct Vector2 {
+            x: f32 = 0.0;
+            y: f32 = 0.0;
+            z: f32 = 0.0;
+        }
+
+        fn main() -> i32 {
+
+            v: Vector2 = { 1.0, 2.0, 3.3};
+            z: f32 = 2333.0;
+            v.z = 22.0;
+            ret 0;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}
+
+TEST(SemanticAnalyzerStructMembersWithAggregateTypes)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        struct Vec3
+        {
+            x: f32 = 0.0;
+            y: f32 = 0.0;
+            z: f32 = 0.0;
+        }
+
+        struct Transform
+        {
+            pos: Vec3;
+            scale: Vec3;
+            rot: Vec3 = {1.0, 55.0, 1.0};
+        }
+        
+        struct Collider
+        {
+            origin: Vec3;
+            something: Vec3;
+        }
+
+        struct Health
+        {
+            hp: i32 = 100;
+        }
+        
+        struct Player
+        {
+         transform: Transform;
+         col: Collider = { {1.0, 55.0, 1.0}, { 123.3, 123.1, 33.9}};
+         hp: Health = { 12 };
+        }
+        
+        fn main() -> i32 {
+
+            player: Player;
+
+            player.transform.pos.z = 90909.0;
+
+            player.col = { {0.0, 0.0, 0.0}, { 123.3, 0.0, 123.1}};
+            ret 0;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}

@@ -1903,7 +1903,7 @@ TEST(CodeGenFunctionPointer)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -1945,7 +1945,7 @@ TEST(CodeGenGlobalFunctionPointer)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -1991,7 +1991,7 @@ TEST(CodeGenFunctionPointerAsParameter)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -2023,10 +2023,10 @@ TEST(CodeGenArrayOfFunctionPointers)
             fnPtrArr: (fn () -> i8*)[2];
             fnPtrArr[0] = print_hi;
             fnPtrArr[1] = print_hello;
-
+            print: (fn (str: readonly i8*, ...) -> i32) = printf;
             for i:i32 = 0; i < 2; i++ {
 
-                printf("%s\n", fnPtrArr[i]());
+                print("%s\n", fnPtrArr[i]());
             }
             
         }
@@ -2042,7 +2042,7 @@ TEST(CodeGenArrayOfFunctionPointers)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());

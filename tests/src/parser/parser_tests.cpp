@@ -332,3 +332,26 @@ TEST(ParserReadonlyDataTypeInsideFunctionTest)
     ASSERT_NE(dtStr.find("readonly"), std::string::npos,
               "Data type string should contain 'readonly'");
 }
+
+TEST(ParserStructDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        struct Vector2 {
+            x: f32 = 0.0;
+            y: f32 = 0.0;
+        }
+
+        fn main() -> i32 {
+
+            v: Vector2 = { 1.0, 2.0};
+            v.x = 12;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    lexer.DebugPrint();
+    Parser parser(lexer.GetTokens());
+    auto ast = parser.Parse();
+}

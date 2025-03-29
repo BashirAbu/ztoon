@@ -126,8 +126,8 @@ bool IsCompoundAssignment(TokenType type)
 Lexer::Lexer()
 {
     currentStage = Stage::LEXER;
-    patterns.push_back({std::regex(R"(^\r\n|\n)"), TokenType::NEW_LINE});
-    patterns.push_back({std::regex(R"(^\s+)"), TokenType::WHITE_SPACE});
+    patterns.push_back({std::regex(R"(\r\n|\n|\r)"), TokenType::NEW_LINE});
+    patterns.push_back({std::regex(R"(^[ \t]+)"), TokenType::WHITE_SPACE});
     // patterns.push_back({std::regex(R"(^/\*[\s\S]*?\*/)"),
     // TokenType::COMMENT});
     patterns.push_back(
@@ -154,8 +154,10 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^break\b)"), TokenType::BREAK});
     patterns.push_back({std::regex(R"(^continue\b)"), TokenType::CONTINUE});
 
+    patterns.push_back({std::regex(R"(^struct\b)"), TokenType::STRUCT});
+    patterns.push_back({std::regex(R"(^union\b)"), TokenType::UNION});
+    patterns.push_back({std::regex(R"(^enum\b)"), TokenType::ENUM});
     patterns.push_back({std::regex(R"(^\.\.\.)"), TokenType::VAR_ARGS});
-    patterns.push_back({std::regex(R"(^\.)"), TokenType::DOT});
     patterns.push_back({std::regex(R"(^->)"), TokenType::ARROW});
     patterns.push_back({std::regex(R"(^--)"), TokenType::DASH_DASH});
     patterns.push_back({std::regex(R"(^\+=)"), TokenType::PLUS_EQUAL});
@@ -196,6 +198,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^\})"), TokenType::RIGHT_CURLY_BRACKET});
     patterns.push_back({std::regex(R"(^\[)"), TokenType::LEFT_SQUARE_BRACKET});
     patterns.push_back({std::regex(R"(^\])"), TokenType::RIGHT_SQUARE_BRACKET});
+    patterns.push_back({std::regex(R"(^\.)"), TokenType::PERIOD});
     patterns.push_back({std::regex(R"(^=)"), TokenType::EQUAL});
     patterns.push_back({std::regex(R"(^!)"), TokenType::EXCLAMATION});
     patterns.push_back({std::regex(R"(^~)"), TokenType::TILDE});

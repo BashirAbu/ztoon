@@ -2,6 +2,7 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "semantic_analyzer.h"
+#include <algorithm>
 #include <cstring>
 #include <format>
 #include <functional>
@@ -77,6 +78,11 @@ std::string DataType::ToString()
         break;
     }
     case DataType::Type::STRUCT:
+    {
+        auto structType = dynamic_cast<StructDataType *>(this);
+        str += structType->name;
+        break;
+    }
     case DataType::Type::ENUM:
     case DataType::Type::UNION:
     {
@@ -218,7 +224,12 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         dataTypeToken->arrayDesc->dataTypeToken->readOnly = nullptr;
         arrType->dataType =
             GetDataType(dataTypeToken->arrayDesc->dataTypeToken);
-
+        if (!arrType->dataType->complete)
+        {
+            ReportError(
+                "Array type has incomplete element type",
+                dataTypeToken->arrayDesc->dataTypeToken->GetCodeErrString());
+        }
         result = arrType;
     }
     if (dataTypeToken->pointerDesc)
@@ -289,6 +300,53 @@ Scope::Scope(SemanticAnalyzer *semanticAnalyzer, Scope *parent)
 
     datatypesMap["bool"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["bool"]->type = DataType::Type::BOOL;
+
+    datatypesMap["notype"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["notype"]->type = DataType::Type::NOTYPE;
+
+    datatypesMap["readonly i8"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly i8"]->type = DataType::Type::I8;
+    datatypesMap["readonly i8"]->isReadOnly = true;
+
+    datatypesMap["readonly i16"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly i16"]->type = DataType::Type::I16;
+    datatypesMap["readonly i16"]->isReadOnly = true;
+
+    datatypesMap["readonly i32"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly i32"]->type = DataType::Type::I32;
+    datatypesMap["readonly i32"]->isReadOnly = true;
+
+    datatypesMap["readonly i64"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly i64"]->type = DataType::Type::I64;
+    datatypesMap["readonly i64"]->isReadOnly = true;
+
+    datatypesMap["readonly u8"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly u8"]->type = DataType::Type::U8;
+    datatypesMap["readonly u8"]->isReadOnly = true;
+
+    datatypesMap["readonly u16"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly u16"]->type = DataType::Type::U16;
+    datatypesMap["readonly u16"]->isReadOnly = true;
+
+    datatypesMap["readonly u32"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly u32"]->type = DataType::Type::U32;
+    datatypesMap["readonly u32"]->isReadOnly = true;
+
+    datatypesMap["readonly u64"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly u64"]->type = DataType::Type::U64;
+    datatypesMap["readonly u64"]->isReadOnly = true;
+
+    datatypesMap["readonly f32"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly f32"]->type = DataType::Type::F32;
+    datatypesMap["readonly f32"]->isReadOnly = true;
+
+    datatypesMap["readonly f64"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly f64"]->type = DataType::Type::F64;
+    datatypesMap["readonly f64"]->isReadOnly = true;
+
+    datatypesMap["readonly bool"] = gZtoonArena.Allocate<DataType>();
+    datatypesMap["readonly bool"]->type = DataType::Type::BOOL;
+    datatypesMap["readonly bool"]->isReadOnly = true;
 
     datatypesMap["notype"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["notype"]->type = DataType::Type::NOTYPE;
@@ -411,7 +469,7 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString)
             symbol = current->symbolsMap.at(name);
         }
         // go up one level;
-        if (!current->parent)
+        if (!current->parent || !lookUpParent)
         {
             // no more scopes.
             break;
@@ -497,6 +555,67 @@ void SemanticAnalyzer::ValidateAssignValueToVarArray(Expression *expr,
     }
 }
 
+void SemanticAnalyzer::ValidateAssignValueToVarStruct(
+    Expression *expr, StructDataType *structType)
+{
+
+    auto initListExpr = dynamic_cast<InitializerListExpression *>(expr);
+    auto rValueStructType =
+        dynamic_cast<StructDataType *>(exprToDataTypeMap[expr]);
+    if (initListExpr)
+    {
+        if (structType->fields.size() != initListExpr->expressions.size())
+        {
+            ReportError(
+                std::format(
+                    "List expression does not match struct datatype '{}'",
+                    structType->name),
+                expr->GetCodeErrString());
+        }
+
+        for (size_t index = 0; index < structType->fields.size(); index++)
+        {
+            auto listElement = initListExpr->expressions[index];
+            auto structField = structType->fields[index];
+
+            if (structField->GetType() == DataType::Type::STRUCT)
+            {
+                ValidateAssignValueToVarStruct(
+                    listElement, dynamic_cast<StructDataType *>(structField));
+            }
+            else
+            {
+                auto leftExpr = gZtoonArena.Allocate<PrimaryExpression>();
+                leftExpr->primary =
+                    gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+                leftExpr->isLvalue = true;
+                exprToDataTypeMap[leftExpr] = structField;
+                Expression *e = leftExpr;
+
+                DataType::Type type = DecideDataType(&e, &listElement);
+                if (type == DataType::Type::UNKNOWN)
+                {
+                    ReportError(
+                        std::format("Types '{}' and '{}' are not compatible",
+                                    structField->ToString(),
+                                    exprToDataTypeMap[listElement]->ToString()),
+                        listElement->GetCodeErrString());
+                }
+            }
+        }
+    }
+    else if (rValueStructType)
+    {
+        if (rValueStructType->ToString() != structType->ToString())
+        {
+            ReportError(std::format("Types '{}' and '{}' are not compatible",
+                                    structType->ToString(),
+                                    rValueStructType->ToString()),
+                        expr->GetCodeErrString());
+        }
+    }
+}
+
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Statement *> &statements)
     : statements(statements)
 {
@@ -527,7 +646,42 @@ void SemanticAnalyzer::PreAnalizeStatement(Statement *statement, size_t index)
 
 void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 {
-    if (dynamic_cast<VarDeclStatement *>(statement))
+    if (dynamic_cast<StructStatement *>(statement))
+    {
+        auto structStmt = dynamic_cast<StructStatement *>(statement);
+
+        StructDataType *structType = gZtoonArena.Allocate<StructDataType>();
+        structType->structStmt = structStmt;
+        structType->type = DataType::Type::STRUCT;
+        structType->complete = false;
+        structType->name = structStmt->identifier->GetLexeme();
+
+        currentScope->datatypesMap[structType->name] = structType;
+
+        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
+        Scope *temp = currentScope;
+
+        currentScope = scope;
+        structType->scope = currentScope;
+        for (auto field : structStmt->fields)
+        {
+            AnalizeStatement(field);
+
+            auto fieldDataType = stmtToDataTypeMap[field];
+            if (!fieldDataType->complete)
+            {
+                CodeErrString ces;
+                ces.firstToken = field->dataTypeToken->GetFirstToken();
+                ces.str = field->dataTypeToken->ToString();
+                ReportError("Field variable has incomplete type", ces);
+            }
+
+            structType->fields.push_back(fieldDataType);
+        }
+        structType->complete = true;
+        currentScope = temp;
+    }
+    else if (dynamic_cast<VarDeclStatement *>(statement))
     {
         VarDeclStatement *varDeclStatement =
             dynamic_cast<VarDeclStatement *>(statement);
@@ -539,6 +693,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             EvaluateAndAssignDataTypeToExpression(
                 varDeclStatement->GetExpression());
             auto arrType = dynamic_cast<ArrayDataType *>(
+                stmtToDataTypeMap[varDeclStatement]);
+            auto structType = dynamic_cast<StructDataType *>(
                 stmtToDataTypeMap[varDeclStatement]);
             if (arrType)
             {
@@ -558,6 +714,11 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                 }
                 ValidateAssignValueToVarArray(varDeclStatement->GetExpression(),
                                               arrType);
+            }
+            else if (structType)
+            {
+                ValidateAssignValueToVarStruct(
+                    varDeclStatement->GetExpression(), structType);
             }
             else
             {
@@ -589,26 +750,11 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             // meaning in global scope.
             if (varDeclStatement->IsGlobal())
             {
-                if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
-                         ->IsReadOnly() &&
-                    (!dynamic_cast<PrimaryExpression *>(
-                        varDeclStatement->GetExpression())))
+                if ((!exprToDataTypeMap[varDeclStatement->GetExpression()]
+                          ->IsReadOnly() &&
+                     exprToDataTypeMap[varDeclStatement->GetExpression()]
+                             ->GetType() != DataType::Type::InitList))
                 {
-                    ReportError(
-                        std::format("ReadOnly or compile time expression are "
-                                    "allowd to be "
-                                    "assigned to global variables"),
-                        varDeclStatement->GetExpression()->GetCodeErrString());
-                }
-                else if (!exprToDataTypeMap[varDeclStatement->GetExpression()]
-                              ->IsReadOnly() &&
-                         (!dynamic_cast<PrimaryExpression *>(
-                             varDeclStatement->GetExpression())) &&
-                         dynamic_cast<PrimaryExpression *>(
-                             varDeclStatement->GetExpression())
-                                 ->primary->GetType() == TokenType::IDENTIFIER)
-                {
-
                     ReportError(
                         std::format("ReadOnly or compile time expression are "
                                     "allowd to be "
@@ -651,10 +797,17 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             varAssignmentStatement->GetRValue());
         ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(
             exprToDataTypeMap[varAssignmentStatement->GetLValue()]);
+        StructDataType *structType = dynamic_cast<StructDataType *>(
+            exprToDataTypeMap[varAssignmentStatement->GetLValue()]);
         if (arrType)
         {
             ValidateAssignValueToVarArray(varAssignmentStatement->GetRValue(),
                                           arrType);
+        }
+        else if (structType)
+        {
+            ValidateAssignValueToVarStruct(varAssignmentStatement->GetRValue(),
+                                           structType);
         }
         else
         {
@@ -699,7 +852,6 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             ReportError("Cannot assign value to r-value expression",
                         varComAssignStatement->GetCodeErrString());
         }
-
         EvaluateAndAssignDataTypeToExpression(
             varComAssignStatement->GetRValue());
 
@@ -1263,6 +1415,91 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             }
         }
     }
+    else if (dynamic_cast<MemberAccessExpression *>(expression))
+    {
+        auto maExpr = dynamic_cast<MemberAccessExpression *>(expression);
+        EvaluateAndAssignDataTypeToExpression(maExpr->GetLeftExpression());
+
+        DataType *left = exprToDataTypeMap[maExpr->GetLeftExpression()];
+        // left type must be pointer or a struct.
+        if (left->type != DataType::Type::POINTER &&
+            left->type != DataType::Type::STRUCT &&
+            left->type != DataType::Type::UNION)
+        {
+            ReportError(
+                std::format("Left expression of '.' must be type of "
+                            "struct, union, or a pointer to one of them"),
+                maExpr->GetCodeErrString());
+        }
+        if (left->type == DataType::Type::POINTER)
+        {
+            auto leftPtrType = dynamic_cast<PointerDataType *>(left);
+            if (leftPtrType->dataType->GetType() != DataType::Type::STRUCT &&
+                leftPtrType->dataType->GetType() != DataType::Type::UNION)
+            {
+                ReportError(
+                    std::format("Left expression of '.' must be type of "
+                                "struct, union, or a pointer to one of them"),
+                    maExpr->GetCodeErrString());
+            }
+        }
+
+        StructStatement *structStmt = nullptr;
+        StructDataType *structType = nullptr;
+
+        if (left->type == DataType::Type::STRUCT)
+        {
+            structType = dynamic_cast<StructDataType *>(left);
+        }
+        else if (left->type == DataType::Type::POINTER)
+        {
+            auto leftPtrType = dynamic_cast<PointerDataType *>(left);
+            if (leftPtrType->dataType->GetType() == DataType::Type::STRUCT)
+            {
+                structType = dynamic_cast<StructDataType *>(
+                    leftPtrType->PointedToDatatype());
+            }
+        }
+
+        structStmt = structType->structStmt;
+
+        PrimaryExpression *field =
+            dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+
+        if (!field || field->primary->GetType() != TokenType::IDENTIFIER)
+        {
+            ReportError(
+                std::format("Right expression of '.' must be an identifier"),
+                maExpr->GetCodeErrString());
+        }
+        // Check if struct has this field
+        auto itr =
+            std::find_if(structStmt->fields.begin(), structStmt->fields.end(),
+                         [field](VarDeclStatement *f)
+                         {
+                             return f->GetIdentifier()->GetLexeme() ==
+                                    field->primary->GetLexeme();
+                         });
+        if (itr == structStmt->fields.end())
+        {
+            ReportError(
+                std::format(
+                    "Struct type '{}' does not have field with name '{}'",
+                    structType->name, field->GetPrimary()->GetLexeme()),
+                field->GetCodeErrString());
+        }
+
+        Scope *temp = currentScope;
+        currentScope = structType->scope;
+        currentScope->lookUpParent = false;
+
+        EvaluateAndAssignDataTypeToExpression(maExpr->GetRightExpression());
+
+        DataType *rightDataType = exprToDataTypeMap[field];
+        exprToDataTypeMap[maExpr] = rightDataType;
+        currentScope = temp;
+        currentScope->lookUpParent = true;
+    }
     else if (dynamic_cast<InitializerListExpression *>(expression))
     {
         auto initListExpr =
@@ -1270,7 +1507,6 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         bool allSameType = true;
         DataType *prevType = nullptr;
         InitListType *listType = gZtoonArena.Allocate<InitListType>();
-        listType->isReadOnly = true;
         listType->type = DataType::Type::InitList;
 
         if (initListExpr->GetExpressions().empty())
@@ -1452,6 +1688,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                 currentScope->datatypesMap["bool"];
             break;
         }
+
         default:
         {
             break;
@@ -1789,13 +2026,13 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::INTEGER_LITERAL:
         {
             exprToDataTypeMap[primaryExpression] =
-                currentScope->datatypesMap["i32"];
+                currentScope->datatypesMap["readonly i32"];
             break;
         }
         case TokenType::FLOAT_LITERAL:
         {
             exprToDataTypeMap[primaryExpression] =
-                currentScope->datatypesMap["f32"];
+                currentScope->datatypesMap["readonly f32"];
             break;
         }
         case TokenType::STRING_LITERAL:
@@ -1809,14 +2046,14 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::CHARACTER_LITERAL:
         {
             exprToDataTypeMap[primaryExpression] =
-                currentScope->datatypesMap["i8"];
+                currentScope->datatypesMap["readonly i8"];
             break;
         }
         case TokenType::TRUE:
         case TokenType::FALSE:
         {
             exprToDataTypeMap[primaryExpression] =
-                currentScope->datatypesMap["bool"];
+                currentScope->datatypesMap["readonly bool"];
             break;
         }
         case TokenType::IDENTIFIER:

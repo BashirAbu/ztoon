@@ -43,6 +43,7 @@ class DataType
 
     Type type;
     bool isReadOnly = false;
+    bool complete = true;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -65,9 +66,10 @@ bool IsPrimaryDataType(TokenType type);
 class StructDataType : public DataType
 {
   public:
-  private:
     std::string name = "";
-    std::vector<class Variable *> fields;
+    Scope *scope = nullptr;
+    StructStatement *structStmt;
+    std::vector<DataType *> fields;
 };
 class UnionDataType : public DataType
 {
@@ -203,6 +205,7 @@ class Scope
 
   private:
     Scope *parent = nullptr;
+    bool lookUpParent = true;
     std::unordered_map<std::string, Symbol *> symbolsMap;
     std::unordered_map<std::string, DataType *> datatypesMap;
     class SemanticAnalyzer *semanticAnalyzer;
@@ -223,6 +226,8 @@ class SemanticAnalyzer
     void ValidateAssignValueToVarArray(Expression *expr,
                                        ArrayDataType *arrType);
 
+    void ValidateAssignValueToVarStruct(Expression *expr,
+                                        StructDataType *arrType);
     void PreAnalizeStatement(Statement *statement, size_t index);
     DataType::Type DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);

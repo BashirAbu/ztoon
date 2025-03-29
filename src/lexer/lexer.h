@@ -48,6 +48,7 @@ enum class TokenType
     IDENTIFIER,
     EQUAL,
     COMMA,
+    PERIOD,
 
     PLUS_EQUAL,
     DASH_EQUAL,
@@ -103,7 +104,10 @@ enum class TokenType
     RET,
     READONLY,
     BREAK,
-    CONTINUE
+    CONTINUE,
+    STRUCT,
+    UNION,
+    ENUM
 };
 
 std::string TokenDataTypeToString(TokenType type);

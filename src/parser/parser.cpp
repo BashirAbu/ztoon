@@ -238,7 +238,7 @@ DataTypeToken *Parser::ParseDataType()
         CodeErrString ces = {};
         ces.firstToken = dataType->readOnly;
         ces.str = ces.firstToken->GetLexeme();
-        ReportError(std::format("Expect datatype after 'readonly'"), ces);
+        ReportError(std::format("Expect datatype"), ces);
     }
 
     while (Consume(TokenType::ASTERISK))
@@ -294,7 +294,10 @@ DataTypeToken *Parser::ParseDataType()
     return dataType;
 }
 
-bool Parser::IsDataType(TokenType type) { return ::IsDataType(type); }
+bool Parser::IsDataType(TokenType type)
+{
+    return ::IsDataType(type) || type == TokenType::IDENTIFIER;
+}
 Parser::Parser(const std::vector<Token *> &tokens) : tokens(tokens)
 {
     currentStage = Stage::PARSER;
@@ -317,7 +320,8 @@ Statement *Parser::ParseDeclaration()
     Statement *declStmt = ParseStatement();
 
     if (dynamic_cast<VarDeclStatement *>(declStmt) ||
-        dynamic_cast<FnStatement *>(declStmt))
+        dynamic_cast<FnStatement *>(declStmt) ||
+        dynamic_cast<StructStatement *>(declStmt))
     {
         VarDeclStatement *varDecl = dynamic_cast<VarDeclStatement *>(declStmt);
         if (varDecl)
@@ -355,7 +359,9 @@ Statement *Parser::ParseStatement()
         dynamic_cast<IfStatement *>(statement) ||
         dynamic_cast<WhileLoopStatement *>(statement) ||
         dynamic_cast<ForLoopStatement *>(statement) ||
-        dynamic_cast<FnStatement *>(statement) || Consume(TokenType::SEMICOLON))
+        dynamic_cast<FnStatement *>(statement) ||
+        Consume(TokenType::SEMICOLON) ||
+        dynamic_cast<StructStatement *>(statement))
     {
         return statement;
     }
@@ -374,6 +380,55 @@ Statement *Parser::ParseBlockStatement()
             blockStatement->statements.push_back(ParseStatement());
         }
         return blockStatement;
+    }
+    return ParseStructStatement();
+}
+
+Statement *Parser::ParseStructStatement()
+{
+    if (Consume(TokenType::STRUCT))
+    {
+        StructStatement *structStmt = gZtoonArena.Allocate<StructStatement>();
+
+        if (!Consume(TokenType::IDENTIFIER))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected identifier after 'struct'", ces);
+        }
+
+        structStmt->identifier = Prev();
+
+        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected '{' after 'struct'", ces);
+        }
+
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+            auto varDeclStmt =
+                dynamic_cast<VarDeclStatement *>(ParseVarDeclStatement());
+            if (!varDeclStmt)
+            {
+                CodeErrString ces;
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Only field declaration are allowd inside 'struct'",
+                            ces);
+            }
+            if (!Consume(TokenType::SEMICOLON))
+            {
+                ReportError("Expected ';' after field declaration",
+                            varDeclStmt->GetCodeErrString());
+            }
+            structStmt->fields.push_back(varDeclStmt);
+        }
+
+        return structStmt;
     }
     return ParseFnStatement();
 }
@@ -1303,8 +1358,8 @@ Expression *Parser::ParseUnaryExpression()
 Expression *Parser::ParsePostfixExpression()
 {
     Expression *expr = ParsePrimaryExpression();
-    while (TokenMatch(Peek()->GetType(), TokenType::LEFT_PAREN,
-                      TokenType::LEFT_SQUARE_BRACKET))
+    while (TokenMatch(Peek()->GetType(), TokenType::PERIOD,
+                      TokenType::LEFT_PAREN, TokenType::LEFT_SQUARE_BRACKET))
     {
         if (Consume(TokenType::LEFT_PAREN))
         {
@@ -1352,6 +1407,27 @@ Expression *Parser::ParsePostfixExpression()
                 ReportError("Missing ']'", subExpr->GetCodeErrString());
             }
             expr = subExpr;
+        }
+
+        else if (Consume(TokenType::PERIOD))
+        {
+            const Token *op = Prev();
+            PrimaryExpression *rightExpr =
+                dynamic_cast<PrimaryExpression *>(ParsePrimaryExpression());
+            if (!rightExpr &&
+                rightExpr->primary->GetType() != TokenType::IDENTIFIER)
+            {
+                CodeErrString ces;
+                ces.firstToken = op;
+                ces.str = op->GetLexeme();
+                ReportError("Invalid expression after '->'", ces);
+            }
+            MemberAccessExpression *maExpr =
+                gZtoonArena.Allocate<MemberAccessExpression>();
+            maExpr->isLvalue = true;
+            maExpr->leftExpr = expr;
+            maExpr->rightExpr = rightExpr;
+            expr = maExpr;
         }
     }
 

@@ -19,6 +19,9 @@
   "/=", "%=", "&=", "^=", "|=", "<<=", ">>=") expression ;
 
 
+  struct_decl_statementi -> struct IDENTIFIER "{" ( var_decl_statement ";" )*?
+  "}"
+
 
   while_loop_statement -> "while" expression block ;
 
@@ -102,14 +105,7 @@ class DataTypeToken
     Token const *readOnly = nullptr;
 
     class FnStatement *fnStatement = nullptr;
-    // struct FnPtrDesc
-    // {
-    //     Token const *fnToken = nullptr;
-    //     std::vector<DataTypeToken *> fnParametersTypes;
-    //     bool isVarArgs = false;
-    //     DataTypeToken *fnRetType = nullptr;
-    // };
-    // FnPtrDesc *fnPtrDesc = nullptr;
+
     struct ArrayDesc
     {
         size_t arrSize = 0;
@@ -290,6 +286,34 @@ class VarAssignmentStatement : public Statement
     friend class SemanticAnalyzer;
 };
 
+class StructStatement : public Statement
+{
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString ces = {};
+        ces.firstToken = token;
+        ces.str = std::format("struct {}\n", identifier->GetLexeme());
+        ces.str += "{\n";
+        for (auto field : fields)
+        {
+            ces.str += field->GetCodeErrString().str;
+            ces.str += ";\n";
+        }
+
+        ces.str += "}";
+
+        return ces;
+    }
+
+  private:
+    Token const *token = nullptr;
+    Token const *identifier = nullptr;
+    std::vector<VarDeclStatement *> fields;
+
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
 class ExpressionStatement : public Statement
 {
 
@@ -535,6 +559,35 @@ class FnStatement : public Statement
     BlockStatement *blockStatement = nullptr;
     bool isPrototype = false;
     bool isVarArgs = false;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
+
+class MemberAccessExpression : public Expression
+{
+
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = GetFirstToken();
+
+        es.str += std::format("{}.{}", leftExpr->GetCodeErrString().str,
+                              rightExpr->GetCodeErrString().str);
+        return es;
+    }
+    Token const *GetFirstToken() const override
+    {
+        return leftExpr->GetFirstToken();
+    }
+
+    Expression *GetLeftExpression() { return leftExpr; }
+    Expression *GetRightExpression() { return rightExpr; }
+
+  private:
+    Expression *leftExpr = nullptr;
+    Expression *rightExpr = nullptr;
+    std::vector<Expression *> args;
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -843,7 +896,7 @@ class Parser
     Statement *ParseForLoopStatement();
     Statement *ParseBreakStatement();
     Statement *ParseContinueStatement();
-
+    Statement *ParseStructStatement();
     Statement *ParseRetStatement();
 
     Expression *ParseExpression();
@@ -866,8 +919,9 @@ class Parser
     Expression *ParseFnCallExpression();
     Expression *ParseRefExpression();
     Expression *ParseDerefExpression();
-    Expression *ParsePrimaryExpression();
     Expression *ParseInitializerListExpression();
+    Expression *ParseMemberAccessExpression();
+    Expression *ParsePrimaryExpression();
     Expression *BuildBinaryExpression(Token const *op, Expression *left,
                                       Expression *right);
 

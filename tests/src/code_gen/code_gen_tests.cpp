@@ -2053,3 +2053,131 @@ TEST(CodeGenArrayOfFunctionPointers)
     auto *Fp = (int (*)())Sym.getValue();
     Fp();
 }
+TEST(CodeGenStructVariableDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        struct Vector2 {
+            x: f32 = 0.0;
+            y: f32 = 0.0;
+        }
+
+        fn main() -> i32 {
+
+            v: Vector2 = { 1.0, 2.0};
+            v.x = 12.0;
+            ret v.x as i32;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int ret = Fp();
+}
+TEST(CodeGenComplexStruct)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        
+
+        fn printf(str: readonly i8*, ...) -> i32;
+
+        fn malloc(size: u64) -> i8*;
+        struct Node 
+        {
+            next: Node* = nullptr;
+
+            number: i32;
+        }
+
+        //deref ptr
+        //cast to struct
+        fn add_node(ll: Node*, num: i32, index: i32)
+        {
+            if index == 0 {
+                
+                newNode: Node* = malloc(sizeof(Node)) as Node*;
+                newNode.number = num;
+                newNode.next = ll;
+                ret;
+            }
+            currentNode: Node* = ll;
+            for i: i32 = 1; i <= index; i++
+            {
+                if i == index
+                {
+                    newNode: Node* = malloc(sizeof(Node)) as Node*;
+                    newNode.number = num;
+                    newNode.next = currentNode.next;
+                    currentNode.next = newNode;
+                    ret;
+                }
+                currentNode = ll.next;
+            }
+        }
+        fn main()  {
+            topNode: Node;
+            currentNode: Node* = &topNode;
+            for i: i32 = 0; i < 10; i++ {
+                currentNode.number = i;
+                currentNode.next = malloc(sizeof(Node)) as Node*;
+                currentNode = currentNode.next;
+            }
+            currentNode = &topNode;
+            for i: i32 =0; i < 10; i++ {
+                printf("%d\n", currentNode.number);
+                currentNode = currentNode.next;
+            }
+
+            add_node(&topNode, 774385, 2);
+            
+            currentNode = &topNode;
+                        for i: i32 =0; i < 11; i++ {
+                            printf("%d\n", currentNode.number);
+                            currentNode = currentNode.next;
+                        }
+            }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (void (*)())Sym.getValue();
+    Fp();
+}

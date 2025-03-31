@@ -305,6 +305,7 @@ class StructStatement : public Statement
 
         return ces;
     }
+    const std::vector<VarDeclStatement *> &GetField() { return fields; }
 
   private:
     Token const *token = nullptr;

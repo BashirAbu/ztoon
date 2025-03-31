@@ -153,6 +153,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^readonly\b)"), TokenType::READONLY});
     patterns.push_back({std::regex(R"(^break\b)"), TokenType::BREAK});
     patterns.push_back({std::regex(R"(^continue\b)"), TokenType::CONTINUE});
+    patterns.push_back({std::regex(R"(^nullptr\b)"), TokenType::NULL_PTR});
 
     patterns.push_back({std::regex(R"(^struct\b)"), TokenType::STRUCT});
     patterns.push_back({std::regex(R"(^union\b)"), TokenType::UNION});
@@ -367,6 +368,7 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                         token = gZtoonArena.Allocate<TokenLiteral<bool>>(
                             pattern.type, false);
                         break;
+
                     default:
                         break;
                     }

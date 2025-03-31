@@ -1299,21 +1299,20 @@ Expression *Parser::ParseUnaryExpression()
         if ((Prev()->GetType() == TokenType::SIZEOF) &&
             Consume(TokenType::LEFT_PAREN))
         {
-            unaryExpr->right = ParseExpression();
-            if (!unaryExpr->right)
-            {
-                DataTypeToken *dataType = ParseDataType();
-                if (!dataType)
-                {
-                    CodeErrString ces = {};
-                    ces.firstToken = unaryExpr->op;
-                    ces.str = unaryExpr->op->GetLexeme();
-                    ReportError(std::format("Expect expression after '{}'",
-                                            unaryExpr->op->GetLexeme()),
-                                ces);
-                }
 
-                unaryExpr->sizeOfDataTypeToken = dataType;
+            DataTypeToken *dataType = ParseDataType();
+            auto placeHolderExpr = gZtoonArena.Allocate<PrimaryExpression>();
+            placeHolderExpr->primary = Prev();
+            unaryExpr->right = placeHolderExpr;
+            unaryExpr->sizeOfDataTypeToken = dataType;
+            if (!dataType)
+            {
+                CodeErrString ces = {};
+                ces.firstToken = unaryExpr->op;
+                ces.str = unaryExpr->op->GetLexeme();
+                ReportError(std::format("Expect datatype after '{}'",
+                                        unaryExpr->op->GetLexeme()),
+                            ces);
             }
 
             if (Consume(TokenType::RIGHT_PAREN))
@@ -1517,6 +1516,14 @@ Expression *Parser::ParsePrimaryExpression()
         }
         break;
     }
+    case TokenType::NULL_PTR:
+    {
+        Consume(TokenType::NULL_PTR);
+        PrimaryExpression *pExpr = gZtoonArena.Allocate<PrimaryExpression>();
+        pExpr->primary = Prev();
+        retExpr = pExpr;
+    }
+    break;
     default:
     {
         break;

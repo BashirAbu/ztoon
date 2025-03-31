@@ -63,9 +63,20 @@ class InitListType : public DataType
     friend class CodeGen;
 };
 bool IsPrimaryDataType(TokenType type);
-class StructDataType : public DataType
+class Symbol
 {
   public:
+    virtual ~Symbol() {}
+    virtual std::string GetName() = 0;
+    virtual DataType *GetDataType() = 0;
+
+  private:
+};
+class StructDataType : public DataType, public Symbol
+{
+  public:
+    virtual std::string GetName() override { return name; }
+    virtual DataType *GetDataType() override { return this; }
     std::string name = "";
     Scope *scope = nullptr;
     StructStatement *structStmt;
@@ -115,6 +126,7 @@ class PointerDataType : public DataType
     DataType *PointedToDatatype() { return dataType; }
 
     DataType *dataType;
+    bool isNullPtr = false;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -141,15 +153,6 @@ class FnDataType : public DataType
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
-};
-class Symbol
-{
-  public:
-    virtual ~Symbol() {}
-    virtual std::string GetName() = 0;
-    virtual DataType *GetDataType() = 0;
-
-  private:
 };
 
 class Variable : public Symbol

@@ -34,6 +34,7 @@ enum class TokenType
     F64,
     BOOL,
     NOTYPE,
+    NULL_PTR,
     INTEGER_LITERAL,
     FLOAT_LITERAL,
     STRING_LITERAL,

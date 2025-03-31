@@ -88,6 +88,8 @@ class CodeGen
     void AssignValueToVarArray(IRValue ptr, Expression *expr,
                                ArrayDataType *arrType,
                                std::vector<llvm::Value *> &index);
+    void AssignValueToVarStruct(IRValue ptr, Expression *expr,
+                                StructDataType *structType);
     uint32_t GetPtrBitWidth()
     {
         return moduleDataLayout->getPointerSizeInBits();

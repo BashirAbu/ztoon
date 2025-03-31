@@ -350,6 +350,14 @@ Scope::Scope(SemanticAnalyzer *semanticAnalyzer, Scope *parent)
 
     datatypesMap["notype"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["notype"]->type = DataType::Type::NOTYPE;
+
+    auto nullPtr = gZtoonArena.Allocate<PointerDataType>();
+    nullPtr->type = DataType::Type::POINTER;
+    nullPtr->dataType = datatypesMap["notype"];
+    nullPtr->isReadOnly = true;
+    nullPtr->isNullPtr = true;
+    datatypesMap["nullptr"] = nullPtr;
+
     PointerDataType *strType = gZtoonArena.Allocate<PointerDataType>();
     strType->type = DataType::Type::POINTER;
     strType->dataType = datatypesMap["i8"];
@@ -583,6 +591,11 @@ void SemanticAnalyzer::ValidateAssignValueToVarStruct(
                 ValidateAssignValueToVarStruct(
                     listElement, dynamic_cast<StructDataType *>(structField));
             }
+            else if (structField->GetType() == DataType::Type::ARRAY)
+            {
+                ValidateAssignValueToVarArray(
+                    listElement, dynamic_cast<ArrayDataType *>(structField));
+            }
             else
             {
                 auto leftExpr = gZtoonArena.Allocate<PrimaryExpression>();
@@ -657,7 +670,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         structType->name = structStmt->identifier->GetLexeme();
 
         currentScope->datatypesMap[structType->name] = structType;
-
+        currentScope->AddSymbol(structType, structStmt->GetCodeErrString());
         Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
         Scope *temp = currentScope;
 
@@ -1015,10 +1028,14 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
     else if (dynamic_cast<RetStatement *>(statement))
     {
         RetStatement *retStmt = dynamic_cast<RetStatement *>(statement);
+        Function *fn = (Function *)currentFunction;
+        retStmt->fnStmt = fn->GetFnStatement();
+        stmtToDataTypeMap[retStmt] =
+            fn->GetFnDataTypeFromFnPTR()->GetReturnDataType();
         if (retStmt->expression)
         {
             EvaluateAndAssignDataTypeToExpression(retStmt->GetExpression());
-            Function *fn = (Function *)currentFunction;
+
             PrimaryExpression *primaryExpr =
                 gZtoonArena.Allocate<PrimaryExpression>();
             primaryExpr->primary =
@@ -1028,8 +1045,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             Expression *expr = primaryExpr;
             exprToDataTypeMap[expr] =
                 fn->GetFnDataTypeFromFnPTR()->GetReturnDataType();
-            stmtToDataTypeMap[retStmt] =
-                fn->GetFnDataTypeFromFnPTR()->GetReturnDataType();
+
             DataType::Type type = DecideDataType(&expr, &retStmt->expression);
             fn->retStmt = retStmt;
             retStmt->fnStmt = fn->GetFnStatement();
@@ -1243,6 +1259,16 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
     bool isLeftLValue = (*left)->IsLValue();
     bool isRightLValue = (*right)->IsLValue();
 
+    if (leftDataType->type == DataType::Type::POINTER &&
+        rightDataType->type == DataType::Type::POINTER)
+    {
+        if (dynamic_cast<PointerDataType *>(rightDataType)->isNullPtr)
+        {
+            exprToDataTypeMap[*right] = leftDataType;
+            rightDataType = leftDataType;
+        }
+    }
+
     std::string leftDataTypeStr = leftDataType->ToString();
     std::string rightDataTypeStr = rightDataType->ToString();
     removeReadonlyPrefix(leftDataTypeStr);
@@ -1250,7 +1276,6 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
 
     if (leftDataTypeStr != rightDataTypeStr)
     {
-
         if ((*left)->IsLValue() && !(*right)->IsLValue() &&
                 (rightDataType->IsInteger()) ||
             rightDataType->IsFloat())
@@ -1441,6 +1466,16 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     std::format("Left expression of '.' must be type of "
                                 "struct, union, or a pointer to one of them"),
                     maExpr->GetCodeErrString());
+            }
+            {
+                // change left expr type to deref type
+                UnaryExpression *derefPtr =
+                    gZtoonArena.Allocate<UnaryExpression>();
+                derefPtr->op = gZtoonArena.Allocate<Token>(TokenType::ASTERISK);
+                derefPtr->postfix = true;
+                derefPtr->right = maExpr->leftExpr;
+                EvaluateAndAssignDataTypeToExpression(derefPtr);
+                maExpr->leftExpr = derefPtr;
             }
         }
 
@@ -1702,7 +1737,6 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         DataType *rightDataType = nullptr;
         if (!unaryExpression->GetSizeOfDataTypeToken())
         {
-
             EvaluateAndAssignDataTypeToExpression(
                 unaryExpression->GetRightExpression());
             rightDataType = exprToDataTypeMap[unaryExpression->right];
@@ -2066,6 +2100,12 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     ->GetDataType();
             break;
         }
+        case TokenType::NULL_PTR:
+        {
+            exprToDataTypeMap[primaryExpression] =
+                currentScope->datatypesMap["nullptr"];
+        }
+        break;
         default:
         {
             break;

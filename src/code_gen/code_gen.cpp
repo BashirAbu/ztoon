@@ -96,6 +96,27 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
         break;
     }
     case DataType::Type::STRUCT:
+    {
+        auto structZtoonType = dynamic_cast<StructDataType *>(type);
+
+        llvm::StructType *structIRType =
+            llvm::StructType::getTypeByName(*ctx, structZtoonType->name);
+        if (!structIRType)
+        {
+            structIRType =
+                llvm::StructType::create(*ctx, structZtoonType->name);
+            std::vector<llvm::Type *> bodyFields;
+            for (DataType *fieldType : structZtoonType->fields)
+            {
+                IRType irFieldType = ZtoonTypeToLLVMType(fieldType);
+                bodyFields.push_back(irFieldType.type);
+            }
+            structIRType->setBody(bodyFields);
+        }
+
+        irType.type = structIRType;
+    }
+    break;
     case DataType::Type::ENUM:
     case DataType::Type::UNION:
     {
@@ -429,7 +450,10 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
 
         auto innerType = dynamic_cast<ArrayDataType *>(arrType->dataType);
         IRType arrIRType = ZtoonTypeToLLVMType(arrType);
-
+        if (ptr.type.type->isArrayTy() && index.size() == 0)
+        {
+            index.push_back(irBuilder->getInt32(0));
+        }
         index.push_back(irBuilder->getInt32(0));
         size_t i = 0;
         for (auto elementExpr : initListExpr->GetExpressions())
@@ -444,12 +468,21 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
             else
             {
                 IRValue elementValue = GenExpressionIR(elementExpr);
-                IRValue value = GenExpressionIR(elementExpr);
 
                 llvm::Value *GEP = irBuilder->CreateInBoundsGEP(
                     ptr.type.type, ptr.value, index,
                     std::format("element_{}", i));
-                irBuilder->CreateStore(value.value, GEP);
+                if (dynamic_cast<StructDataType *>(arrType->dataType))
+                {
+                    auto structType =
+                        dynamic_cast<StructDataType *>(arrType->dataType);
+                    AssignValueToVarStruct({GEP, {}}, elementExpr, structType);
+                }
+                else
+                {
+                    IRValue value = GenExpressionIR(elementExpr);
+                    irBuilder->CreateStore(value.value, GEP);
+                }
             }
         }
         index.pop_back();
@@ -485,8 +518,96 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
         irBuilder->CreateMemCpy(dest.value, alignment, src.value, alignment,
                                 sizeValue);
     }
+    else
+    {
+        // error
+        ReportError(
+            std::format(
+                "Cannot assign expression of type '{}' to array type '{}'",
+                semanticAnalyzer.exprToDataTypeMap[expr]->ToString(),
+                arrType->ToString()),
+            expr->GetCodeErrString());
+    }
 }
 
+void CodeGen::AssignValueToVarStruct(IRValue ptr, Expression *expr,
+                                     StructDataType *structType)
+{
+    auto exprListType =
+        dynamic_cast<InitListType *>(semanticAnalyzer.exprToDataTypeMap[expr]);
+    auto exprStructType = dynamic_cast<StructDataType *>(
+        semanticAnalyzer.exprToDataTypeMap[expr]);
+    IRType irStructType = ZtoonTypeToLLVMType(structType);
+    if (exprListType)
+    {
+        auto listExpr = dynamic_cast<InitializerListExpression *>(expr);
+        for (size_t index = 0; index < listExpr->GetExpressions().size();
+             index++)
+        {
+
+            llvm::Value *fieldPtr =
+                irBuilder->CreateStructGEP(irStructType.type, ptr.value, index);
+
+            auto fieldType =
+                semanticAnalyzer
+                    .exprToDataTypeMap[listExpr->GetExpressions()[index]];
+
+            if (fieldType->GetType() == DataType::Type::STRUCT)
+            {
+                AssignValueToVarStruct(
+                    {fieldPtr, {false, fieldPtr->getType()}},
+                    listExpr->GetExpressions()[index],
+                    dynamic_cast<StructDataType *>(fieldType));
+            }
+            else if (fieldType->GetType() == DataType::Type::ARRAY)
+            {
+                std::vector<llvm::Value *> indices;
+                AssignValueToVarArray({fieldPtr, {false, fieldPtr->getType()}},
+                                      listExpr->GetExpressions()[index],
+                                      dynamic_cast<ArrayDataType *>(fieldType),
+                                      indices);
+            }
+            else
+            {
+                IRValue fieldValue =
+                    GenExpressionIR(listExpr->GetExpressions()[index]);
+                irBuilder->CreateStore(fieldValue.value, fieldPtr);
+            }
+        }
+    }
+    else if (exprStructType)
+    {
+
+        if (exprStructType->ToString() != structType->ToString())
+        {
+            ReportError(std::format("Type {} and type {} are not compatible",
+                                    structType->ToString(),
+                                    exprStructType->ToString()),
+                        expr->GetCodeErrString());
+        }
+        // copy data
+        size_t structSizeInBytes =
+            moduleDataLayout->getTypeAllocSize(irStructType.type);
+        llvm::Value *sizeValue = irBuilder->getInt64(structSizeInBytes);
+        llvm::Align alignment(
+            moduleDataLayout->getABITypeAlign(irStructType.type));
+        IRValue src = GenExpressionIR(expr);
+
+        IRValue dest = ptr;
+        irBuilder->CreateMemCpy(dest.value, alignment, src.value, alignment,
+                                sizeValue);
+    }
+    else
+    {
+        // error
+        ReportError(
+            std::format(
+                "Cannot assign expression of type '{}' to struct type '{}'",
+                semanticAnalyzer.exprToDataTypeMap[expr]->ToString(),
+                structType->ToString()),
+            expr->GetCodeErrString());
+    }
+}
 CodeGen::~CodeGen() {}
 void CodeGen::GenIR()
 {
@@ -503,6 +624,7 @@ void CodeGen::GenStatementIR(Statement *statement)
             dynamic_cast<VarDeclStatement *>(statement);
         DataType *type = semanticAnalyzer.stmtToDataTypeMap[varDeclStatement];
         ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(type);
+        StructDataType *structType = dynamic_cast<StructDataType *>(type);
         IRType varDeclType = {};
         varDeclType.type = ZtoonTypeToLLVMType(type).type;
         varDeclType.isSigned = type->IsSigned();
@@ -608,10 +730,15 @@ void CodeGen::GenStatementIR(Statement *statement)
                 if (arrType)
                 {
                     std::vector<llvm::Value *> index;
-                    index.push_back(irBuilder->getInt32(0));
                     AssignValueToVarArray(
                         {irVariable->value, irVariable->irType},
                         varDeclStatement->GetExpression(), arrType, index);
+                }
+                else if (structType)
+                {
+                    AssignValueToVarStruct(
+                        {irVariable->value, irVariable->irType},
+                        varDeclStatement->GetExpression(), structType);
                 }
                 else
                 {
@@ -643,13 +770,21 @@ void CodeGen::GenStatementIR(Statement *statement)
         auto arrType = dynamic_cast<ArrayDataType *>(
             semanticAnalyzer
                 .exprToDataTypeMap[varAssignmentStatement->GetLValue()]);
+        auto structType = dynamic_cast<StructDataType *>(
+            semanticAnalyzer
+                .exprToDataTypeMap[varAssignmentStatement->GetLValue()]);
         if (arrType)
         {
             std::vector<llvm::Value *> index;
-
             AssignValueToVarArray(
                 {lValue.value, ZtoonTypeToLLVMType(arrType->dataType)},
                 varAssignmentStatement->GetRValue(), arrType, index);
+        }
+        else if (structType)
+        {
+            AssignValueToVarStruct({lValue.value, {}},
+                                   varAssignmentStatement->GetRValue(),
+                                   structType);
         }
         else
         {
@@ -1140,9 +1275,52 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         irValue.type = ZtoonTypeToLLVMType(retDataType);
         irValue.value = irBuilder->CreateCall(
             fnIrTypeCast, exprValue.value, args,
-            std::format(
-                "{}_call",
-                fnCallExpr->GetGetExpression()->GetCodeErrString().str));
+            retDataType->type == DataType::Type::NOTYPE
+                ? ""
+                : std::format(
+                      "{}_call",
+                      fnCallExpr->GetGetExpression()->GetCodeErrString().str));
+    }
+    else if (dynamic_cast<MemberAccessExpression *>(expression))
+    {
+        MemberAccessExpression *maExpr =
+            dynamic_cast<MemberAccessExpression *>(expression);
+        auto type =
+            semanticAnalyzer.exprToDataTypeMap[maExpr->GetLeftExpression()];
+        StructDataType *structType = dynamic_cast<StructDataType *>(type);
+        PointerDataType *ptrType = dynamic_cast<PointerDataType *>(type);
+        IRValue leftValue =
+            GenExpressionIR(maExpr->GetLeftExpression(), !ptrType);
+        if (ptrType)
+        {
+            structType = dynamic_cast<StructDataType *>(ptrType->dataType);
+        }
+        size_t index = 0;
+        PrimaryExpression *primaryExpr =
+            dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+        std::string rightName = primaryExpr->GetPrimary()->GetLexeme();
+        IRType fieldIRType = {};
+        for (size_t i = 0; i < structType->structStmt->GetField().size(); i++)
+        {
+            if (rightName == structType->structStmt->GetField()[i]
+                                 ->GetIdentifier()
+                                 ->GetLexeme())
+            {
+                index = i;
+                fieldIRType = ZtoonTypeToLLVMType(structType->fields[index]);
+                break;
+            }
+        }
+        IRType structIRType = ZtoonTypeToLLVMType(structType);
+        irValue.value = irBuilder->CreateStructGEP(structIRType.type,
+                                                   leftValue.value, index);
+        irValue.type = fieldIRType;
+
+        if (!isWrite)
+        {
+            irValue.value =
+                irBuilder->CreateLoad(fieldIRType.type, irValue.value);
+        }
     }
     else if (dynamic_cast<SubscriptExpression *>(expression))
     {
@@ -1788,6 +1966,11 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
             irValue.value = llvm::ConstantInt::getFalse(*ctx);
             break;
         }
+        case TokenType::NULL_PTR:
+        {
+            irValue.value = llvm::Constant::getNullValue(irValue.type.type);
+            break;
+        };
         case TokenType::IDENTIFIER:
         {
             // are we in global scope?

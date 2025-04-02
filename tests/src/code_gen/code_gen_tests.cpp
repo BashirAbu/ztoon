@@ -1541,6 +1541,46 @@ TEST(CodeGen_SubscriptReadValue)
     ASSERT_EQ(r, 6, "Value should be 6");
 }
 
+TEST(CodeGen_ArrayEmptyListExpression)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    std::string source = R"(
+            
+        fn main() -> i32
+        {
+            arr: i32[4] = {1,4,6,7};
+            arr = {};
+            ret arr[2];
+        }
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int r = Fp();
+    ASSERT_EQ(r, 0, "Value should be 0");
+}
 TEST(CodeGen_SubscriptWriteValue)
 {
     llvm::InitializeNativeTarget();
@@ -1636,7 +1676,6 @@ TEST(CodeGen_GlobalArrayDeclWithInitializerList)
 
         fn main() -> i32
         {
-
             ret arr[1];
         }
     )";
@@ -2092,6 +2131,50 @@ TEST(CodeGenStructVariableDeclaration)
     auto Sym = err(JIT->lookup("main"));
     auto *Fp = (int (*)())Sym.getValue();
     int ret = Fp();
+}
+TEST(CodeGen_StructEmptyListExpression)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    std::string source = R"(
+            
+         struct Vector2 {
+                    x: f32 = 22.534;
+                    y: f32 = 3422.0;
+                }
+                
+        fn main() -> f32
+        {
+            v: Vector2 = {};
+            ret v.y;
+        }
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (float (*)())Sym.getValue();
+    float r = Fp();
+    ASSERT_EQ(r, 0, "Value should be 0");
 }
 TEST(CodeGenGlobalStructVariableDeclaration)
 {

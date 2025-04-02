@@ -504,7 +504,35 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
         dynamic_cast<ArrayDataType *>(semanticAnalyzer.exprToDataTypeMap[expr]);
     if (initListExpr)
     {
-        if (arrType->size != initListExpr->GetExpressions().size())
+        if (initListExpr->GetExpressions().empty())
+        {
+            llvm::Value *GEP = nullptr;
+            if (ptr.type.type->isArrayTy())
+            {
+                GEP = irBuilder->CreateInBoundsGEP(
+                    ptr.type.type, ptr.value,
+                    {irBuilder->getInt32(0), irBuilder->getInt32(0)});
+            }
+            else
+            {
+                GEP = ptr.value;
+            }
+            // copy data
+            IRType elementType = ZtoonTypeToLLVMType(arrType->dataType);
+            size_t arraySizeInBytes =
+                arrType->size * (elementType.type->getScalarSizeInBits() / 8);
+            llvm::Value *sizeValue = irBuilder->getInt64(arraySizeInBytes);
+            llvm::Align alignment(elementType.type->getScalarSizeInBits() / 8);
+            llvm::Value *zeroValue = llvm::Constant::getNullValue(
+                ZtoonTypeToLLVMType(arrType->dataType).type);
+            GEP = irBuilder->CreatePointerCast(
+                GEP, llvm::Type::getInt8Ty(*ctx)->getPointerTo());
+            irBuilder->CreateMemSet(
+                GEP, llvm::ConstantInt::get(llvm::Type::getInt8Ty(*ctx), 0),
+                sizeValue, alignment);
+            return;
+        }
+        else if (arrType->size != initListExpr->GetExpressions().size())
         {
             ReportError("Initializer list size does not match array size",
                         initListExpr->GetCodeErrString());
@@ -831,11 +859,20 @@ void CodeGen::GenStatementIR(Statement *statement)
             }
             else
             {
-                irBuilder->CreateStore(
-                    llvm::Constant::getNullValue(
-                        ZtoonTypeToLLVMType(irVariable->variabel->dataType)
-                            .type),
-                    inst);
+                if (structType)
+                {
+                    AssignValueToVarStruct({inst, irVariable->irType},
+                                           structType->defaultValuesList,
+                                           structType);
+                }
+                else
+                {
+                    irBuilder->CreateStore(
+                        llvm::Constant::getNullValue(
+                            ZtoonTypeToLLVMType(irVariable->variabel->dataType)
+                                .type),
+                        inst);
+                }
             }
         }
     }

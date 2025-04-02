@@ -742,7 +742,10 @@ class InitializerListExpression : public Expression
 
         for (Expression *expr : expressions)
         {
-            es.str += expr->GetCodeErrString().str + ",";
+            if (expr)
+                es.str += expr->GetCodeErrString().str + ",";
+            else
+                es.str += "null,";
         }
         if (es.str.ends_with(','))
         {

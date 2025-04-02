@@ -6,6 +6,7 @@
 #include <cstring>
 #include <format>
 #include <functional>
+#include <ratio>
 
 std::string DataType::ToString()
 {
@@ -684,10 +685,12 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         structType->scope = currentScope;
         structType->defaultValuesList =
             gZtoonArena.Allocate<InitializerListExpression>();
+        size_t index = 0;
         for (auto field : structStmt->fields)
         {
             structType->defaultValuesList->expressions.push_back(
                 field->GetExpression());
+
             AnalizeStatement(field);
 
             auto fieldDataType = stmtToDataTypeMap[field];
@@ -700,9 +703,15 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             }
 
             structType->fields.push_back(fieldDataType);
+            index++;
         }
 
-        EvaluateAndAssignDataTypeToExpression(structType->defaultValuesList);
+        InitListType *listType = gZtoonArena.Allocate<InitListType>();
+        listType->type = DataType::Type::InitList;
+
+        listType->dataTypes = structType->fields;
+
+        exprToDataTypeMap[structType->defaultValuesList] = listType;
 
         structType->complete = true;
         currentScope = temp;

@@ -80,6 +80,7 @@ class StructDataType : public DataType, public Symbol
     std::string name = "";
     Scope *scope = nullptr;
     StructStatement *structStmt;
+    InitializerListExpression *defaultValuesList = nullptr;
     std::vector<DataType *> fields;
 };
 class UnionDataType : public DataType

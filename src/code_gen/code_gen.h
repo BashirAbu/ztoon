@@ -97,6 +97,9 @@ class CodeGen
     llvm::Constant *
     InitListToArrayConstant(ArrayDataType *arrType,
                             InitializerListExpression *listExpr);
+    llvm::Constant *
+    InitListToStructConstant(StructDataType *structType,
+                             InitializerListExpression *listExpr);
     void GenStatementIR(Statement *statement);
     void GenIfStatementIR(Statement *statement, IfStatementData *ifData);
     IRValue GenExpressionIR(Expression *expression, bool isWrite = false);

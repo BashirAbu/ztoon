@@ -351,7 +351,7 @@ TEST(ParserStructDeclaration)
         
     )";
     lexer.Tokenize(source, "test.ztoon");
-    lexer.DebugPrint();
+    // lexer.DebugPrint();
     Parser parser(lexer.GetTokens());
     auto ast = parser.Parse();
 }

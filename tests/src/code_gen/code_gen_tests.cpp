@@ -2082,6 +2082,48 @@ TEST(CodeGenStructVariableDeclaration)
     {
         llvm::errs() << "Module verification failed\n";
     }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int ret = Fp();
+}
+TEST(CodeGenGlobalStructVariableDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        struct Vector2 {
+            x: f32 = 0.0;
+            y: f32 = 22.0;
+        }
+
+         v: Vector2;
+         fn main() -> i32 {
+
+            v = {22.33, 44.8585};
+            v = {};
+            v.x = 12.0;
+            ret v.y as i32;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
     codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
@@ -2097,16 +2139,25 @@ TEST(CodeGenComplexStruct)
 {
     Lexer lexer;
     std::string source = R"(
-
-        
-
         fn printf(str: readonly i8*, ...) -> i32;
 
         fn malloc(size: u64) -> i8*;
+
+
+        struct Vector2
+        {
+            x: f32 = 1.0;
+            y: f32 = 2.0;
+        }
+
+        struct Player
+        {
+            pos: Vector2 = {33.0, 12.90};
+            name: readonly i8* = "ZtoonPlayer";
+        }
         struct Node 
         {
             next: Node* = nullptr;
-
             number: i32;
         }
 
@@ -2170,7 +2221,7 @@ TEST(CodeGenComplexStruct)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());

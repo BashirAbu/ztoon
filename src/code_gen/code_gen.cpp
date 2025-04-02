@@ -410,10 +410,16 @@ CodeGen::InitListToArrayConstant(ArrayDataType *arrType,
     {
         auto le = dynamic_cast<InitializerListExpression *>(expr);
         IRValue value;
-        if (le)
+        if (le && arrType->dataType->GetType() == DataType::Type::ARRAY)
         {
             auto type = dynamic_cast<ArrayDataType *>(arrType->dataType);
             value.value = InitListToArrayConstant(type, le);
+            value.type = ZtoonTypeToLLVMType(type);
+        }
+        else if (le && arrType->dataType->GetType() == DataType::Type::STRUCT)
+        {
+            auto type = dynamic_cast<StructDataType *>(arrType->dataType);
+            value.value = InitListToStructConstant(type, le);
             value.type = ZtoonTypeToLLVMType(type);
         }
         else
@@ -433,9 +439,65 @@ CodeGen::InitListToArrayConstant(ArrayDataType *arrType,
         llvm::dyn_cast<llvm::ArrayType>(ZtoonTypeToLLVMType(arrType).type),
         consts);
 }
+llvm::Constant *
+CodeGen::InitListToStructConstant(StructDataType *structType,
+                                  InitializerListExpression *listExpr)
+{
+    std::vector<llvm::Constant *> consts;
+    if (structType->fields.size() != listExpr->GetExpressions().size())
+    {
+        ReportError(
+            std::format("List expression does not match struct '{}' size",
+                        structType->GetName()),
+            listExpr->GetCodeErrString());
+    }
+    for (size_t i = 0; i < structType->fields.size(); i++)
+    {
+        auto expr = listExpr->GetExpressions()[i];
+        auto fieldType = structType->fields[i];
+        auto le = dynamic_cast<InitializerListExpression *>(expr);
+        IRValue value;
+        if (expr && le && fieldType->GetType() == DataType::Type::ARRAY)
+        {
+            auto type = dynamic_cast<ArrayDataType *>(fieldType);
+            value.value = InitListToArrayConstant(type, le);
+            value.type = ZtoonTypeToLLVMType(type);
+        }
+        else if (expr && le && fieldType->GetType() == DataType::Type::STRUCT)
+        {
+            auto type = dynamic_cast<StructDataType *>(fieldType);
+            value.value = InitListToStructConstant(type, le);
+            value.type = ZtoonTypeToLLVMType(type);
+        }
+        else
+        {
+            if (expr)
+            {
+                value = GenExpressionIR(expr);
+            }
+            else
+            {
+                value.value = llvm::Constant::getNullValue(
+                    ZtoonTypeToLLVMType(fieldType).type);
+            }
+        }
+        llvm::Constant *valueConst =
+            llvm::dyn_cast<llvm::Constant>(value.value);
+        if (!valueConst)
+        {
+            ReportError("Expression is not constant", expr->GetCodeErrString());
+        }
+        consts.push_back(valueConst);
+    }
+
+    return llvm::ConstantStruct::get(
+        llvm::dyn_cast<llvm::StructType>(ZtoonTypeToLLVMType(structType).type),
+        consts);
+}
 void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
                                     ArrayDataType *arrType,
                                     std::vector<llvm::Value *> &index)
+
 {
     auto initListExpr = dynamic_cast<InitializerListExpression *>(expr);
     auto rValueArrType =
@@ -462,17 +524,17 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
             i++;
             if (innerType)
             {
-                // recurse
                 AssignValueToVarArray(ptr, elementExpr, innerType, index);
             }
             else
             {
-                IRValue elementValue = GenExpressionIR(elementExpr);
+                IRValue value = GenExpressionIR(elementExpr);
 
                 llvm::Value *GEP = irBuilder->CreateInBoundsGEP(
                     ptr.type.type, ptr.value, index,
                     std::format("element_{}", i));
-                if (dynamic_cast<StructDataType *>(arrType->dataType))
+                if (dynamic_cast<StructDataType *>(arrType->dataType) &&
+                    elementExpr)
                 {
                     auto structType =
                         dynamic_cast<StructDataType *>(arrType->dataType);
@@ -480,7 +542,6 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
                 }
                 else
                 {
-                    IRValue value = GenExpressionIR(elementExpr);
                     irBuilder->CreateStore(value.value, GEP);
                 }
             }
@@ -541,36 +602,51 @@ void CodeGen::AssignValueToVarStruct(IRValue ptr, Expression *expr,
     if (exprListType)
     {
         auto listExpr = dynamic_cast<InitializerListExpression *>(expr);
+
+        if (listExpr->GetExpressions().size() != structType->fields.size())
+        {
+            ReportError(
+                std::format("List expression does not match struct '{}' size",
+                            structType->GetName()),
+                listExpr->GetCodeErrString());
+        }
+
         for (size_t index = 0; index < listExpr->GetExpressions().size();
              index++)
         {
 
             llvm::Value *fieldPtr =
                 irBuilder->CreateStructGEP(irStructType.type, ptr.value, index);
+            auto listElement = listExpr->GetExpressions()[index];
+            auto fieldType = structType->fields[index];
 
-            auto fieldType =
-                semanticAnalyzer
-                    .exprToDataTypeMap[listExpr->GetExpressions()[index]];
-
-            if (fieldType->GetType() == DataType::Type::STRUCT)
+            if (fieldType->GetType() == DataType::Type::STRUCT && listElement)
             {
                 AssignValueToVarStruct(
-                    {fieldPtr, {false, fieldPtr->getType()}},
-                    listExpr->GetExpressions()[index],
+                    {fieldPtr, {false, fieldPtr->getType()}}, expr,
                     dynamic_cast<StructDataType *>(fieldType));
             }
-            else if (fieldType->GetType() == DataType::Type::ARRAY)
+            else if (fieldType->GetType() == DataType::Type::ARRAY &&
+                     listElement)
             {
                 std::vector<llvm::Value *> indices;
-                AssignValueToVarArray({fieldPtr, {false, fieldPtr->getType()}},
-                                      listExpr->GetExpressions()[index],
-                                      dynamic_cast<ArrayDataType *>(fieldType),
-                                      indices);
+                AssignValueToVarArray(
+                    {fieldPtr, {false, fieldPtr->getType()}}, listElement,
+                    dynamic_cast<ArrayDataType *>(fieldType), indices);
             }
             else
             {
-                IRValue fieldValue =
-                    GenExpressionIR(listExpr->GetExpressions()[index]);
+                IRValue fieldValue;
+                if (listElement)
+                {
+                    fieldValue = GenExpressionIR(listElement);
+                }
+                else
+                {
+                    fieldValue.value = llvm::Constant::getNullValue(
+                        ZtoonTypeToLLVMType(fieldType).type);
+                }
+
                 irBuilder->CreateStore(fieldValue.value, fieldPtr);
             }
         }
@@ -633,19 +709,23 @@ void CodeGen::GenStatementIR(Statement *statement)
             llvm::GlobalVariable *globalVar;
             if (varDeclStatement->GetExpression())
             {
-                if (arrType)
+                if (arrType || structType)
                 {
                     auto listExpr = dynamic_cast<InitializerListExpression *>(
                         varDeclStatement->GetExpression());
                     if (!listExpr)
                     {
                         ReportError(
-                            "Global array variables can only be initialized "
-                            "with constant list expression",
+                            std::format(
+                                "Global {} variables can only be initialized "
+                                "with a list of constant expressions",
+                                arrType ? "array" : "struct"),
                             varDeclStatement->GetCodeErrString());
                     }
                     llvm::Constant *consts =
-                        InitListToArrayConstant(arrType, listExpr);
+                        arrType
+                            ? InitListToArrayConstant(arrType, listExpr)
+                            : InitListToStructConstant(structType, listExpr);
 
                     globalVar = new llvm::GlobalVariable(
                         *module, varDeclType.type, type->IsReadOnly(),
@@ -654,6 +734,7 @@ void CodeGen::GenStatementIR(Statement *statement)
                             "g_{}",
                             varDeclStatement->GetIdentifier()->GetLexeme()));
                 }
+
                 else
                 {
                     auto pe = dynamic_cast<PrimaryExpression *>(
@@ -691,11 +772,12 @@ void CodeGen::GenStatementIR(Statement *statement)
             }
             else
             {
-
                 globalVar = new llvm::GlobalVariable(
                     *module, varDeclType.type, type->IsReadOnly(),
-                    llvm::GlobalValue::CommonLinkage,
-                    llvm::Constant::getNullValue(varDeclType.type),
+                    llvm::GlobalValue::ExternalLinkage,
+                    structType ? InitListToStructConstant(
+                                     structType, structType->defaultValuesList)
+                               : llvm::Constant::getNullValue(varDeclType.type),
                     std::format(
                         "g_{}",
                         varDeclStatement->GetIdentifier()->GetLexeme()));
@@ -1300,9 +1382,9 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
             dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
         std::string rightName = primaryExpr->GetPrimary()->GetLexeme();
         IRType fieldIRType = {};
-        for (size_t i = 0; i < structType->structStmt->GetField().size(); i++)
+        for (size_t i = 0; i < structType->structStmt->GetFields().size(); i++)
         {
-            if (rightName == structType->structStmt->GetField()[i]
+            if (rightName == structType->structStmt->GetFields()[i]
                                  ->GetIdentifier()
                                  ->GetLexeme())
             {

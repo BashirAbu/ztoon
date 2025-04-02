@@ -572,6 +572,12 @@ void SemanticAnalyzer::ValidateAssignValueToVarStruct(
         dynamic_cast<StructDataType *>(exprToDataTypeMap[expr]);
     if (initListExpr)
     {
+        if (initListExpr->GetExpressions().empty())
+        {
+            initListExpr->GetExpressions().resize(structType->fields.size(), 0);
+            return;
+        }
+
         if (structType->fields.size() != initListExpr->expressions.size())
         {
             ReportError(
@@ -676,8 +682,12 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
         currentScope = scope;
         structType->scope = currentScope;
+        structType->defaultValuesList =
+            gZtoonArena.Allocate<InitializerListExpression>();
         for (auto field : structStmt->fields)
         {
+            structType->defaultValuesList->expressions.push_back(
+                field->GetExpression());
             AnalizeStatement(field);
 
             auto fieldDataType = stmtToDataTypeMap[field];
@@ -691,6 +701,9 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
             structType->fields.push_back(fieldDataType);
         }
+
+        EvaluateAndAssignDataTypeToExpression(structType->defaultValuesList);
+
         structType->complete = true;
         currentScope = temp;
     }
@@ -1544,14 +1557,12 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         InitListType *listType = gZtoonArena.Allocate<InitListType>();
         listType->type = DataType::Type::InitList;
 
-        if (initListExpr->GetExpressions().empty())
-        {
-            ReportError("Initializer list cannot be empty",
-                        initListExpr->GetCodeErrString());
-        }
-
         for (auto expr : initListExpr->expressions)
         {
+            if (!expr)
+            {
+                continue;
+            }
             EvaluateAndAssignDataTypeToExpression(expr);
             auto type = exprToDataTypeMap[expr];
             listType->dataTypes.push_back(type);
@@ -1995,7 +2006,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                             castExpression->GetCodeErrString());
             }
         }
-        // ptr stuff
+        //  ptr stuff
         //  ptr to ptr ok
         //  int to ptr ok
         //  ptr to int ok

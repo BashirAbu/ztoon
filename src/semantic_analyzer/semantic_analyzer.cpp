@@ -675,8 +675,15 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         structType->structStmt = structStmt;
         structType->type = DataType::Type::STRUCT;
         structType->complete = false;
-        structType->name = structStmt->identifier->GetLexeme();
-
+        if (structStmt->identifier)
+        {
+            structType->name = structStmt->identifier->GetLexeme();
+        }
+        else
+        {
+            structType->name = std::format("__anonymous_struct__number__{}",
+                                           (size_t)(structStmt));
+        }
         currentScope->datatypesMap[structType->name] = structType;
         currentScope->AddSymbol(structType, structStmt->GetCodeErrString());
         Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
@@ -697,10 +704,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             auto fieldDataType = stmtToDataTypeMap[field];
             if (!fieldDataType->complete)
             {
-                CodeErrString ces;
-                ces.firstToken = field->dataTypeToken->GetFirstToken();
-                ces.str = field->dataTypeToken->ToString();
-                ReportError("Field variable has incomplete type", ces);
+                ReportError("Field variable has incomplete type",
+                            field->GetCodeErrString());
             }
 
             structType->fields.push_back(fieldDataType);
@@ -733,20 +738,35 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
         currentScope = scope;
         unionType->scope = currentScope;
+        std::vector<VarDeclStatement *> toAddFields;
         for (auto field : unionStmt->fields)
         {
             AnalizeStatement(field);
+            StructStatement *structField =
+                dynamic_cast<StructStatement *>(field);
 
             auto fieldDataType = stmtToDataTypeMap[field];
             if (!fieldDataType->complete)
             {
-                CodeErrString ces;
-                ces.firstToken = field->dataTypeToken->GetFirstToken();
-                ces.str = field->dataTypeToken->ToString();
-                ReportError("Field variable has incomplete type", ces);
+                ReportError("Field variable has incomplete type",
+                            field->GetCodeErrString());
             }
-
+            if (structField)
+            {
+                for (auto f : structField->fields)
+                {
+                    toAddFields.push_back(f);
+                }
+            }
             unionType->fields.push_back(fieldDataType);
+        }
+        for (auto f : toAddFields)
+        {
+            Variable *var =
+                gZtoonArena.Allocate<Variable>(f->GetIdentifier()->GetLexeme());
+            var->token = f->GetIdentifier();
+            var->dataType = stmtToDataTypeMap[f];
+            currentScope->AddSymbol(var, f->GetCodeErrString());
         }
         currentScope = temp;
     }
@@ -1637,20 +1657,54 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     maExpr->GetCodeErrString());
             }
             // Check if union has this field
-            auto itr =
-                std::find_if(unionStmt->fields.begin(), unionStmt->fields.end(),
-                             [field](VarDeclStatement *f)
-                             {
-                                 return f->GetIdentifier()->GetLexeme() ==
-                                        field->primary->GetLexeme();
-                             });
-            if (itr == unionStmt->fields.end())
+            bool found = false;
+            StructStatement *anonymousStruct = nullptr;
+            for (auto f : unionStmt->fields)
+            {
+                auto varField = dynamic_cast<VarDeclStatement *>(f);
+                auto structField = dynamic_cast<StructStatement *>(f);
+                if (varField)
+                {
+                    if (varField->identifier->GetLexeme() ==
+                        field->primary->GetLexeme())
+                    {
+                        found = true;
+                    }
+                }
+                else if (structField)
+                {
+                    for (VarDeclStatement *structF : structField->fields)
+                    {
+                        if (structF->identifier->GetLexeme() ==
+                            field->GetPrimary()->GetLexeme())
+                        {
+                            found = true;
+                            anonymousStruct = structField;
+                        }
+                    }
+                }
+                if (found)
+                {
+                    break;
+                }
+            }
+            if (!found)
             {
                 ReportError(
                     std::format(
                         "union type '{}' does not have field with name '{}'",
                         unionType->name, field->GetPrimary()->GetLexeme()),
                     field->GetCodeErrString());
+            }
+
+            if (anonymousStruct)
+            {
+                MemberAccessExpression *expr =
+                    gZtoonArena.Allocate<MemberAccessExpression>();
+                expr->accessType = MemberAccessExpression::AccessType::STRUCT;
+                expr->leftExpr = maExpr;
+                expr->rightExpr = maExpr->GetRightExpression();
+                maExpr = expr;
             }
 
             Scope *temp = currentScope;

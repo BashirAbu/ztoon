@@ -2044,13 +2044,16 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
             PointerDataType *ptr = dynamic_cast<PointerDataType *>(
                 semanticAnalyzer
                     .exprToDataTypeMap[unaryExpression->GetRightExpression()]);
-            if (isWrite)
+            rValue.value = irBuilder->CreateLoad(
+                rValue.type.type, rValue.value,
+                std::format("deref_{}", unaryExpression->GetRightExpression()
+                                            ->GetCodeErrString()
+                                            .str));
+            rValue.type = ZtoonTypeToLLVMType(ptr->dataType);
+
+            irValue = rValue;
+            if (!isWrite)
             {
-                irValue = rValue;
-            }
-            else
-            {
-                irValue.type = ZtoonTypeToLLVMType(ptr->dataType);
                 irValue.value = irBuilder->CreateLoad(
                     irValue.type.type, rValue.value,
                     std::format("deref_{}",

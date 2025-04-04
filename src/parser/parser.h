@@ -334,12 +334,12 @@ class UnionStatement : public Statement
 
         return ces;
     }
-    const std::vector<VarDeclStatement *> &GetFields() { return fields; }
+    const std::vector<Statement *> &GetFields() { return fields; }
 
   private:
     Token const *token = nullptr;
     Token const *identifier = nullptr;
-    std::vector<VarDeclStatement *> fields;
+    std::vector<Statement *> fields;
 
     friend class Parser;
     friend class SemanticAnalyzer;
@@ -935,7 +935,7 @@ class Parser
     Statement *ParseForLoopStatement();
     Statement *ParseBreakStatement();
     Statement *ParseContinueStatement();
-    Statement *ParseStructStatement();
+    Statement *ParseStructStatement(bool anonymous = false);
     Statement *ParseUnionStatement();
     Statement *ParseRetStatement();
 

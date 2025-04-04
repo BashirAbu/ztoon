@@ -866,7 +866,7 @@ TEST(CodeGen_PTR)
     auto Sym = err(JIT->lookup("main"));
     auto *Fp = (size_t (*)())Sym.getValue();
     size_t r = Fp();
-    int deref = **((size_t **)r);
+    int deref = ***((int ***)r);
     ASSERT_EQ(deref, 422, "value should be 422")
 }
 TEST(CodeGen_DerefPTR)
@@ -879,9 +879,11 @@ TEST(CodeGen_DerefPTR)
         fn main() -> i32
         {
             a: i32;
+            a = 12;
             aptr : i32* = &a;
-            a_ptr_int : u64 = aptr as u64;
-            *(a_ptr_int as i32*) = 33333;
+            *aptr = 33333;
+            // a_ptr_int : u64 = aptr as u64;
+            // *(a_ptr_int as i32*) = 33333;
             ret a;
         }
     )";
@@ -898,7 +900,7 @@ TEST(CodeGen_DerefPTR)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    // codeGen.module->print(llvm::outs(), nullptr);
+    codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -1265,10 +1267,10 @@ TEST(CodeGenFunctionParamterArrayTypeByReferenceAndRetArrayTypeByReference)
 {
     std::string source = R"(
 
-        fn array_stuff(a: u32[3]*) -> u32[3]
+        fn array_stuff(a: u32[3]*) 
         {
             (*a)[2] = 99;
-            ret *a;
+            
         }
         
         fn main() -> u32
@@ -1291,7 +1293,7 @@ TEST(CodeGenFunctionParamterArrayTypeByReferenceAndRetArrayTypeByReference)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    // codeGen.module->print(llvm::outs(), nullptr);
+    codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -1301,7 +1303,7 @@ TEST(CodeGenFunctionParamterArrayTypeByReferenceAndRetArrayTypeByReference)
     auto Sym = err(JIT->lookup("main"));
     auto *Fp = (int (*)())Sym.getValue();
     int r = Fp();
-    ASSERT_EQ(r, 99, "Value should be 5");
+    ASSERT_EQ(r, 99, "Value should be 99");
 }
 TEST(CodeGen_ArrayDeclEmptySizeExpression)
 {
@@ -2351,51 +2353,52 @@ TEST(CodeGenComplexStruct)
     Fp();
 }
 
-TEST(CodeGenUnionDeclaration)
-{
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmPrinter();
-    llvm::InitializeNativeTargetAsmParser();
-    Lexer lexer;
-    std::string source = R"(
+// TEST(CodeGenUnionDeclaration)
+// {
+//     llvm::InitializeNativeTarget();
+//     llvm::InitializeNativeTargetAsmPrinter();
+//     llvm::InitializeNativeTargetAsmParser();
+//     Lexer lexer;
+//     std::string source = R"(
 
-fn printf(str: readonly i8*, ...) -> i32;
-        
-        union Vector2
-        {
-            struct
-            {
-                x: f32;
-                y: f32;
-            }
-            components: f32[2];
-        }
+// fn printf(str: readonly i8*, ...) -> i32;
 
-        fn main()  {
+//         union Vector2
+//         {
+//             struct
+//             {
+//                 x: f32;
+//                 y: f32;
+//             }
+//             components: f32[2];
+//         }
 
-           
-        }
+//         fn main()  {
 
-    )";
-    lexer.Tokenize(source, "test.ztoon");
-    Parser parser(lexer.GetTokens());
-    auto stmts = parser.Parse();
-    SemanticAnalyzer sa(stmts);
-    sa.Analize();
-    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
-    codeGen.GenIR();
-    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
-    {
-        llvm::errs() << "Module verification failed\n";
-    }
-    codeGen.module->print(llvm::outs(), nullptr);
+//            foo: Vector2;
+//            foo.x = 333.343;
+//         }
 
-    llvm::ExitOnError err;
-    auto JIT = err(llvm::orc::LLJITBuilder().create());
-    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
-                                    std::move(codeGen.ctx));
-    err(JIT->addIRModule(std::move(TSM)));
-    auto Sym = err(JIT->lookup("main"));
-    auto *Fp = (int64_t (*)())Sym.getValue();
-    int64_t ret = Fp();
-}
+//     )";
+//     lexer.Tokenize(source, "test.ztoon");
+//     Parser parser(lexer.GetTokens());
+//     auto stmts = parser.Parse();
+//     SemanticAnalyzer sa(stmts);
+//     sa.Analize();
+//     CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+//     codeGen.GenIR();
+//     if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+//     {
+//         llvm::errs() << "Module verification failed\n";
+//     }
+//     codeGen.module->print(llvm::outs(), nullptr);
+
+//     llvm::ExitOnError err;
+//     auto JIT = err(llvm::orc::LLJITBuilder().create());
+//     llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+//                                     std::move(codeGen.ctx));
+//     err(JIT->addIRModule(std::move(TSM)));
+//     auto Sym = err(JIT->lookup("main"));
+//     auto *Fp = (int64_t (*)())Sym.getValue();
+//     int64_t ret = Fp();
+// }

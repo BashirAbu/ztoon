@@ -386,21 +386,23 @@ Statement *Parser::ParseBlockStatement()
     return ParseStructStatement();
 }
 
-Statement *Parser::ParseStructStatement()
+Statement *Parser::ParseStructStatement(bool anonymous)
 {
     if (Consume(TokenType::STRUCT))
     {
         StructStatement *structStmt = gZtoonArena.Allocate<StructStatement>();
 
-        if (!Consume(TokenType::IDENTIFIER))
+        if (!anonymous && !Consume(TokenType::IDENTIFIER))
         {
             CodeErrString ces;
             ces.firstToken = Peek();
             ces.str = ces.firstToken->GetLexeme();
             ReportError("Expected identifier after 'struct'", ces);
         }
-
-        structStmt->identifier = Prev();
+        if (!anonymous)
+        {
+            structStmt->identifier = Prev();
+        }
 
         if (!Consume(TokenType::LEFT_CURLY_BRACKET))
         {
@@ -412,15 +414,12 @@ Statement *Parser::ParseStructStatement()
 
         while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
         {
-            auto varDeclStmt =
-                dynamic_cast<VarDeclStatement *>(ParseVarDeclStatement());
+            auto fieldStmt = ParseVarDeclStatement();
+            auto varDeclStmt = dynamic_cast<VarDeclStatement *>(fieldStmt);
             if (!varDeclStmt)
             {
-                CodeErrString ces;
-                ces.firstToken = Peek();
-                ces.str = ces.firstToken->GetLexeme();
-                ReportError("Only field declaration are allowd inside 'struct'",
-                            ces);
+                ReportError("Statement not supported in struct definition",
+                            fieldStmt->GetCodeErrString());
             }
             if (!Consume(TokenType::SEMICOLON))
             {
@@ -461,27 +460,44 @@ Statement *Parser::ParseUnionStatement()
 
         while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
         {
-            auto varDeclStmt =
+
+            VarDeclStatement *varDeclStmt =
                 dynamic_cast<VarDeclStatement *>(ParseVarDeclStatement());
+            StructStatement *structStmt;
             if (!varDeclStmt)
             {
-                CodeErrString ces;
+                structStmt =
+                    dynamic_cast<StructStatement *>(ParseStructStatement(true));
+            }
+            if (varDeclStmt)
+            {
+
+                unionStmt->fields.push_back(varDeclStmt);
+            }
+            else if (structStmt)
+            {
+
+                unionStmt->fields.push_back(structStmt);
+            }
+            else
+            {
+                CodeErrString ces = {};
                 ces.firstToken = Peek();
                 ces.str = ces.firstToken->GetLexeme();
-                ReportError("Only field declaration are allowd inside 'struct'",
-                            ces);
+                ReportError("Statement not supported in union definition", ces);
             }
-            if (varDeclStmt->GetExpression())
+
+            if (varDeclStmt && varDeclStmt->GetExpression())
             {
                 ReportError("Union fileds cannot have default values",
                             varDeclStmt->GetCodeErrString());
             }
-            if (!Consume(TokenType::SEMICOLON))
+
+            if (!Consume(TokenType::SEMICOLON) && varDeclStmt)
             {
                 ReportError("Expected ';' after field declaration",
                             varDeclStmt->GetCodeErrString());
             }
-            unionStmt->fields.push_back(varDeclStmt);
         }
 
         return unionStmt;
@@ -657,7 +673,6 @@ Statement *Parser::ParseVarDeclStatement()
                         return nullptr;
                     }
                 }
-                return varDeclStatement;
             }
             else
             {
@@ -667,6 +682,7 @@ Statement *Parser::ParseVarDeclStatement()
                 ReportError("Expected datatype after ':'", ces);
             }
         }
+        return varDeclStatement;
     }
     return ParseIfStatement();
 }

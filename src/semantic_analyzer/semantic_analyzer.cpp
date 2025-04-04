@@ -87,7 +87,8 @@ std::string DataType::ToString()
     case DataType::Type::ENUM:
     case DataType::Type::UNION:
     {
-        str += "";
+        auto unionType = dynamic_cast<UnionDataType *>(this);
+        str += unionType->name;
         break;
     }
     case DataType::Type::POINTER:
@@ -716,6 +717,39 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         structType->complete = true;
         currentScope = temp;
     }
+    else if (dynamic_cast<UnionStatement *>(statement))
+    {
+        auto unionStmt = dynamic_cast<UnionStatement *>(statement);
+
+        UnionDataType *unionType = gZtoonArena.Allocate<UnionDataType>();
+        unionType->unionStmt = unionStmt;
+        unionType->type = DataType::Type::UNION;
+        unionType->name = unionStmt->identifier->GetLexeme();
+
+        currentScope->datatypesMap[unionType->name] = unionType;
+        currentScope->AddSymbol(unionType, unionStmt->GetCodeErrString());
+        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
+        Scope *temp = currentScope;
+
+        currentScope = scope;
+        unionType->scope = currentScope;
+        for (auto field : unionStmt->fields)
+        {
+            AnalizeStatement(field);
+
+            auto fieldDataType = stmtToDataTypeMap[field];
+            if (!fieldDataType->complete)
+            {
+                CodeErrString ces;
+                ces.firstToken = field->dataTypeToken->GetFirstToken();
+                ces.str = field->dataTypeToken->ToString();
+                ReportError("Field variable has incomplete type", ces);
+            }
+
+            unionType->fields.push_back(fieldDataType);
+        }
+        currentScope = temp;
+    }
     else if (dynamic_cast<VarDeclStatement *>(statement))
     {
         VarDeclStatement *varDeclStatement =
@@ -725,6 +759,14 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
         if (varDeclStatement->GetExpression())
         {
+
+            if (stmtToDataTypeMap[varDeclStatement]->GetType() ==
+                DataType::Type::UNION)
+            {
+                ReportError("Cannot initialize union variable",
+                            varDeclStatement->GetCodeErrString());
+            }
+
             EvaluateAndAssignDataTypeToExpression(
                 varDeclStatement->GetExpression());
             auto arrType = dynamic_cast<ArrayDataType *>(
@@ -811,6 +853,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             dynamic_cast<VarAssignmentStatement *>(statement);
         EvaluateAndAssignDataTypeToExpression(
             varAssignmentStatement->GetLValue());
+
         if (varAssignmentStatement->GetLValue()->IsLValue())
         {
             stmtToDataTypeMap[varAssignmentStatement] =
@@ -887,6 +930,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             ReportError("Cannot assign value to r-value expression",
                         varComAssignStatement->GetCodeErrString());
         }
+
         EvaluateAndAssignDataTypeToExpression(
             varComAssignStatement->GetRValue());
 
@@ -1067,7 +1111,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             Expression *expr = primaryExpr;
             exprToDataTypeMap[expr] =
                 fn->GetFnDataTypeFromFnPTR()->GetReturnDataType();
-
+            retStmt->expression->isLvalue = false;
             DataType::Type type = DecideDataType(&expr, &retStmt->expression);
             fn->retStmt = retStmt;
             retStmt->fnStmt = fn->GetFnStatement();
@@ -1465,6 +1509,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
     else if (dynamic_cast<MemberAccessExpression *>(expression))
     {
         auto maExpr = dynamic_cast<MemberAccessExpression *>(expression);
+        maExpr->isLvalue = true;
         EvaluateAndAssignDataTypeToExpression(maExpr->GetLeftExpression());
 
         DataType *left = exprToDataTypeMap[maExpr->GetLeftExpression()];
@@ -1489,6 +1534,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                                 "struct, union, or a pointer to one of them"),
                     maExpr->GetCodeErrString());
             }
+            else
             {
                 // change left expr type to deref type
                 UnaryExpression *derefPtr =
@@ -1498,64 +1544,126 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                 derefPtr->right = maExpr->leftExpr;
                 EvaluateAndAssignDataTypeToExpression(derefPtr);
                 maExpr->leftExpr = derefPtr;
+                left = exprToDataTypeMap[derefPtr];
             }
         }
-
-        StructStatement *structStmt = nullptr;
-        StructDataType *structType = nullptr;
 
         if (left->type == DataType::Type::STRUCT)
         {
+            maExpr->accessType = MemberAccessExpression::AccessType::STRUCT;
+            StructStatement *structStmt = nullptr;
+            StructDataType *structType = nullptr;
+
             structType = dynamic_cast<StructDataType *>(left);
-        }
-        else if (left->type == DataType::Type::POINTER)
-        {
-            auto leftPtrType = dynamic_cast<PointerDataType *>(left);
-            if (leftPtrType->dataType->GetType() == DataType::Type::STRUCT)
+
+            if (left->type == DataType::Type::POINTER)
             {
-                structType = dynamic_cast<StructDataType *>(
-                    leftPtrType->PointedToDatatype());
+                auto leftPtrType = dynamic_cast<PointerDataType *>(left);
+                if (leftPtrType->dataType->GetType() == DataType::Type::STRUCT)
+                {
+                    structType = dynamic_cast<StructDataType *>(
+                        leftPtrType->PointedToDatatype());
+                }
             }
+
+            structStmt = structType->structStmt;
+
+            PrimaryExpression *field =
+                dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+
+            if (!field || field->primary->GetType() != TokenType::IDENTIFIER)
+            {
+                ReportError(
+                    std::format(
+                        "Right expression of '.' must be an identifier"),
+                    maExpr->GetCodeErrString());
+            }
+            // Check if struct has this field
+            auto itr = std::find_if(
+                structStmt->fields.begin(), structStmt->fields.end(),
+                [field](VarDeclStatement *f)
+                {
+                    return f->GetIdentifier()->GetLexeme() ==
+                           field->primary->GetLexeme();
+                });
+            if (itr == structStmt->fields.end())
+            {
+                ReportError(
+                    std::format(
+                        "Struct type '{}' does not have field with name '{}'",
+                        structType->name, field->GetPrimary()->GetLexeme()),
+                    field->GetCodeErrString());
+            }
+
+            Scope *temp = currentScope;
+            currentScope = structType->scope;
+            currentScope->lookUpParent = false;
+
+            EvaluateAndAssignDataTypeToExpression(maExpr->GetRightExpression());
+
+            DataType *rightDataType = exprToDataTypeMap[field];
+            exprToDataTypeMap[maExpr] = rightDataType;
+            currentScope = temp;
+            currentScope->lookUpParent = true;
         }
-
-        structStmt = structType->structStmt;
-
-        PrimaryExpression *field =
-            dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
-
-        if (!field || field->primary->GetType() != TokenType::IDENTIFIER)
+        else if (left->type == DataType::Type::UNION)
         {
-            ReportError(
-                std::format("Right expression of '.' must be an identifier"),
-                maExpr->GetCodeErrString());
+            maExpr->accessType = MemberAccessExpression::AccessType::UNION;
+            UnionStatement *unionStmt = nullptr;
+            UnionDataType *unionType = nullptr;
+
+            unionType = dynamic_cast<UnionDataType *>(left);
+
+            if (left->type == DataType::Type::POINTER)
+            {
+                auto leftPtrType = dynamic_cast<PointerDataType *>(left);
+                if (leftPtrType->dataType->GetType() == DataType::Type::UNION)
+                {
+                    unionType = dynamic_cast<UnionDataType *>(
+                        leftPtrType->PointedToDatatype());
+                }
+            }
+
+            unionStmt = unionType->unionStmt;
+
+            PrimaryExpression *field =
+                dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+
+            if (!field || field->primary->GetType() != TokenType::IDENTIFIER)
+            {
+                ReportError(
+                    std::format(
+                        "Right expression of '.' must be an identifier"),
+                    maExpr->GetCodeErrString());
+            }
+            // Check if union has this field
+            auto itr =
+                std::find_if(unionStmt->fields.begin(), unionStmt->fields.end(),
+                             [field](VarDeclStatement *f)
+                             {
+                                 return f->GetIdentifier()->GetLexeme() ==
+                                        field->primary->GetLexeme();
+                             });
+            if (itr == unionStmt->fields.end())
+            {
+                ReportError(
+                    std::format(
+                        "union type '{}' does not have field with name '{}'",
+                        unionType->name, field->GetPrimary()->GetLexeme()),
+                    field->GetCodeErrString());
+            }
+
+            Scope *temp = currentScope;
+            currentScope = unionType->scope;
+            currentScope->lookUpParent = false;
+
+            EvaluateAndAssignDataTypeToExpression(maExpr->GetRightExpression());
+
+            DataType *rightDataType = exprToDataTypeMap[field];
+            exprToDataTypeMap[maExpr] = rightDataType;
+            currentScope = temp;
+            currentScope->lookUpParent = true;
         }
-        // Check if struct has this field
-        auto itr =
-            std::find_if(structStmt->fields.begin(), structStmt->fields.end(),
-                         [field](VarDeclStatement *f)
-                         {
-                             return f->GetIdentifier()->GetLexeme() ==
-                                    field->primary->GetLexeme();
-                         });
-        if (itr == structStmt->fields.end())
-        {
-            ReportError(
-                std::format(
-                    "Struct type '{}' does not have field with name '{}'",
-                    structType->name, field->GetPrimary()->GetLexeme()),
-                field->GetCodeErrString());
-        }
-
-        Scope *temp = currentScope;
-        currentScope = structType->scope;
-        currentScope->lookUpParent = false;
-
-        EvaluateAndAssignDataTypeToExpression(maExpr->GetRightExpression());
-
-        DataType *rightDataType = exprToDataTypeMap[field];
-        exprToDataTypeMap[maExpr] = rightDataType;
-        currentScope = temp;
-        currentScope->lookUpParent = true;
     }
     else if (dynamic_cast<InitializerListExpression *>(expression))
     {
@@ -1977,7 +2085,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         CastExpression *castExpression =
             dynamic_cast<CastExpression *>(expression);
         EvaluateAndAssignDataTypeToExpression(castExpression->GetExpression());
-
+        castExpression->isLvalue = castExpression->GetExpression()->IsLValue();
         exprToDataTypeMap[castExpression] =
             currentScope->GetDataType(castExpression->castToTypeToken);
 

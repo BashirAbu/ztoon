@@ -726,12 +726,34 @@ void CodeGen::GenStatementIR(Statement *statement)
     {
         VarDeclStatement *varDeclStatement =
             dynamic_cast<VarDeclStatement *>(statement);
+        UnionDataType *unionType = dynamic_cast<UnionDataType *>(
+            semanticAnalyzer.stmtToDataTypeMap[varDeclStatement]);
+        if (unionType)
+        {
+            // Get Largest datatype.
+            size_t largestSize = 0;
+            for (DataType *fieldType : unionType->fields)
+            {
+                IRType irFieldType = ZtoonTypeToLLVMType(fieldType);
+                size_t sizeInBytes =
+                    moduleDataLayout->getTypeSizeInBits(irFieldType.type) / 8;
+                if (largestSize < sizeInBytes)
+                {
+                    unionType->largestDatatype = fieldType;
+                    largestSize = sizeInBytes;
+                }
+            }
+            semanticAnalyzer.stmtToDataTypeMap[varDeclStatement] =
+                unionType->largestDatatype;
+        }
         DataType *type = semanticAnalyzer.stmtToDataTypeMap[varDeclStatement];
         ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(type);
         StructDataType *structType = dynamic_cast<StructDataType *>(type);
+
         IRType varDeclType = {};
         varDeclType.type = ZtoonTypeToLLVMType(type).type;
         varDeclType.isSigned = type->IsSigned();
+
         if (varDeclStatement->IsGlobal())
         {
             llvm::GlobalVariable *globalVar;
@@ -832,6 +854,8 @@ void CodeGen::GenStatementIR(Statement *statement)
                 semanticAnalyzer.currentScope->GetSymbol(
                     varDeclStatement->GetIdentifier()->GetLexeme(),
                     varDeclStatement->GetCodeErrString()));
+            irVariable->variabel->dataType =
+                semanticAnalyzer.stmtToDataTypeMap[varDeclStatement];
             irVariable->irType = varDeclType;
             AddIRSymbol(irVariable);
 
@@ -895,9 +919,8 @@ void CodeGen::GenStatementIR(Statement *statement)
         if (arrType)
         {
             std::vector<llvm::Value *> index;
-            AssignValueToVarArray(
-                {lValue.value, ZtoonTypeToLLVMType(arrType->dataType)},
-                varAssignmentStatement->GetRValue(), arrType, index);
+            AssignValueToVarArray(lValue, varAssignmentStatement->GetRValue(),
+                                  arrType, index);
         }
         else if (structType)
         {
@@ -1404,41 +1427,84 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
     {
         MemberAccessExpression *maExpr =
             dynamic_cast<MemberAccessExpression *>(expression);
-        auto type =
-            semanticAnalyzer.exprToDataTypeMap[maExpr->GetLeftExpression()];
-        StructDataType *structType = dynamic_cast<StructDataType *>(type);
-        PointerDataType *ptrType = dynamic_cast<PointerDataType *>(type);
-        IRValue leftValue =
-            GenExpressionIR(maExpr->GetLeftExpression(), !ptrType);
-        if (ptrType)
+        if (maExpr->accessType == MemberAccessExpression::AccessType::STRUCT)
         {
-            structType = dynamic_cast<StructDataType *>(ptrType->dataType);
-        }
-        size_t index = 0;
-        PrimaryExpression *primaryExpr =
-            dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
-        std::string rightName = primaryExpr->GetPrimary()->GetLexeme();
-        IRType fieldIRType = {};
-        for (size_t i = 0; i < structType->structStmt->GetFields().size(); i++)
-        {
-            if (rightName == structType->structStmt->GetFields()[i]
-                                 ->GetIdentifier()
-                                 ->GetLexeme())
+            auto type =
+                semanticAnalyzer.exprToDataTypeMap[maExpr->GetLeftExpression()];
+            StructDataType *structType = dynamic_cast<StructDataType *>(type);
+            PointerDataType *ptrType = dynamic_cast<PointerDataType *>(type);
+            IRValue leftValue =
+                GenExpressionIR(maExpr->GetLeftExpression(), !ptrType);
+            if (ptrType)
             {
-                index = i;
-                fieldIRType = ZtoonTypeToLLVMType(structType->fields[index]);
-                break;
+                structType = dynamic_cast<StructDataType *>(ptrType->dataType);
+            }
+            size_t index = 0;
+            PrimaryExpression *primaryExpr =
+                dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+            std::string rightName = primaryExpr->GetPrimary()->GetLexeme();
+            IRType fieldIRType = {};
+            for (size_t i = 0; i < structType->structStmt->GetFields().size();
+                 i++)
+            {
+                if (rightName == structType->structStmt->GetFields()[i]
+                                     ->GetIdentifier()
+                                     ->GetLexeme())
+                {
+                    index = i;
+                    fieldIRType =
+                        ZtoonTypeToLLVMType(structType->fields[index]);
+                    break;
+                }
+            }
+            IRType structIRType = ZtoonTypeToLLVMType(structType);
+            irValue.value = irBuilder->CreateStructGEP(structIRType.type,
+                                                       leftValue.value, index);
+            irValue.type = fieldIRType;
+
+            if (!isWrite)
+            {
+                irValue.value =
+                    irBuilder->CreateLoad(fieldIRType.type, irValue.value);
             }
         }
-        IRType structIRType = ZtoonTypeToLLVMType(structType);
-        irValue.value = irBuilder->CreateStructGEP(structIRType.type,
-                                                   leftValue.value, index);
-        irValue.type = fieldIRType;
-
-        if (!isWrite)
+        else if (maExpr->accessType ==
+                 MemberAccessExpression::AccessType::UNION)
         {
-            irValue.value =
-                irBuilder->CreateLoad(fieldIRType.type, irValue.value);
+            IRValue leftValue =
+                GenExpressionIR(maExpr->GetLeftExpression(), true);
+
+            IRType type =
+                ZtoonTypeToLLVMType(semanticAnalyzer.exprToDataTypeMap[maExpr]);
+            if (leftValue.type.type->isArrayTy())
+            {
+                leftValue.value = irBuilder->CreateInBoundsGEP(
+                    leftValue.type.type, leftValue.value,
+                    {irBuilder->getInt32(0), irBuilder->getInt32(0)});
+                auto arrType = dynamic_cast<ArrayDataType *>(
+                    semanticAnalyzer.exprToDataTypeMap[maExpr]);
+                leftValue.type = ZtoonTypeToLLVMType(arrType->dataType);
+            }
+
+            // leftValue =
+            //     CastIRValue(leftValue, {type.isSigned,
+            //                             llvm::PointerType::get(type.type,
+            //                             0)});
+            // leftValue.value = irBuilder->CreateBitCast(
+            //     leftValue.value, type.type->getPointerTo());
+            leftValue.value = irBuilder->CreateInBoundsGEP(
+                type.type, leftValue.value, {irBuilder->getInt32(0)});
+            leftValue.type = type;
+            if (isWrite)
+            {
+                irValue = leftValue;
+            }
+            else
+            {
+                irValue.value =
+                    irBuilder->CreateLoad(type.type, leftValue.value);
+                irValue.type = type;
+            }
         }
     }
     else if (dynamic_cast<SubscriptExpression *>(expression))
@@ -1834,7 +1900,8 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         IRValue rValue;
         if (!unaryExpression->GetSizeOfDataTypeToken())
         {
-            rValue = GenExpressionIR(unaryExpression->GetRightExpression());
+            rValue =
+                GenExpressionIR(unaryExpression->GetRightExpression(), isWrite);
             irValue.type = rValue.type;
         }
 
@@ -2034,8 +2101,13 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         {
             arrToPtrCast = true;
         }
-        IRValue toCastValue =
-            GenExpressionIR(castExpression->GetExpression(), arrToPtrCast);
+
+        IRValue toCastValue = GenExpressionIR(
+            castExpression->GetExpression(),
+            arrToPtrCast ||
+                semanticAnalyzer
+                        .exprToDataTypeMap[castExpression->GetExpression()]
+                        ->GetType() == DataType::Type::POINTER);
         irValue = CastIRValue(toCastValue, castType);
     }
     else if (dynamic_cast<PrimaryExpression *>(expression))

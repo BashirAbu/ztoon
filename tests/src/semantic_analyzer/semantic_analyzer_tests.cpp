@@ -680,3 +680,32 @@ TEST(SemanticAnalyzerStructMembersWithAggregateTypes)
     SemanticAnalyzer analyzer(stmts);
     analyzer.Analize();
 }
+
+TEST(SemanticAnalyzerUnionDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        union Vector2
+        {
+            x: f32;
+            y: i32;
+            members: f32[2];
+        }
+        
+        fn main()  {
+
+            un: Vector2;
+            un.x = 12.0;
+            un.y = 33;
+            un.members = {1.23, 3.343};
+            
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}

@@ -1,4 +1,5 @@
 #include "code_gen/code_gen.h"
+#include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "semantic_analyzer/semantic_analyzer.h"
 #include "ztest.h"
@@ -7,6 +8,7 @@
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -1747,6 +1749,9 @@ TEST(CodeGen_GlobalArray2DDeclWithInitializerList)
 }
 TEST(CodeGenStrings)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source =
         " fn printf(str: readonly i8*, ...) -> i32;"
@@ -1782,6 +1787,9 @@ TEST(CodeGenStrings)
 }
 TEST(CodeGenFunctionPrototypeVarArgs)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
         fn printf(str: readonly i8*, ...) -> i32;
@@ -1815,6 +1823,9 @@ TEST(CodeGenFunctionPrototypeVarArgs)
 
 TEST(CodeGenHeapAllocation)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
         fn printf(str: readonly i8*, ...) -> i32;
@@ -1873,6 +1884,9 @@ TEST(CodeGenHeapAllocation)
 }
 TEST(CodeGenRandomStuff)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
         fn printf(str: readonly i8*, ...) -> i32;
@@ -1913,6 +1927,9 @@ TEST(CodeGenRandomStuff)
 }
 TEST(CodeGenFunctionPointer)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
 
@@ -1955,6 +1972,9 @@ TEST(CodeGenFunctionPointer)
 }
 TEST(CodeGenGlobalFunctionPointer)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
 
@@ -1997,6 +2017,9 @@ TEST(CodeGenGlobalFunctionPointer)
 }
 TEST(CodeGenFunctionPointerAsParameter)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
 
@@ -2043,6 +2066,9 @@ TEST(CodeGenFunctionPointerAsParameter)
 }
 TEST(CodeGenArrayOfFunctionPointers)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
 
@@ -2094,6 +2120,9 @@ TEST(CodeGenArrayOfFunctionPointers)
 }
 TEST(CodeGenStructVariableDeclaration)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
 
@@ -2178,6 +2207,9 @@ TEST(CodeGen_StructEmptyListExpression)
 }
 TEST(CodeGenGlobalStructVariableDeclaration)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
 
@@ -2220,6 +2252,9 @@ TEST(CodeGenGlobalStructVariableDeclaration)
 }
 TEST(CodeGenComplexStruct)
 {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
     Lexer lexer;
     std::string source = R"(
         fn printf(str: readonly i8*, ...) -> i32;
@@ -2314,4 +2349,53 @@ TEST(CodeGenComplexStruct)
     auto Sym = err(JIT->lookup("main"));
     auto *Fp = (void (*)())Sym.getValue();
     Fp();
+}
+
+TEST(CodeGenUnionDeclaration)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+    Lexer lexer;
+    std::string source = R"(
+
+fn printf(str: readonly i8*, ...) -> i32;
+        
+        union Vector2
+        {
+            struct
+            {
+                x: f32;
+                y: f32;
+            }
+            components: f32[2];
+        }
+
+        fn main()  {
+
+           
+        }
+
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int64_t (*)())Sym.getValue();
+    int64_t ret = Fp();
 }

@@ -355,3 +355,30 @@ TEST(ParserStructDeclaration)
     Parser parser(lexer.GetTokens());
     auto ast = parser.Parse();
 }
+TEST(ParserUnionDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+
+        
+                
+        union Vector2 {
+            x: f32;
+            y: f32;
+
+            members: f32[2];
+        }
+
+        fn main() -> i32 {
+
+            un: Vector2;
+            un.x = 12;
+            un.y = 33;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    // lexer.DebugPrint();
+    Parser parser(lexer.GetTokens());
+    auto ast = parser.Parse();
+}

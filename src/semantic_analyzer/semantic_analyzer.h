@@ -83,15 +83,16 @@ class StructDataType : public DataType, public Symbol
     InitializerListExpression *defaultValuesList = nullptr;
     std::vector<DataType *> fields;
 };
-class UnionDataType : public DataType
+class UnionDataType : public DataType, public Symbol
 {
   public:
-  private:
+    virtual std::string GetName() override { return name; }
+    virtual DataType *GetDataType() override { return this; }
+    DataType *largestDatatype = nullptr;
     std::string name = "";
-    std::vector<class Variable *> fields;
-    friend class Scope;
-    friend class SemanticAnalyzer;
-    friend class CodeGen;
+    Scope *scope = nullptr;
+    UnionStatement *unionStmt;
+    std::vector<DataType *> fields;
 };
 template <typename T>
 

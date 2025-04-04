@@ -315,6 +315,35 @@ class StructStatement : public Statement
     friend class Parser;
     friend class SemanticAnalyzer;
 };
+class UnionStatement : public Statement
+{
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString ces = {};
+        ces.firstToken = token;
+        ces.str = std::format(" {}\n", identifier->GetLexeme());
+        ces.str += "{\n";
+        for (auto field : fields)
+        {
+            ces.str += field->GetCodeErrString().str;
+            ces.str += ";\n";
+        }
+
+        ces.str += "}";
+
+        return ces;
+    }
+    const std::vector<VarDeclStatement *> &GetFields() { return fields; }
+
+  private:
+    Token const *token = nullptr;
+    Token const *identifier = nullptr;
+    std::vector<VarDeclStatement *> fields;
+
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
 class ExpressionStatement : public Statement
 {
 
@@ -566,7 +595,6 @@ class FnStatement : public Statement
 
 class MemberAccessExpression : public Expression
 {
-
   public:
     CodeErrString GetCodeErrString() override
     {
@@ -584,6 +612,15 @@ class MemberAccessExpression : public Expression
 
     Expression *GetLeftExpression() { return leftExpr; }
     Expression *GetRightExpression() { return rightExpr; }
+
+    enum class AccessType
+    {
+        UNKNOWN,
+        STRUCT,
+        UNION
+    };
+
+    AccessType accessType = AccessType::UNKNOWN;
 
   private:
     Expression *leftExpr = nullptr;
@@ -830,9 +867,7 @@ class CastExpression : public Expression
 
         es.str = std::format(
             "{} as {}", expression->GetCodeErrString().str,
-            castToTypeToken ? castToTypeToken->GetDataType()->GetLexeme()
-                            : TokenDataTypeToString(
-                                  castToTypeToken->GetDataType()->GetType()));
+            castToTypeToken ? castToTypeToken->GetDataType()->GetLexeme() : "");
         return es;
     }
 
@@ -901,6 +936,7 @@ class Parser
     Statement *ParseBreakStatement();
     Statement *ParseContinueStatement();
     Statement *ParseStructStatement();
+    Statement *ParseUnionStatement();
     Statement *ParseRetStatement();
 
     Expression *ParseExpression();

@@ -321,7 +321,8 @@ Statement *Parser::ParseDeclaration()
 
     if (dynamic_cast<VarDeclStatement *>(declStmt) ||
         dynamic_cast<FnStatement *>(declStmt) ||
-        dynamic_cast<StructStatement *>(declStmt))
+        dynamic_cast<StructStatement *>(declStmt) ||
+        dynamic_cast<UnionStatement *>(declStmt))
     {
         VarDeclStatement *varDecl = dynamic_cast<VarDeclStatement *>(declStmt);
         if (varDecl)
@@ -361,7 +362,8 @@ Statement *Parser::ParseStatement()
         dynamic_cast<ForLoopStatement *>(statement) ||
         dynamic_cast<FnStatement *>(statement) ||
         Consume(TokenType::SEMICOLON) ||
-        dynamic_cast<StructStatement *>(statement))
+        dynamic_cast<StructStatement *>(statement) ||
+        dynamic_cast<UnionStatement *>(statement))
     {
         return statement;
     }
@@ -430,9 +432,62 @@ Statement *Parser::ParseStructStatement()
 
         return structStmt;
     }
-    return ParseFnStatement();
+    return ParseUnionStatement();
 }
 
+Statement *Parser::ParseUnionStatement()
+{
+    if (Consume(TokenType::UNION))
+    {
+        UnionStatement *unionStmt = gZtoonArena.Allocate<UnionStatement>();
+
+        if (!Consume(TokenType::IDENTIFIER))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected identifier after 'Union'", ces);
+        }
+
+        unionStmt->identifier = Prev();
+
+        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected '{' after 'struct'", ces);
+        }
+
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+            auto varDeclStmt =
+                dynamic_cast<VarDeclStatement *>(ParseVarDeclStatement());
+            if (!varDeclStmt)
+            {
+                CodeErrString ces;
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Only field declaration are allowd inside 'struct'",
+                            ces);
+            }
+            if (varDeclStmt->GetExpression())
+            {
+                ReportError("Union fileds cannot have default values",
+                            varDeclStmt->GetCodeErrString());
+            }
+            if (!Consume(TokenType::SEMICOLON))
+            {
+                ReportError("Expected ';' after field declaration",
+                            varDeclStmt->GetCodeErrString());
+            }
+            unionStmt->fields.push_back(varDeclStmt);
+        }
+
+        return unionStmt;
+    }
+    return ParseFnStatement();
+}
 Statement *Parser::ParseFnStatement()
 {
     if (Consume(TokenType::FN))
@@ -1413,13 +1468,13 @@ Expression *Parser::ParsePostfixExpression()
             const Token *op = Prev();
             PrimaryExpression *rightExpr =
                 dynamic_cast<PrimaryExpression *>(ParsePrimaryExpression());
-            if (!rightExpr &&
+            if (rightExpr &&
                 rightExpr->primary->GetType() != TokenType::IDENTIFIER)
             {
                 CodeErrString ces;
                 ces.firstToken = op;
                 ces.str = op->GetLexeme();
-                ReportError("Invalid expression after '->'", ces);
+                ReportError("Invalid expression after '.'", ces);
             }
             MemberAccessExpression *maExpr =
                 gZtoonArena.Allocate<MemberAccessExpression>();

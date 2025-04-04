@@ -25,8 +25,7 @@ extern std::unordered_map<std::string, std::function<void()>> test_funcs;
     {                                                                          \
         std::cout << std::format("Test \"{}\" at {}:{} failed.\n"              \
                                  "Message: {}.\n",                             \
-                                 __FUNCTION__, __FILE__, __LINE__, #result,    \
-                                 fail_msg);                                    \
+                                 __FUNCTION__, __FILE__, __LINE__, fail_msg);  \
         exit(-1);                                                              \
     }
 #define ASSERT_NE(value, result, fail_msg)                                     \
@@ -34,8 +33,7 @@ extern std::unordered_map<std::string, std::function<void()>> test_funcs;
     {                                                                          \
         std::cout << std::format("Test \"{}\" at {}:{} failed.\n"              \
                                  "Message: {}.\n",                             \
-                                 __FUNCTION__, __FILE__, __LINE__, #result,    \
-                                 fail_msg);                                    \
+                                 __FUNCTION__, __FILE__, __LINE__, fail_msg);  \
         exit(-1);                                                              \
     }
 

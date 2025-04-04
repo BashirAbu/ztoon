@@ -721,6 +721,8 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
         structType->complete = true;
         currentScope = temp;
+
+        stmtToDataTypeMap[structStmt] = structType;
     }
     else if (dynamic_cast<UnionStatement *>(statement))
     {
@@ -1699,12 +1701,13 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
 
             if (anonymousStruct)
             {
+                maExpr->accessType = MemberAccessExpression::AccessType::STRUCT;
                 MemberAccessExpression *expr =
                     gZtoonArena.Allocate<MemberAccessExpression>();
-                expr->accessType = MemberAccessExpression::AccessType::STRUCT;
-                expr->leftExpr = maExpr;
-                expr->rightExpr = maExpr->GetRightExpression();
-                maExpr = expr;
+                expr->accessType = MemberAccessExpression::AccessType::UNION;
+                expr->leftExpr = maExpr->GetLeftExpression();
+                exprToDataTypeMap[expr] = stmtToDataTypeMap[anonymousStruct];
+                maExpr->leftExpr = expr;
             }
 
             Scope *temp = currentScope;

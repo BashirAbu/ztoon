@@ -293,7 +293,8 @@ class StructStatement : public Statement
     {
         CodeErrString ces = {};
         ces.firstToken = token;
-        ces.str = std::format("struct {}\n", identifier->GetLexeme());
+        ces.str = std::format("struct {}\n",
+                              identifier ? identifier->GetLexeme() : "");
         ces.str += "{\n";
         for (auto field : fields)
         {

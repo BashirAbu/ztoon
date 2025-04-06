@@ -191,6 +191,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^-)"), TokenType::DASH});
     patterns.push_back({std::regex(R"(^\%)"), TokenType::PERCENTAGE});
     patterns.push_back({std::regex(R"(^as\b)"), TokenType::AS});
+    patterns.push_back({std::regex(R"(^::)"), TokenType::DOUBLE_COLON});
     patterns.push_back({std::regex(R"(^:)"), TokenType::COLON});
     patterns.push_back({std::regex(R"(^;)"), TokenType::SEMICOLON});
     patterns.push_back({std::regex(R"(^\()"), TokenType::LEFT_PAREN});

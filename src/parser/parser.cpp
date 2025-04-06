@@ -1,10 +1,8 @@
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser.h"
-#include "semantic_analyzer/semantic_analyzer.h"
+#include <algorithm>
 #include <format>
-#include <iostream>
-std::unordered_map<Token const *, Token const *> identifierMap;
 std::string DataTypeToken::ToString()
 {
     std::string str;
@@ -322,7 +320,8 @@ Statement *Parser::ParseDeclaration()
     if (dynamic_cast<VarDeclStatement *>(declStmt) ||
         dynamic_cast<FnStatement *>(declStmt) ||
         dynamic_cast<StructStatement *>(declStmt) ||
-        dynamic_cast<UnionStatement *>(declStmt))
+        dynamic_cast<UnionStatement *>(declStmt) ||
+        dynamic_cast<EnumStatement *>(declStmt))
     {
         VarDeclStatement *varDecl = dynamic_cast<VarDeclStatement *>(declStmt);
         if (varDecl)
@@ -363,7 +362,8 @@ Statement *Parser::ParseStatement()
         dynamic_cast<FnStatement *>(statement) ||
         Consume(TokenType::SEMICOLON) ||
         dynamic_cast<StructStatement *>(statement) ||
-        dynamic_cast<UnionStatement *>(statement))
+        dynamic_cast<UnionStatement *>(statement) ||
+        dynamic_cast<EnumStatement *>(statement))
     {
         return statement;
     }
@@ -391,7 +391,7 @@ Statement *Parser::ParseStructStatement(bool anonymous)
     if (Consume(TokenType::STRUCT))
     {
         StructStatement *structStmt = gZtoonArena.Allocate<StructStatement>();
-
+        structStmt->token = Prev();
         if (!anonymous && !Consume(TokenType::IDENTIFIER))
         {
             CodeErrString ces;
@@ -409,7 +409,7 @@ Statement *Parser::ParseStructStatement(bool anonymous)
             CodeErrString ces;
             ces.firstToken = Peek();
             ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected '{' after 'struct'", ces);
+            ReportError("Expected '{' after 'struct' identifier", ces);
         }
 
         while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
@@ -439,7 +439,7 @@ Statement *Parser::ParseUnionStatement()
     if (Consume(TokenType::UNION))
     {
         UnionStatement *unionStmt = gZtoonArena.Allocate<UnionStatement>();
-
+        unionStmt->token = Prev();
         if (!Consume(TokenType::IDENTIFIER))
         {
             CodeErrString ces;
@@ -455,7 +455,7 @@ Statement *Parser::ParseUnionStatement()
             CodeErrString ces;
             ces.firstToken = Peek();
             ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected '{' after 'struct'", ces);
+            ReportError("Expected '{' after 'union' identifier", ces);
         }
 
         while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
@@ -501,6 +501,112 @@ Statement *Parser::ParseUnionStatement()
         }
 
         return unionStmt;
+    }
+    return ParseEnumStatement();
+}
+
+Statement *Parser::ParseEnumStatement()
+{
+    if (Consume(TokenType::ENUM))
+    {
+        EnumStatement *enumStmt = gZtoonArena.Allocate<EnumStatement>();
+        enumStmt->token = Prev();
+
+        if (!Consume(TokenType::IDENTIFIER))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected identifier after 'enum'", ces);
+        }
+
+        enumStmt->identifier = Prev();
+
+        if (!Consume(TokenType::COLON))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected ':' after 'enum' identifier", ces);
+        }
+
+        enumStmt->datatype = ParseDataType();
+
+        if (!enumStmt->datatype)
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected 'datatype' after ':'", ces);
+        }
+        enumStmt->datatype->readOnly =
+            gZtoonArena.Allocate<Token>(TokenType::READONLY);
+
+        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected '{' after 'enum' identifier", ces);
+        }
+
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+
+            EnumStatement::Field *field =
+                gZtoonArena.Allocate<EnumStatement::Field>();
+            if (!Consume(TokenType::IDENTIFIER))
+            {
+                CodeErrString ces;
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Expected identifier after 'enum'", ces);
+            }
+            field->identifier = Prev();
+            if (Consume(TokenType::EQUAL))
+            {
+                field->expr = ParseExpression();
+                if (!field->expr)
+                {
+                    CodeErrString ces;
+                    ces.firstToken = Peek();
+                    ces.str = ces.firstToken->GetLexeme();
+                    ReportError("Expected expression after '='", ces);
+                }
+            }
+
+            auto itr =
+                std::find_if(enumStmt->fields.begin(), enumStmt->fields.end(),
+                             [field](EnumStatement::Field *other)
+                             {
+                                 return field->identifier->GetLexeme() ==
+                                        other->identifier->GetLexeme();
+                             });
+            if (itr != enumStmt->fields.end())
+            {
+                CodeErrString ces;
+                ces.firstToken = field->identifier;
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Field already defined", ces);
+            }
+            enumStmt->fields.push_back(field);
+            if (!Consume(TokenType::COMMA))
+            {
+                if (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+                {
+                    CodeErrString ces;
+                    ces.firstToken = Peek();
+                    ces.str = ces.firstToken->GetLexeme();
+                    ReportError("Expected ',' after field declaration", ces);
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        return enumStmt;
     }
     return ParseFnStatement();
 }
@@ -1429,7 +1535,8 @@ Expression *Parser::ParsePostfixExpression()
 {
     Expression *expr = ParsePrimaryExpression();
     while (TokenMatch(Peek()->GetType(), TokenType::PERIOD,
-                      TokenType::LEFT_PAREN, TokenType::LEFT_SQUARE_BRACKET))
+                      TokenType::DOUBLE_COLON, TokenType::LEFT_PAREN,
+                      TokenType::LEFT_SQUARE_BRACKET))
     {
         if (Consume(TokenType::LEFT_PAREN))
         {
@@ -1479,7 +1586,7 @@ Expression *Parser::ParsePostfixExpression()
             expr = subExpr;
         }
 
-        else if (Consume(TokenType::PERIOD))
+        else if (Consume(TokenType::PERIOD) || Consume(TokenType::DOUBLE_COLON))
         {
             const Token *op = Prev();
             PrimaryExpression *rightExpr =
@@ -1494,9 +1601,11 @@ Expression *Parser::ParsePostfixExpression()
             }
             MemberAccessExpression *maExpr =
                 gZtoonArena.Allocate<MemberAccessExpression>();
+            maExpr->token = op;
             maExpr->isLvalue = true;
             maExpr->leftExpr = expr;
             maExpr->rightExpr = rightExpr;
+            maExpr->accessType = MemberAccessExpression::AccessType::ENUM;
             expr = maExpr;
         }
     }

@@ -85,6 +85,11 @@ std::string DataType::ToString()
         break;
     }
     case DataType::Type::ENUM:
+    {
+        auto enumType = dynamic_cast<EnumDataType *>(this);
+        str += enumType->name;
+        break;
+    }
     case DataType::Type::UNION:
     {
         auto unionType = dynamic_cast<UnionDataType *>(this);
@@ -771,6 +776,42 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             currentScope->AddSymbol(var, f->GetCodeErrString());
         }
         currentScope = temp;
+
+        stmtToDataTypeMap[unionStmt] = unionType;
+    }
+    else if (dynamic_cast<EnumStatement *>(statement))
+    {
+        auto enumStmt = dynamic_cast<EnumStatement *>(statement);
+        auto enumType = gZtoonArena.Allocate<EnumDataType>();
+        enumType->type = DataType::Type::ENUM;
+        enumType->name = enumStmt->identifier->GetLexeme();
+        enumType->enumStmt = enumStmt;
+        enumType->datatype = currentScope->GetDataType(enumStmt->datatype);
+
+        if (!enumType->datatype->IsInteger())
+        {
+            ReportError("Enum type must be interger",
+                        enumStmt->GetCodeErrString());
+        }
+
+        stmtToDataTypeMap[enumStmt] = enumType;
+
+        currentScope->datatypesMap[enumType->name] = enumType;
+        currentScope->AddSymbol(enumType, enumStmt->GetCodeErrString());
+
+        for (auto f : enumStmt->fields)
+        {
+            if (f->expr)
+            {
+                EvaluateAndAssignDataTypeToExpression(f->expr);
+                auto fDataType = exprToDataTypeMap[f->expr];
+                if (!fDataType->IsInteger())
+                {
+                    ReportError("Only integer types are allowed",
+                                f->expr->GetCodeErrString());
+                }
+            }
+        }
     }
     else if (dynamic_cast<VarDeclStatement *>(statement))
     {
@@ -1535,10 +1576,55 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         EvaluateAndAssignDataTypeToExpression(maExpr->GetLeftExpression());
 
         DataType *left = exprToDataTypeMap[maExpr->GetLeftExpression()];
-        // left type must be pointer or a struct.
-        if (left->type != DataType::Type::POINTER &&
-            left->type != DataType::Type::STRUCT &&
-            left->type != DataType::Type::UNION)
+
+        if (maExpr->token->GetType() == TokenType::DOUBLE_COLON)
+        {
+            if (left->GetType() != DataType::Type::ENUM)
+            {
+                ReportError(
+                    "'::' operator is only used on 'enum' and 'package'",
+                    maExpr->GetCodeErrString());
+            }
+        }
+        else if (maExpr->token->GetType() == TokenType::COLON)
+        {
+            if (left->GetType() == DataType::Type::ENUM)
+            {
+                ReportError("'.' operator is only used on 'struct' and 'union'",
+                            maExpr->GetCodeErrString());
+            }
+        }
+
+        if (left->GetType() == DataType::Type::ENUM)
+        {
+            auto enumType = dynamic_cast<EnumDataType *>(left);
+            auto enumStmt = enumType->enumStmt;
+
+            PrimaryExpression *field =
+                dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+
+            auto itr =
+                std::find_if(enumStmt->fields.begin(), enumStmt->fields.end(),
+                             [field](EnumStatement::Field *other)
+                             {
+                                 return field->primary->GetLexeme() ==
+                                        other->identifier->GetLexeme();
+                             });
+            bool found = itr != enumStmt->fields.end();
+            if (!found)
+            {
+                ReportError(std::format("'{}' field not found in enum '{}'",
+                                        field->primary->GetLexeme(),
+                                        enumType->GetName()),
+                            maExpr->GetCodeErrString());
+            }
+
+            exprToDataTypeMap[maExpr] = left;
+        }
+
+        else if (left->type != DataType::Type::POINTER &&
+                 left->type != DataType::Type::STRUCT &&
+                 left->type != DataType::Type::UNION)
         {
             ReportError(
                 std::format("Left expression of '.' must be type of "
@@ -1610,11 +1696,11 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                 });
             if (itr == structStmt->fields.end())
             {
-                ReportError(
-                    std::format(
-                        "Struct type '{}' does not have field with name '{}'",
-                        structType->name, field->GetPrimary()->GetLexeme()),
-                    field->GetCodeErrString());
+                ReportError(std::format("Struct type '{}' does not have "
+                                        "field with name '{}'",
+                                        structType->name,
+                                        field->GetPrimary()->GetLexeme()),
+                            field->GetCodeErrString());
             }
 
             Scope *temp = currentScope;
@@ -1692,11 +1778,11 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             }
             if (!found)
             {
-                ReportError(
-                    std::format(
-                        "union type '{}' does not have field with name '{}'",
-                        unionType->name, field->GetPrimary()->GetLexeme()),
-                    field->GetCodeErrString());
+                ReportError(std::format("union type '{}' does not have "
+                                        "field with name '{}'",
+                                        unionType->name,
+                                        field->GetPrimary()->GetLexeme()),
+                            field->GetCodeErrString());
             }
 
             if (anonymousStruct)
@@ -2160,6 +2246,14 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     castExpression->GetCodeErrString());
             }
         }
+        else if (castType->GetType() == DataType::Type::ENUM)
+        {
+            if (!valueType->IsInteger())
+            {
+                ReportError("Only integer types can be casted to enum type",
+                            castExpression->GetCodeErrString());
+            }
+        }
         else if (castType->GetType() == DataType::Type::ARRAY)
         {
             ReportError(std::format("Cannot cast to array type"),
@@ -2168,7 +2262,8 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         else if ((valueType->GetType() == DataType::Type::ARRAY) &&
                  castType->GetType() == DataType::Type::POINTER)
         {
-            // check if the pointer is a pointer to the inner type of the array.
+            // check if the pointer is a pointer to the inner type of the
+            // array.
             auto arrType = dynamic_cast<ArrayDataType *>(valueType);
             auto ptrType = dynamic_cast<PointerDataType *>(castType);
 

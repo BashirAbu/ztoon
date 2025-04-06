@@ -44,6 +44,7 @@ enum class TokenType
     FALSE,
     QUESTION_MARK,
     COLON,
+    DOUBLE_COLON,
     SEMICOLON,
     ARROW,
     IDENTIFIER,
@@ -158,6 +159,7 @@ class Token
     friend class Lexer;
     friend class Parser;
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 template <typename T>
@@ -172,6 +174,7 @@ class TokenLiteral : public Token
   private:
     T value = {};
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class Lexer

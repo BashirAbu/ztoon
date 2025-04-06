@@ -359,9 +359,7 @@ TEST(ParserUnionDeclaration)
 {
     Lexer lexer;
     std::string source = R"(
-
-        
-                
+     
         union Vector2 {
             x: f32;
             y: f32;
@@ -374,6 +372,30 @@ TEST(ParserUnionDeclaration)
             un: Vector2;
             un.x = 12;
             un.y = 33;
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    // lexer.DebugPrint();
+    Parser parser(lexer.GetTokens());
+    auto ast = parser.Parse();
+}
+TEST(ParserEnumDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+     
+        enum Types : i32
+        {
+            UNKOWN = 0,
+            BOOL,
+            INT,
+            FLOAT
+        }
+
+        fn main() -> i32 {
+
+           
         }
         
     )";

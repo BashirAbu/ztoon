@@ -709,3 +709,30 @@ TEST(SemanticAnalyzerUnionDeclaration)
     SemanticAnalyzer analyzer(stmts);
     analyzer.Analize();
 }
+TEST(SemanticAnalyzerEnumDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+     
+        enum Types : i32
+        {
+            UNKOWN = 0,
+            BOOL,
+            INT,
+            FLOAT
+        }
+
+        fn main()  {
+
+            dataType: Types = Types::BOOL;
+           
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    // lexer.DebugPrint();
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer analyzer(stmts);
+    analyzer.Analize();
+}

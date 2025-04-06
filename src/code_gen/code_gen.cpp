@@ -23,8 +23,10 @@
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <memory>
+#include <string>
 IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
 {
     IRType irType = {};
@@ -118,9 +120,32 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
     }
     break;
     case DataType::Type::ENUM:
+    {
+        EnumDataType *enumType = dynamic_cast<EnumDataType *>(type);
+        irType = ZtoonTypeToLLVMType(enumType->datatype);
+    }
+    break;
     case DataType::Type::UNION:
     {
-        irType.type = irBuilder->getIntNTy(1);
+        UnionDataType *unionType = dynamic_cast<UnionDataType *>(type);
+        if (!unionType->largestDatatype)
+        {
+            // Get Largest datatype.
+            size_t largestSize = 0;
+            for (DataType *fieldType : unionType->fields)
+            {
+                IRType irFieldType = ZtoonTypeToLLVMType(fieldType);
+                size_t sizeInBytes =
+                    moduleDataLayout->getTypeSizeInBits(irFieldType.type) / 8;
+                if (largestSize < sizeInBytes)
+                {
+                    unionType->largestDatatype = fieldType;
+                    largestSize = sizeInBytes;
+                }
+            }
+        }
+
+        irType = ZtoonTypeToLLVMType(unionType->largestDatatype);
         break;
     }
     case DataType::Type::POINTER:
@@ -520,9 +545,11 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
             // copy data
             IRType elementType = ZtoonTypeToLLVMType(arrType->dataType);
             size_t arraySizeInBytes =
-                arrType->size * (elementType.type->getScalarSizeInBits() / 8);
+                arrType->size *
+                (moduleDataLayout->getTypeAllocSize(elementType.type));
             llvm::Value *sizeValue = irBuilder->getInt64(arraySizeInBytes);
-            llvm::Align alignment(elementType.type->getScalarSizeInBits() / 8);
+            llvm::Align alignment(
+                moduleDataLayout->getTypeAllocSize(elementType.type));
             llvm::Value *zeroValue = llvm::Constant::getNullValue(
                 ZtoonTypeToLLVMType(arrType->dataType).type);
             GEP = irBuilder->CreatePointerCast(
@@ -722,7 +749,67 @@ void CodeGen::GenIR()
 }
 void CodeGen::GenStatementIR(Statement *statement)
 {
-    if (dynamic_cast<VarDeclStatement *>(statement))
+    if (dynamic_cast<EnumStatement *>(statement))
+    {
+        auto enumStmt = dynamic_cast<EnumStatement *>(statement);
+
+        auto enumType = dynamic_cast<EnumDataType *>(
+            semanticAnalyzer.stmtToDataTypeMap[enumStmt]);
+        uint64_t uValue = 0;
+        int64_t sValue = 0;
+        bool useSigned = enumType->datatype->IsSigned();
+
+        for (auto f : enumStmt->fields)
+        {
+            f->useSigned = useSigned;
+            if (f->expr)
+            {
+                IRValue fValue = GenExpressionIR(f->expr);
+
+                llvm::ConstantInt *valueConst =
+                    llvm::dyn_cast<llvm::ConstantInt>(fValue.value);
+                if (!valueConst)
+                {
+                    ReportError("Expression is not constant",
+                                f->expr->GetCodeErrString());
+                }
+                if (useSigned)
+                {
+                    sValue = valueConst->getSExtValue();
+                    f->sValue = sValue;
+                }
+                else
+                {
+                    uValue = valueConst->getZExtValue();
+                    f->uValue = uValue;
+                }
+            }
+            else
+            {
+                if (useSigned)
+                {
+
+                    f->sValue = ++sValue;
+                }
+                else
+                {
+
+                    f->uValue = ++uValue;
+                }
+            }
+        }
+    }
+
+    else if (dynamic_cast<UnionStatement *>(statement))
+    {
+        auto unionStmt = dynamic_cast<UnionStatement *>(statement);
+
+        auto unionType = dynamic_cast<UnionDataType *>(
+            semanticAnalyzer.stmtToDataTypeMap[unionStmt]);
+
+        ZtoonTypeToLLVMType(unionType);
+    }
+    else if (dynamic_cast<VarDeclStatement *>(statement))
     {
         VarDeclStatement *varDeclStatement =
             dynamic_cast<VarDeclStatement *>(statement);
@@ -730,19 +817,6 @@ void CodeGen::GenStatementIR(Statement *statement)
             semanticAnalyzer.stmtToDataTypeMap[varDeclStatement]);
         if (unionType)
         {
-            // Get Largest datatype.
-            size_t largestSize = 0;
-            for (DataType *fieldType : unionType->fields)
-            {
-                IRType irFieldType = ZtoonTypeToLLVMType(fieldType);
-                size_t sizeInBytes =
-                    moduleDataLayout->getTypeSizeInBits(irFieldType.type) / 8;
-                if (largestSize < sizeInBytes)
-                {
-                    unionType->largestDatatype = fieldType;
-                    largestSize = sizeInBytes;
-                }
-            }
             semanticAnalyzer.stmtToDataTypeMap[varDeclStatement] =
                 unionType->largestDatatype;
         }
@@ -1486,12 +1560,6 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                 leftValue.type = ZtoonTypeToLLVMType(arrType->dataType);
             }
 
-            // leftValue =
-            //     CastIRValue(leftValue, {type.isSigned,
-            //                             llvm::PointerType::get(type.type,
-            //                             0)});
-            // leftValue.value = irBuilder->CreateBitCast(
-            //     leftValue.value, type.type->getPointerTo());
             leftValue.value = irBuilder->CreateInBoundsGEP(
                 type.type, leftValue.value, {irBuilder->getInt32(0)});
             leftValue.type = type;
@@ -1505,6 +1573,32 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                     irBuilder->CreateLoad(type.type, leftValue.value);
                 irValue.type = type;
             }
+        }
+        else if (maExpr->accessType == MemberAccessExpression::AccessType::ENUM)
+        {
+            auto enumType = dynamic_cast<EnumDataType *>(
+                semanticAnalyzer.exprToDataTypeMap[maExpr]);
+            IRType type = ZtoonTypeToLLVMType(enumType);
+            auto enumStmt = enumType->enumStmt;
+            auto primaryExpr =
+                dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+
+            EnumStatement::Field *enumField = nullptr;
+            for (auto f : enumStmt->fields)
+            {
+                if (f->identifier->GetLexeme() ==
+                    primaryExpr->primary->GetLexeme())
+                {
+                    enumField = f;
+                    break;
+                }
+            }
+
+            llvm::Constant *value = llvm::ConstantInt::get(
+                type.type,
+                enumField->useSigned ? enumField->sValue : enumField->uValue);
+            irValue.value = value;
+            irValue.type = type;
         }
     }
     else if (dynamic_cast<SubscriptExpression *>(expression))
@@ -2092,14 +2186,13 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
             dynamic_cast<CastExpression *>(expression);
         DataType *castDataType =
             semanticAnalyzer.exprToDataTypeMap[castExpression];
-
+        DataType *valueType =
+            semanticAnalyzer.exprToDataTypeMap[castExpression->GetExpression()];
         IRType castType = ZtoonTypeToLLVMType(castDataType);
-        IRType originalType = ZtoonTypeToLLVMType(
-            semanticAnalyzer
-                .exprToDataTypeMap[castExpression->GetExpression()]);
+        IRType originalType = ZtoonTypeToLLVMType(valueType);
+
         bool arrToPtrCast = false;
-        if (semanticAnalyzer.exprToDataTypeMap[castExpression->GetExpression()]
-                    ->GetType() == DataType::Type::ARRAY &&
+        if (valueType->GetType() == DataType::Type::ARRAY &&
             castDataType->GetType() == DataType::Type::POINTER)
         {
             arrToPtrCast = true;
@@ -2107,10 +2200,54 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
 
         IRValue toCastValue = GenExpressionIR(
             castExpression->GetExpression(),
-            arrToPtrCast ||
-                semanticAnalyzer
-                        .exprToDataTypeMap[castExpression->GetExpression()]
-                        ->GetType() == DataType::Type::POINTER);
+            arrToPtrCast || valueType->GetType() == DataType::Type::POINTER);
+        if (castDataType->GetType() == DataType::Type::ENUM)
+        {
+            llvm::ConstantInt *value =
+                llvm::dyn_cast<llvm::ConstantInt>(toCastValue.value);
+            if (!value)
+            {
+                ReportError(
+                    "Only compile time integer values are allowd to  be casted "
+                    "to enum type",
+                    castExpression->GetExpression()->GetCodeErrString());
+            }
+            auto enumType = dynamic_cast<EnumDataType *>(castDataType);
+            auto enumStmt = enumType->enumStmt;
+            bool found = false;
+            for (auto f : enumStmt->fields)
+            {
+                if (f->useSigned)
+                {
+                    int64_t v = value->getSExtValue();
+                    if (v == f->sValue)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                else
+                {
+                    uint64_t v = value->getZExtValue();
+
+                    if (v == f->uValue)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found)
+            {
+                ReportError(
+                    std::format(
+                        "'{}' value not found in enum type '{}'",
+                        castExpression->GetExpression()->GetCodeErrString().str,
+                        enumType->GetName()),
+                    castExpression->GetExpression()->GetCodeErrString());
+            }
+        }
         irValue = CastIRValue(toCastValue, castType);
     }
     else if (dynamic_cast<PrimaryExpression *>(expression))

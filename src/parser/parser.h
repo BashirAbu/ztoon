@@ -1,9 +1,9 @@
 #pragma once
 #include "lexer/lexer.h"
-#include <cmath>
+#include <cstdint>
 #include <format>
+#include <map>
 #include <string>
-#include <unordered_map>
 /*
   program -> declaration* "EOF" ;
   declaration -> var_decl_statement* | fn_statement* | struct_decl_statement* |
@@ -237,6 +237,7 @@ class VarDeclStatement : public Statement
     bool isGlobal = false;
     friend class Parser;
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 class VarCompoundAssignmentStatement : public Statement
 {
@@ -345,6 +346,50 @@ class UnionStatement : public Statement
     friend class Parser;
     friend class SemanticAnalyzer;
 };
+
+class EnumStatement : public Statement
+{
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString ces = {};
+        ces.firstToken = token;
+        ces.str = std::format(" {} : {}\n", identifier->GetLexeme(),
+                              datatype->ToString());
+        ces.str += "{\n";
+        for (auto field : fields)
+        {
+            ces.str += field->identifier->GetLexeme();
+            ces.str += ces.str +=
+                field->expr ? "=" + field->expr->GetCodeErrString().str : "";
+            ces.str += ",\n";
+        }
+
+        ces.str += "}";
+
+        return ces;
+    }
+
+    struct Field
+    {
+        Token const *identifier = nullptr;
+        Expression *expr = nullptr;
+        uint64_t uValue = 0;
+        int64_t sValue = 0;
+        bool useSigned = false;
+    };
+
+  private:
+    Token const *token = nullptr;
+    Token const *identifier = nullptr;
+    DataTypeToken *datatype = nullptr;
+    std::vector<Field *> fields;
+
+    friend class Parser;
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
+};
+
 class ExpressionStatement : public Statement
 {
 
@@ -618,7 +663,9 @@ class MemberAccessExpression : public Expression
     {
         UNKNOWN,
         STRUCT,
-        UNION
+        UNION,
+        ENUM,
+        PACKAGE
     };
 
     AccessType accessType = AccessType::UNKNOWN;
@@ -626,6 +673,7 @@ class MemberAccessExpression : public Expression
   private:
     Expression *leftExpr = nullptr;
     Expression *rightExpr = nullptr;
+    const Token *token = nullptr;
     std::vector<Expression *> args;
     friend class Parser;
     friend class SemanticAnalyzer;
@@ -906,6 +954,7 @@ class PrimaryExpression : public Expression
     Token const *primary = nullptr;
     friend class Parser;
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class Parser
@@ -938,6 +987,7 @@ class Parser
     Statement *ParseContinueStatement();
     Statement *ParseStructStatement(bool anonymous = false);
     Statement *ParseUnionStatement();
+    Statement *ParseEnumStatement();
     Statement *ParseRetStatement();
 
     Expression *ParseExpression();

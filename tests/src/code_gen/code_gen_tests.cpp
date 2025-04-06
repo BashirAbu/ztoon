@@ -900,7 +900,7 @@ TEST(CodeGen_DerefPTR)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -1293,7 +1293,7 @@ TEST(CodeGenFunctionParamterArrayTypeByReferenceAndRetArrayTypeByReference)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -2202,6 +2202,54 @@ TEST(CodeGen_StructEmptyListExpression)
     float r = Fp();
     ASSERT_EQ(r, 0, "Value should be 0");
 }
+TEST(CodeGen_ArrayOfStructs)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+
+    std::string source = R"(
+            
+         struct Vector2 {
+                    x: f32 = 22.534;
+                    y: f32 = 3422.0;
+                }
+                
+        fn main() -> f32
+        {
+            v: Vector2[5] = {};
+            for i : i32 = 0; i < 5; i++ {
+                v[i].x = i as f32;
+                v[i].y = (v[i].x as f32 )* 2.0;
+            }
+            ret v[2].y;
+        }
+    )";
+
+    Lexer lexer;
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (float (*)())Sym.getValue();
+    float r = Fp();
+    ASSERT_EQ((int)r, 4, "Value should be 4");
+}
 TEST(CodeGenGlobalStructVariableDeclaration)
 {
     llvm::InitializeNativeTarget();
@@ -2236,7 +2284,7 @@ TEST(CodeGenGlobalStructVariableDeclaration)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -2396,7 +2444,7 @@ TEST(CodeGenUnionDeclarationWithAnonymousStruct)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -2420,6 +2468,58 @@ TEST(CodeGenUnionDeclaration)
 
         union Vector2
         {
+            x: f32;
+            y: f32;
+        }
+
+        fn main() -> f32 {
+
+           foo: Vector2;
+           foo.x = 333.343;
+           printf("%f\n", foo.y as f64);
+           foo.y = 2.0004545;
+           
+           printf("%f\n", foo.x as f64);
+
+           ret foo.y;
+        }
+
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (float (*)())Sym.getValue();
+    float ret = Fp();
+    ASSERT_EQ((int)ret, 2, "Value should be 2");
+}
+TEST(CodeGenArrayOfUnions)
+{
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+    Lexer lexer;
+    std::string source = R"(
+
+        fn printf(str: readonly i8*, ...) -> i32;
+
+        union Vector2
+        {
             struct
             {
                 x: f32;
@@ -2428,18 +2528,70 @@ TEST(CodeGenUnionDeclaration)
             components: f32[2];
         }
 
-        fn main()  {
+        fn main() -> f32  {
 
-           foo: Vector2;
-           foo.x = 333.343;
-           printf("%f\n", foo.components[0] as f64);
-           foo.components[0] = 0.0004545;
-           
-           printf("%f\n", foo.x as f64);
+           vectors : Vector2[10];
+
+           for i : i32 = 0; i < 10; i ++
+           {
+               vectors[i].y = i as f32;
+
+               printf("vectors[%d].components[0] = %f\n", i, vectors[i].components[1] as f64);
+           }
+
+            
+           ret vectors[7].x;
         }
 
     )";
     lexer.Tokenize(source, "test.ztoon");
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (float (*)())Sym.getValue();
+    float ret = Fp();
+    ASSERT_EQ((int)ret, 0, "Value should be 0");
+}
+
+TEST(CodeGenEnumDeclaration)
+{
+    Lexer lexer;
+    std::string source = R"(
+     
+        enum Types : i32
+        {
+            UNKOWN = 0,
+            BOOL,
+            INT,
+            FLOAT
+        }
+
+        fn main() -> Types  {
+
+            dataType: Types = Types::BOOL;
+
+            ret dataType;
+           
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    // lexer.DebugPrint();
     Parser parser(lexer.GetTokens());
     auto stmts = parser.Parse();
     SemanticAnalyzer sa(stmts);
@@ -2458,6 +2610,53 @@ TEST(CodeGenUnionDeclaration)
                                     std::move(codeGen.ctx));
     err(JIT->addIRModule(std::move(TSM)));
     auto Sym = err(JIT->lookup("main"));
-    auto *Fp = (int64_t (*)())Sym.getValue();
-    int64_t ret = Fp();
+    auto *Fp = (int (*)())Sym.getValue();
+    int ret = Fp();
+    ASSERT_EQ(ret, 1, "Value should be 1");
+}
+TEST(CodeGenEnumTypeCasting)
+{
+    Lexer lexer;
+    std::string source = R"(
+     
+        enum Types : i32
+        {
+            UNKOWN = 0,
+            BOOL,
+            INT,
+            FLOAT
+        }
+
+        fn main() -> i32  {
+            // castee must be integer and it is value in the enum
+            dataType: Types = 3 as Types;
+
+            ret dataType as i32;
+           
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    // lexer.DebugPrint();
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int ret = Fp();
+    ASSERT_EQ(ret, 1, "Value should be 1");
 }

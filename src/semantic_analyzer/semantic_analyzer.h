@@ -94,20 +94,15 @@ class UnionDataType : public DataType, public Symbol
     UnionStatement *unionStmt;
     std::vector<DataType *> fields;
 };
-template <typename T>
 
-class EnumDataType : public DataType
+class EnumDataType : public DataType, public Symbol
 {
-
   public:
-  private:
-    std::string name = "";
-    struct Field
-    {
-        PrimaryExpression *identifier;
-        T value;
-    };
-    std::vector<Field> fields;
+    virtual std::string GetName() override { return name; }
+    virtual DataType *GetDataType() override { return this; }
+    std::string name;
+    EnumStatement *enumStmt = nullptr;
+    DataType *datatype = nullptr;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;

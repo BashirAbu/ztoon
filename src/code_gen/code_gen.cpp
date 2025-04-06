@@ -2201,53 +2201,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
         IRValue toCastValue = GenExpressionIR(
             castExpression->GetExpression(),
             arrToPtrCast || valueType->GetType() == DataType::Type::POINTER);
-        if (castDataType->GetType() == DataType::Type::ENUM)
-        {
-            llvm::ConstantInt *value =
-                llvm::dyn_cast<llvm::ConstantInt>(toCastValue.value);
-            if (!value)
-            {
-                ReportError(
-                    "Only compile time integer values are allowd to  be casted "
-                    "to enum type",
-                    castExpression->GetExpression()->GetCodeErrString());
-            }
-            auto enumType = dynamic_cast<EnumDataType *>(castDataType);
-            auto enumStmt = enumType->enumStmt;
-            bool found = false;
-            for (auto f : enumStmt->fields)
-            {
-                if (f->useSigned)
-                {
-                    int64_t v = value->getSExtValue();
-                    if (v == f->sValue)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                else
-                {
-                    uint64_t v = value->getZExtValue();
 
-                    if (v == f->uValue)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!found)
-            {
-                ReportError(
-                    std::format(
-                        "'{}' value not found in enum type '{}'",
-                        castExpression->GetExpression()->GetCodeErrString().str,
-                        enumType->GetName()),
-                    castExpression->GetExpression()->GetCodeErrString());
-            }
-        }
         irValue = CastIRValue(toCastValue, castType);
     }
     else if (dynamic_cast<PrimaryExpression *>(expression))

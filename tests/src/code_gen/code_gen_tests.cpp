@@ -2622,7 +2622,7 @@ TEST(CodeGenEnumTypeCasting)
         enum Types : i32
         {
             UNKOWN = 0,
-            BOOL,
+            BOOL = -1,
             INT,
             FLOAT
         }
@@ -2658,5 +2658,5 @@ TEST(CodeGenEnumTypeCasting)
     auto Sym = err(JIT->lookup("main"));
     auto *Fp = (int (*)())Sym.getValue();
     int ret = Fp();
-    ASSERT_EQ(ret, 1, "Value should be 1");
+    ASSERT_EQ(ret, 3, "Value should be 3");
 }

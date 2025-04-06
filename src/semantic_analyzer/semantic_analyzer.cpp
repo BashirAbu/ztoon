@@ -386,6 +386,7 @@ bool DataType::IsNumerical()
     case Type::U64:
     case Type::F32:
     case Type::F64:
+    case Type::ENUM:
         return true;
     default:
         return false;
@@ -403,6 +404,7 @@ bool DataType::IsInteger()
     case Type::U16:
     case Type::U32:
     case Type::U64:
+    case Type::ENUM:
         return true;
     default:
         return false;
@@ -2246,14 +2248,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     castExpression->GetCodeErrString());
             }
         }
-        else if (castType->GetType() == DataType::Type::ENUM)
-        {
-            if (!valueType->IsInteger())
-            {
-                ReportError("Only integer types can be casted to enum type",
-                            castExpression->GetCodeErrString());
-            }
-        }
+
         else if (castType->GetType() == DataType::Type::ARRAY)
         {
             ReportError(std::format("Cannot cast to array type"),

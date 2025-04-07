@@ -2,8 +2,8 @@
 #include "lexer/lexer.h"
 #include <cstdint>
 #include <format>
-#include <map>
 #include <string>
+#include <vector>
 /*
   program -> declaration* "EOF" ;
   declaration -> var_decl_statement* | fn_statement* | struct_decl_statement* |
@@ -436,6 +436,59 @@ class BlockStatement : public Statement
     friend class SemanticAnalyzer;
 };
 
+class SwitchStatement : public Statement
+{
+
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString ces = {};
+        ces.firstToken = token;
+        ces.str += "switch " + matchExpr->GetCodeErrString().str + "\n{\n";
+        for (auto c : cases)
+        {
+            ces.str += "case ";
+            for (auto expr : c->exprs)
+            {
+                ces.str += expr->GetCodeErrString().str + ",";
+            }
+            if (ces.str.ends_with(','))
+            {
+                ces.str.pop_back();
+            }
+            ces.str += ":\n";
+            ces.str += c->blockStatement->GetCodeErrString().str;
+            ces.str += "\n";
+        }
+
+        if (defualtCase)
+        {
+            ces.str += "defualt:\n";
+            ces.str += defualtCase->blockStatement->GetCodeErrString().str;
+        }
+        ces.str += "\n}";
+        return ces;
+    }
+
+    Expression *const GetMatchExpr() const { return matchExpr; };
+    struct Case
+    {
+        std::vector<Expression *> exprs;
+        BlockStatement *blockStatement;
+    };
+    const std::vector<Case *> GetCases() { return cases; };
+    Case *const GetDefualtCase() { return defualtCase; }
+
+  private:
+    const Token *token = nullptr;
+    Expression *matchExpr = nullptr;
+
+    std::vector<Case *> cases;
+    Case *defualtCase = nullptr;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
+
 class IfStatement : public Statement
 {
   public:
@@ -464,6 +517,7 @@ class IfStatement : public Statement
     BlockStatement *blockStatement;
     std::vector<Statement *> nextElseIforElseStatements;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 
 class ElseIfStatement : public Statement
@@ -490,6 +544,7 @@ class ElseIfStatement : public Statement
     class Expression *expression = nullptr;
     BlockStatement *blockStatement;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 class ElseStatement : public Statement
 {
@@ -512,6 +567,7 @@ class ElseStatement : public Statement
   private:
     BlockStatement *blockStatement;
     friend class Parser;
+    friend class SemanticAnalyzer;
 };
 
 class WhileLoopStatement : public Statement
@@ -981,6 +1037,7 @@ class Parser
     Statement *ParseIfStatement();
     Statement *ParseElseIfStatement();
     Statement *ParseElseStatement();
+    Statement *ParseSwitchStatement();
     Statement *ParseWhileLoopStatement();
     Statement *ParseForLoopStatement();
     Statement *ParseBreakStatement();

@@ -109,7 +109,10 @@ enum class TokenType
     CONTINUE,
     STRUCT,
     UNION,
-    ENUM
+    ENUM,
+    SWITCH,
+    CASE,
+    DEFAULT,
 };
 
 std::string TokenDataTypeToString(TokenType type);

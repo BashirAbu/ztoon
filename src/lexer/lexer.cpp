@@ -147,6 +147,9 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^if\b)"), TokenType::IF});
     patterns.push_back({std::regex(R"(^else\b)"), TokenType::ELSE});
     patterns.push_back({std::regex(R"(^while\b)"), TokenType::WHILE});
+    patterns.push_back({std::regex(R"(^switch\b)"), TokenType::SWITCH});
+    patterns.push_back({std::regex(R"(^case\b)"), TokenType::CASE});
+    patterns.push_back({std::regex(R"(^default\b)"), TokenType::DEFAULT});
     patterns.push_back({std::regex(R"(^for\b)"), TokenType::FOR});
     patterns.push_back({std::regex(R"(^fn\b)"), TokenType::FN});
     patterns.push_back({std::regex(R"(^ret\b)"), TokenType::RET});

@@ -404,3 +404,42 @@ TEST(ParserEnumDeclaration)
     Parser parser(lexer.GetTokens());
     auto ast = parser.Parse();
 }
+TEST(ParserSwitchStatement)
+{
+    Lexer lexer;
+    std::string source = R"(
+     
+        enum Types : i32
+        {
+            UNKOWN = 0,
+            BOOL,
+            INT,
+            FLOAT
+        }
+
+        fn main() -> i32 {
+
+            type : Types = Types::BOOL;
+           switch (type)
+           {
+               case Types::UNKONW, Types::BOOL:
+               {
+                   
+               }
+               case Types::INT:
+               {
+                   
+               }
+               default:
+               {
+                   
+               }
+           }
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    // lexer.DebugPrint();
+    Parser parser(lexer.GetTokens());
+    auto ast = parser.Parse();
+}

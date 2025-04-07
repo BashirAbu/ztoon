@@ -2602,7 +2602,7 @@ TEST(CodeGenEnumDeclaration)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    codeGen.module->print(llvm::outs(), nullptr);
+    // codeGen.module->print(llvm::outs(), nullptr);
 
     llvm::ExitOnError err;
     auto JIT = err(llvm::orc::LLJITBuilder().create());
@@ -2633,6 +2633,69 @@ TEST(CodeGenEnumTypeCasting)
 
             ret dataType as i32;
            
+        }
+        
+    )";
+    lexer.Tokenize(source, "test.ztoon");
+    // lexer.DebugPrint();
+    Parser parser(lexer.GetTokens());
+    auto stmts = parser.Parse();
+    SemanticAnalyzer sa(stmts);
+    sa.Analize();
+    CodeGen codeGen(sa, "x86_64-pc-windows-msvc");
+    codeGen.GenIR();
+    if (llvm::verifyModule(*codeGen.module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    llvm::ExitOnError err;
+    auto JIT = err(llvm::orc::LLJITBuilder().create());
+    llvm::orc::ThreadSafeModule TSM(std::move(codeGen.module),
+                                    std::move(codeGen.ctx));
+    err(JIT->addIRModule(std::move(TSM)));
+    auto Sym = err(JIT->lookup("main"));
+    auto *Fp = (int (*)())Sym.getValue();
+    int ret = Fp();
+    ASSERT_EQ(ret, 3, "Value should be 3");
+}
+TEST(CodeGenSwitchStatement)
+{
+    Lexer lexer;
+    std::string source = R"(
+     
+        fn printf(str: readonly i8*, ...) -> i32;
+        enum Types : i32
+        {
+            UNKNOWN = 0,
+            BOOL,
+            INT,
+            FLOAT
+        }
+
+        fn main() -> i32 {
+
+            type : Types = Types::FLOAT;
+           switch (8 as Types)
+           {
+               case Types::UNKNOWN, Types::BOOL , Types::FLOAT, Types::INT, 8 as Types:
+               {
+                    printf("BOOL, UNKNOWN, FLOAT");
+                    ret 1;
+               }
+               case Types::INT:
+               {
+                   printf("INT");
+                   ret 2;
+               }
+               default:
+               {
+                   printf("Def");
+                   ret 3;
+               }
+           }
+
         }
         
     )";

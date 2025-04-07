@@ -1036,6 +1036,119 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         currentScope = temp;
         currentBlockStatement = blockTemp;
     }
+    else if (dynamic_cast<SwitchStatement *>(statement))
+    {
+        auto switchStmt = dynamic_cast<SwitchStatement *>(statement);
+        if (switchStmt->GetCases().empty() && switchStmt->defualtCase)
+        {
+            ReportError("Cannot have only default case",
+                        switchStmt->GetCodeErrString());
+        }
+        EvaluateAndAssignDataTypeToExpression(switchStmt->matchExpr);
+        IfStatement *ifStmt = gZtoonArena.Allocate<IfStatement>();
+        bool first = true;
+
+        auto tokenEQEQ = gZtoonArena.Allocate<Token>(TokenType::EQUAL_EQUAL);
+        tokenEQEQ->lexeme = "==";
+        auto tokenOR = gZtoonArena.Allocate<Token>(TokenType::OR);
+        tokenOR->lexeme = "||";
+        for (auto c : switchStmt->GetCases())
+        {
+            std::vector<BinaryExpression *> expressions;
+
+            for (auto expr : c->exprs)
+            {
+                auto bExpr = gZtoonArena.Allocate<BinaryExpression>();
+                bExpr->op = tokenEQEQ;
+                bExpr->left = switchStmt->matchExpr;
+                bExpr->right = expr;
+
+                expressions.push_back(bExpr);
+            }
+
+            BinaryExpression *prevBExpr = nullptr;
+            if (expressions.size() > 1)
+            {
+                std::function<BinaryExpression *(BinaryExpression *)>
+                    buildExpr = nullptr;
+
+                size_t index = 0;
+                BinaryExpression *currentBExpr =
+                    gZtoonArena.Allocate<BinaryExpression>();
+                currentBExpr->op = tokenOR;
+                currentBExpr->left = expressions[index];
+                index++;
+                buildExpr = [&](BinaryExpression *bExpr) -> BinaryExpression *
+                {
+                    BinaryExpression *result = nullptr;
+                    if (bExpr && !bExpr->right)
+                    {
+
+                        if ((index + 1) < expressions.size())
+                        {
+                            bExpr->right = buildExpr(nullptr);
+                        }
+                        else
+                        {
+                            bExpr->right = expressions[index];
+                            index++;
+                        }
+                        result = bExpr;
+                    }
+                    else
+                    {
+                        result = gZtoonArena.Allocate<BinaryExpression>();
+                        result->op = tokenOR;
+                        result->left = expressions[index];
+                        index++;
+                        buildExpr(result);
+                    }
+
+                    return result;
+                };
+
+                prevBExpr = buildExpr(currentBExpr);
+            }
+            else
+            {
+                prevBExpr = expressions[0];
+            }
+
+            if (first)
+            {
+                ifStmt->expression = prevBExpr;
+                ifStmt->blockStatement = c->blockStatement;
+            }
+            else
+            {
+                ElseIfStatement *elifStmt =
+                    gZtoonArena.Allocate<ElseIfStatement>();
+                elifStmt->blockStatement = c->blockStatement;
+                elifStmt->expression = prevBExpr;
+
+                ifStmt->nextElseIforElseStatements.push_back(elifStmt);
+            }
+
+            first = false;
+        }
+
+        if (switchStmt->defualtCase)
+        {
+            ElseStatement *elseStmt = gZtoonArena.Allocate<ElseStatement>();
+            elseStmt->blockStatement = switchStmt->defualtCase->blockStatement;
+            ifStmt->nextElseIforElseStatements.push_back(elseStmt);
+        }
+        AnalizeStatement(ifStmt);
+        for (size_t index = 0; index < currentBlockStatement->statements.size();
+             index++)
+        {
+            if (currentBlockStatement->statements[index] == switchStmt)
+            {
+                currentBlockStatement->statements[index] = ifStmt;
+                break;
+            }
+        }
+    }
     else if (dynamic_cast<IfStatement *>(statement))
     {
         IfStatement *ifStatement = dynamic_cast<IfStatement *>(statement);

@@ -363,7 +363,8 @@ Statement *Parser::ParseStatement()
         Consume(TokenType::SEMICOLON) ||
         dynamic_cast<StructStatement *>(statement) ||
         dynamic_cast<UnionStatement *>(statement) ||
-        dynamic_cast<EnumStatement *>(statement))
+        dynamic_cast<EnumStatement *>(statement) ||
+        dynamic_cast<SwitchStatement *>(statement))
     {
         return statement;
     }
@@ -790,9 +791,105 @@ Statement *Parser::ParseVarDeclStatement()
         }
         return varDeclStatement;
     }
+    return ParseSwitchStatement();
+}
+Statement *Parser::ParseSwitchStatement()
+{
+    while (Consume(TokenType::SWITCH))
+    {
+        SwitchStatement *switchStmt = gZtoonArena.Allocate<SwitchStatement>();
+        switchStmt->token = Prev();
+
+        switchStmt->matchExpr = ParseExpression();
+
+        if (!switchStmt->matchExpr)
+        {
+            CodeErrString ces;
+            ces.firstToken = switchStmt->token;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("expected expression after 'switch'", ces);
+        }
+
+        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
+        {
+            ReportError("expected '{' after expression",
+                        switchStmt->matchExpr->GetCodeErrString());
+        }
+
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+            if (Consume(TokenType::CASE))
+            {
+                const Token *caseToken = Prev();
+                SwitchStatement::Case *switchCase =
+                    gZtoonArena.Allocate<SwitchStatement::Case>();
+
+                while (!Consume(TokenType::COLON))
+                {
+                    Expression *e = ParseExpression();
+                    if (!e)
+                    {
+                        CodeErrString ces;
+                        ces.firstToken = Peek();
+                        ces.str = ces.firstToken->GetLexeme();
+                        ReportError(
+                            std::format("expected expression after '{}'",
+                                        Peek()->GetLexeme()),
+                            ces);
+                    }
+                    switchCase->exprs.push_back(e);
+                    if (!Consume(TokenType::COMMA))
+                    {
+                        if (Peek()->GetType() != TokenType::COLON)
+                        {
+                            ReportError("Expected ',' after expression",
+                                        e->GetCodeErrString());
+                        }
+                    }
+                }
+
+                switchCase->blockStatement =
+                    dynamic_cast<BlockStatement *>(ParseBlockStatement());
+                if (!switchCase->blockStatement)
+                {
+                    CodeErrString ces;
+                    ces.firstToken = caseToken;
+                    ces.str = ces.firstToken->GetLexeme();
+                    ReportError("Case's block statement is missing", ces);
+                }
+
+                switchStmt->cases.push_back(switchCase);
+            }
+            else if (Consume(TokenType::DEFAULT))
+            {
+                const Token *defaultToken = Prev();
+                SwitchStatement::Case *switchDefault =
+                    gZtoonArena.Allocate<SwitchStatement::Case>();
+
+                if (!Consume(TokenType::COLON))
+                {
+                    CodeErrString ces;
+                    ces.firstToken = defaultToken;
+                    ces.str = ces.firstToken->GetLexeme();
+                    ReportError("Expected ':' after 'default'", ces);
+                }
+
+                switchDefault->blockStatement =
+                    dynamic_cast<BlockStatement *>(ParseBlockStatement());
+                if (!switchDefault->blockStatement)
+                {
+                    CodeErrString ces;
+                    ces.firstToken = defaultToken;
+                    ces.str = ces.firstToken->GetLexeme();
+                    ReportError("Default's block statement is missing", ces);
+                }
+                switchStmt->defualtCase = switchDefault;
+            }
+        }
+        return switchStmt;
+    }
     return ParseIfStatement();
 }
-
 Statement *Parser::ParseIfStatement()
 {
     if (Consume(TokenType::IF))
@@ -800,6 +897,14 @@ Statement *Parser::ParseIfStatement()
         IfStatement *ifStatement = gZtoonArena.Allocate<IfStatement>();
         ifStatement->ifToken = Prev();
         ifStatement->expression = ParseExpression();
+
+        if (!ifStatement->expression)
+        {
+            CodeErrString ces;
+            ces.firstToken = ifStatement->ifToken;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected expression after 'if'", ces);
+        }
 
         ifStatement->blockStatement =
             dynamic_cast<BlockStatement *>(ParseBlockStatement());
@@ -911,7 +1016,7 @@ Statement *Parser::ParseForLoopStatement()
         ForLoopStatement *forLoopStatement =
             gZtoonArena.Allocate<ForLoopStatement>();
         forLoopStatement->forToken = Prev();
-        Consume(TokenType::LEFT_PAREN);
+        bool leftParen = Consume(TokenType::LEFT_PAREN);
         forLoopStatement->init = ParseVarDeclStatement();
         if (!dynamic_cast<EmptyStatement *>(forLoopStatement->init))
         {
@@ -965,7 +1070,16 @@ Statement *Parser::ParseForLoopStatement()
                     : ces);
         }
         forLoopStatement->update = ParseVarDeclStatement();
-        Consume(TokenType::RIGHT_PAREN);
+        if (leftParen)
+        {
+            if (!Consume(TokenType::RIGHT_PAREN))
+            {
+                CodeErrString ces;
+                ces.firstToken = Prev();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError(std::format("Expected ')'"), ces);
+            }
+        }
         if (forLoopStatement->update)
         {
             if (!dynamic_cast<VarAssignmentStatement *>(

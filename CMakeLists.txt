@@ -15,17 +15,24 @@ message(STATUS "DIR: " ${LLVM_INCLUDE_DIRS})
 include_directories(${LLVM_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
+include(FetchContent)
+
+FetchContent_Declare(
+  yaml-cpp
+  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+  GIT_TAG master )
+FetchContent_MakeAvailable(yaml-cpp)
 
 project(ztoon)
-file (GLOB_RECURSE ZTOON_SOURCES src/*.cpp src/*.c)
+file (GLOB_RECURSE ZTOON_SOURCES src/*.cpp src/*.c third_party/*.cpp third_party/*.c)
 list(REMOVE_ITEM ${ZTOON_SOURCES} src/main.cpp)
 
 add_library(${PROJECT_NAME}-lib STATIC ${ZTOON_SOURCES})
-target_include_directories(${PROJECT_NAME}-lib PUBLIC src/)
+target_include_directories(${PROJECT_NAME}-lib PUBLIC src/ third_party/)
 
 llvm_map_components_to_libnames(llvm_libs support core irreader native orcjit)
 
-target_link_libraries(${PROJECT_NAME}-lib PUBLIC ${llvm_libs})
+target_link_libraries(${PROJECT_NAME}-lib PUBLIC ${llvm_libs} yaml-cpp::yaml-cpp)
 
 
 add_executable(${PROJECT_NAME} src/main.cpp)

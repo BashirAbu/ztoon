@@ -1,3 +1,7 @@
+#include "compiler/compiler.h"
 
-
-int main() { return 0; }
+int main(int argv, char **argc)
+{
+    Compiler compiler(argv, argc);
+    return 0;
+}

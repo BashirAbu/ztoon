@@ -1,4 +1,5 @@
 #include "code_gen.h"
+#include "compiler/compiler.h"
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -17,16 +18,24 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Host.h"
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <memory>
 #include <string>
+#include <system_error>
 IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
 {
     IRType irType = {};
@@ -419,11 +428,81 @@ CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
     : semanticAnalyzer(semanticAnalyzer)
 {
     currentStage = Stage::CODE_GEN;
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
+
+    std::string err;
+    const llvm::Target *target =
+        llvm::TargetRegistry::lookupTarget(targetArch, err);
+
+    if (!target)
+    {
+        PrintError(std::format("Error finding target '{}'", targetArch));
+    }
+    llvm::TargetOptions opt;
+    targetMachine = target->createTargetMachine(targetArch, "generic", "", opt,
+                                                llvm::Reloc::PIC_);
     ctx = std::make_unique<llvm::LLVMContext>();
     module = std::make_unique<llvm::Module>("ztoon module", *ctx);
+
+    module->setDataLayout(targetMachine->createDataLayout());
     module->setTargetTriple(targetArch);
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
+}
+
+void CodeGen::GenBinary(Project &project)
+{
+    GenIR();
+
+    if (llvm::verifyModule(*module, &llvm::errs()))
+    {
+        llvm::errs() << "Module verification failed\n";
+    }
+    // codeGen.module->print(llvm::outs(), nullptr);
+
+    std::string objFilename = std::format("bin/{}.o", project.name);
+    std::error_code ec;
+
+    llvm::raw_fd_ostream dest(objFilename, ec, llvm::sys::fs::OF_None);
+
+    if (ec)
+    {
+        PrintError(std::format("Filed to open file '{}'", objFilename));
+    }
+
+    llvm::legacy::PassManager pass;
+    if (targetMachine->addPassesToEmitFile(pass, dest, nullptr,
+                                           llvm::CodeGenFileType::ObjectFile))
+    {
+        PrintError("Target machine cannot emit obj file.");
+    }
+
+    pass.run(*module);
+    dest.flush();
+
+    // switch (project.type)
+    // {
+    // case Project::Type::EXE:
+    // {
+    // }
+    // break;
+    // case Project::Type::STATIC_LIB:
+    // {
+    // }
+    // break;
+    // case Project::Type::SHARED_LIB:
+    // {
+    // }
+    // break;
+    // default:
+    // {
+    // }
+    // break;
+    // }
 }
 
 llvm::Constant *

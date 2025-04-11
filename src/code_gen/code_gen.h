@@ -1,3 +1,4 @@
+#include "compiler/compiler.h"
 #include "parser/parser.h"
 #include "semantic_analyzer/semantic_analyzer.h"
 #include "llvm/IR/BasicBlock.h"
@@ -12,9 +13,9 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
 #include <memory>
 #include <unordered_map>
-
 struct IRType
 {
     bool isSigned = false;
@@ -77,12 +78,14 @@ class CodeGen
     ~CodeGen();
     void GenIR();
 
+    void GenBinary(Project &project);
     void AddIRSymbol(IRSymbol *irSymbol);
     IRSymbol *GetIRSymbol(std::string name);
     std::unique_ptr<llvm::LLVMContext> ctx;
     std::unique_ptr<llvm::Module> module;
     std::unique_ptr<llvm::IRBuilder<>> irBuilder;
     std::unique_ptr<llvm::DataLayout> moduleDataLayout;
+    llvm::TargetMachine *targetMachine = nullptr;
 
   private:
     void AssignValueToVarArray(IRValue ptr, Expression *expr,

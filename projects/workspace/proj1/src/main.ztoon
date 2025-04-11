@@ -1,0 +1,9 @@
+
+
+fn printf(msg: readonly i8*, ...);
+
+fn main() -> i32
+{
+    printf("hi");
+    ret 0;
+}

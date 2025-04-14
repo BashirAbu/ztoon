@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdio>
 #include <filesystem>
 #include <vector>
 
@@ -50,7 +51,7 @@ struct Project
 {
     enum class Type
     {
-        NONE,
+        ZLIB,
         STATIC_LIB,
         SHARED_LIB,
         EXE
@@ -65,21 +66,118 @@ struct Project
         {
             return Type::SHARED_LIB;
         }
+        else if (typeStr == "zlib")
+        {
+            return Type::ZLIB;
+        }
         else if (typeStr == "exe")
         {
             return Type::EXE;
         }
-
-        return Type::NONE;
+        else
+        {
+            PrintError(std::format("Unknown binary type '{}'", typeStr));
+        }
+        return (Type)0;
     }
     std::string name;
-    Type type = Type::NONE;
-    std::vector<std::string> common_compiler_flags;
-    std::vector<std::string> debug_compiler_flags;
-    std::vector<std::string> release_compiler_flags;
-    std::vector<std::string> common_linker_flags;
-    std::vector<std::string> debug_linker_flags;
-    std::vector<std::string> release_linker_flags;
+    Type type = Type::EXE;
+    bool debugBuild = true;
+
+    enum class OptLevel
+    {
+        O0,
+        O1,
+        O2,
+        O3,
+        OS,
+        OZ
+    };
+
+    OptLevel StrToOptLevel(std::string level)
+    {
+        if (level == "o0")
+            return OptLevel::O0;
+        else if (level == "o1")
+            return OptLevel::O1;
+        else if (level == "o2")
+            return OptLevel::O2;
+        else if (level == "o3")
+            return OptLevel::O3;
+        else if (level == "os")
+            return OptLevel::OS;
+        else if (level == "oz")
+            return OptLevel::OZ;
+        else
+            PrintError(std::format("Unknown optimzation level '{}'", level));
+
+        return (OptLevel)0;
+    }
+
+    struct CommonFlags
+    {
+    };
+    CommonFlags commonFlags;
+    struct DebugFlags
+    {
+        OptLevel optLevel = OptLevel::O0;
+    };
+    DebugFlags debugFlags;
+
+    struct ReleaseFlags
+    {
+        OptLevel optLevel = OptLevel::O3;
+    };
+    ReleaseFlags releaseFlags;
+    struct LinkerFlags
+    {
+        enum class Type
+        {
+            CONSOLE,
+            WINDOW,
+        };
+        Type type = Type::CONSOLE;
+        void SetType(std::string strType)
+        {
+            if (strType == "console")
+            {
+                type = Type::CONSOLE;
+            }
+            else if (strType == "window")
+            {
+                type = Type::WINDOW;
+            }
+            else
+            {
+                PrintError(
+                    std::format("Unknown executable type '{}'", strType));
+            }
+        }
+        bool noCRT = false;
+        enum class CRT_LinkType
+        {
+            STATIC,
+            DYNAMIC,
+        };
+        void SetCRTLinkType(std::string linkType)
+        {
+            if (linkType == "static")
+            {
+                crtLinkType = CRT_LinkType::STATIC;
+            }
+            else if (linkType == "dynamic")
+            {
+                crtLinkType = CRT_LinkType::DYNAMIC;
+            }
+            else
+            {
+                PrintError(std::format("Unknown link type '{}'", linkType));
+            }
+        }
+        CRT_LinkType crtLinkType = CRT_LinkType::STATIC;
+        std::string entry = "";
+    };
+    LinkerFlags linkerFlags;
 
     struct Dependency
     {

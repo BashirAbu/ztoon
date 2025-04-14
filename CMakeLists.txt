@@ -3,9 +3,11 @@ set (CMAKE_CXX_STANDARD 20)
 set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON)
 set (CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 find_package(LLVM REQUIRED CONFIG)
+find_package(LLD REQUIRED)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
 
 # Set your project compile flags.
 # E.g. if using the C++ header files
@@ -30,9 +32,13 @@ list(REMOVE_ITEM ${ZTOON_SOURCES} src/main.cpp)
 add_library(${PROJECT_NAME}-lib STATIC ${ZTOON_SOURCES})
 target_include_directories(${PROJECT_NAME}-lib PUBLIC src/ third_party/)
 
-llvm_map_components_to_libnames(llvm_libs support core irreader native orcjit)
+llvm_map_components_to_libnames(llvm_libs support core irreader native orcjit
+   option
+   AArch64 AMDGPU ARM AVR BPF Hexagon Lanai LoongArch Mips MSP430 NVPTX PowerPC
+   RISCV Sparc SystemZ VE WebAssembly X86 XCore)
 
-target_link_libraries(${PROJECT_NAME}-lib PUBLIC ${llvm_libs} yaml-cpp::yaml-cpp)
+set (lld_libs lldCOFF lldELF lldCommon lldMachO lldMinGW lldWasm)
+target_link_libraries(${PROJECT_NAME}-lib PUBLIC ${llvm_libs} ${lld_libs} yaml-cpp::yaml-cpp)
 
 
 add_executable(${PROJECT_NAME} src/main.cpp)

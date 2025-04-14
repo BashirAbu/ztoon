@@ -2,9 +2,11 @@
 #include "compiler/compiler.h"
 #include "error_report.h"
 #include "lexer/lexer.h"
+#include "lld/Common/Driver.h"
 #include "parser/parser.h"
 #include "semantic_analyzer/semantic_analyzer.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
@@ -20,22 +22,33 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Passes/OptimizationLevel.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Transforms/Scalar/Reassociate.h"
+#include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <memory>
 #include <string>
-#include <system_error>
 IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
 {
     IRType irType = {};
@@ -433,30 +446,26 @@ CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
     llvm::InitializeAllTargetMCs();
     llvm::InitializeAllAsmParsers();
     llvm::InitializeAllAsmPrinters();
+    llvm::InitializeNativeTarget(); // Critical for host detection
+    llvm::InitializeNativeTargetAsmParser();
+    llvm::InitializeNativeTargetAsmPrinter();
 
-    std::string err;
-    const llvm::Target *target =
-        llvm::TargetRegistry::lookupTarget(targetArch, err);
-
-    if (!target)
-    {
-        PrintError(std::format("Error finding target '{}'", targetArch));
-    }
-    llvm::TargetOptions opt;
-    targetMachine = target->createTargetMachine(targetArch, "generic", "", opt,
-                                                llvm::Reloc::PIC_);
     ctx = std::make_unique<llvm::LLVMContext>();
     module = std::make_unique<llvm::Module>("ztoon module", *ctx);
 
-    module->setDataLayout(targetMachine->createDataLayout());
     module->setTargetTriple(targetArch);
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
 }
 
-void CodeGen::GenBinary(Project &project)
+LLD_HAS_DRIVER(coff)
+LLD_HAS_DRIVER(elf)
+LLD_HAS_DRIVER(mingw)
+LLD_HAS_DRIVER(macho)
+LLD_HAS_DRIVER(wasm)
+
+void CodeGen::Compile(Project &project)
 {
-    GenIR();
 
     if (llvm::verifyModule(*module, &llvm::errs()))
     {
@@ -464,47 +473,301 @@ void CodeGen::GenBinary(Project &project)
     }
     // codeGen.module->print(llvm::outs(), nullptr);
 
-    std::string objFilename = std::format("bin/{}.o", project.name);
+    std::string error;
+    const llvm::Target *target =
+        llvm::TargetRegistry::lookupTarget(module->getTargetTriple(), error);
+    if (!target)
+    {
+        PrintError(std::format("Failed to find target '{}'",
+                               module->getTargetTriple()));
+    }
+    llvm::TargetOptions targetOpts;
+    std::optional<llvm::Reloc::Model> relocModel = llvm::Reloc::Model::PIC_;
+    llvm::TargetMachine *targetMachine = target->createTargetMachine(
+        module->getTargetTriple(), "generic", "", targetOpts, relocModel);
+
+    module->setDataLayout(targetMachine->createDataLayout());
+    llvm::LoopAnalysisManager LAM;
+    llvm::FunctionAnalysisManager FAM;
+    llvm::CGSCCAnalysisManager CGAM;
+    llvm::ModuleAnalysisManager MAM;
+
+    llvm::PassBuilder PB;
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+    Project::OptLevel optLevel = project.debugBuild
+                                     ? project.debugFlags.optLevel
+                                     : project.releaseFlags.optLevel;
+    llvm::OptimizationLevel llvmOptLevel;
+
+    switch (optLevel)
+    {
+    case Project::OptLevel::O0:
+    {
+        llvmOptLevel = llvm::OptimizationLevel::O0;
+    }
+    break;
+    case Project::OptLevel::O1:
+    {
+        llvmOptLevel = llvm::OptimizationLevel::O1;
+    }
+    break;
+    case Project::OptLevel::O2:
+    {
+        llvmOptLevel = llvm::OptimizationLevel::O2;
+    }
+    break;
+    case Project::OptLevel::O3:
+    {
+        llvmOptLevel = llvm::OptimizationLevel::O3;
+    }
+    break;
+    case Project::OptLevel::OS:
+    {
+        llvmOptLevel = llvm::OptimizationLevel::Os;
+    }
+    break;
+    case Project::OptLevel::OZ:
+    {
+        llvmOptLevel = llvm::OptimizationLevel::Oz;
+    }
+    break;
+    }
+    llvm::ModulePassManager MPM =
+        PB.buildPerModuleDefaultPipeline(llvmOptLevel);
+    MPM.run(*module, MAM);
+
     std::error_code ec;
-
-    llvm::raw_fd_ostream dest(objFilename, ec, llvm::sys::fs::OF_None);
-
+    std::string objFileName = std::format("bin/{}.o", project.name);
+    llvm::raw_fd_ostream objFile(objFileName, ec, llvm::sys::fs::OF_None);
     if (ec)
     {
-        PrintError(std::format("Filed to open file '{}'", objFilename));
+        PrintError(std::format("Failed to open file: {}", ec.message()));
     }
 
     llvm::legacy::PassManager pass;
-    if (targetMachine->addPassesToEmitFile(pass, dest, nullptr,
+    if (targetMachine->addPassesToEmitFile(pass, objFile, nullptr,
                                            llvm::CodeGenFileType::ObjectFile))
     {
-        PrintError("Target machine cannot emit obj file.");
+        PrintError("Target machine failed to emit object file");
     }
 
     pass.run(*module);
-    dest.flush();
-
-    // switch (project.type)
-    // {
-    // case Project::Type::EXE:
-    // {
-    // }
-    // break;
-    // case Project::Type::STATIC_LIB:
-    // {
-    // }
-    // break;
-    // case Project::Type::SHARED_LIB:
-    // {
-    // }
-    // break;
-    // default:
-    // {
-    // }
-    // break;
-    // }
+    objFile.flush();
 }
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+void CodeGen::Link(Project &project)
+{
+    std::string objFileName = std::format("bin/{}.o", project.name);
 
+    std::string output = std::format("bin/{}", project.name);
+
+    std::vector<const char *> lldArgs;
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+
+    lldArgs.push_back("lld-link");
+    switch (project.type)
+    {
+    case Project::Type::EXE:
+    {
+        output = output + ".exe";
+    }
+    break;
+    case Project::Type::ZLIB:
+    {
+        break;
+    }
+    break;
+    case Project::Type::STATIC_LIB:
+    {
+        output = output + ".lib";
+        lldArgs.push_back("/lib");
+    }
+    break;
+    case Project::Type::SHARED_LIB:
+    {
+        output = output + ".dll";
+        lldArgs.push_back("/DLL");
+        std::string impLib = std::format("/implib:{}.lib", project.name);
+        lldArgs.push_back(impLib.c_str());
+        if (project.linkerFlags.entry.empty())
+        {
+            lldArgs.push_back("/entry:DLLMain");
+        }
+    }
+    break;
+    }
+    lldArgs.push_back(objFileName.c_str());
+    if (!project.linkerFlags.noCRT && project.type != Project::Type::STATIC_LIB)
+    {
+        switch (project.linkerFlags.crtLinkType)
+        {
+
+        case Project::LinkerFlags::CRT_LinkType::STATIC:
+            lldArgs.push_back("libcmt.lib");
+            break;
+        case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
+            lldArgs.push_back("msvcrt.lib");
+            break;
+        }
+    }
+
+    std::string out = std::format("/out:{}", output);
+    lldArgs.push_back(out.c_str());
+
+    std::string entry = std::format("/entry:{}", project.linkerFlags.entry);
+    if (!project.linkerFlags.entry.empty())
+    {
+        lldArgs.push_back(entry.c_str());
+    }
+    if (project.type == Project::Type::EXE)
+    {
+        switch (project.linkerFlags.type)
+        {
+        case Project::LinkerFlags::Type::CONSOLE:
+            lldArgs.push_back("/subsystem:console");
+            break;
+        case Project::LinkerFlags::Type::WINDOW:
+            lldArgs.push_back("/subsystem:windows");
+            break;
+        }
+    }
+
+#elif __APPLE__
+
+    switch (project.type)
+    {
+    case Project::Type::EXE:
+    {
+        lldArgs.push_back("ld64.lld");
+        lldArgs.push_back("-o");
+        lldArgs.push_back(output.c_str());
+    }
+    break;
+    case Project::Type::ZLIB:
+    {
+        break;
+    }
+    break;
+    case Project::Type::STATIC_LIB:
+    {
+        lldArgs.push_back("llvm-ar");
+        lldArgs.push_back("rcs");
+        lldArgs.push_back(std::format("{}.a"), output).c_str());
+    }
+    break;
+    case Project::Type::SHARED_LIB:
+    {
+        lldArgs.push_back("ld64.lld");
+        lldArgs.push_back("-o");
+        lldArgs.push_back(std::format("{}.dylib", output).c_str());
+    }
+    break;
+    }
+    if (!project.linkerFlags.entry.empty())
+    {
+        lldArgs.push_back("-e");
+        lldArgs.push_back(project.linkerFlags.entry.c_str());
+    }
+    if (!project.linkerFlags.noCRT)
+    {
+        switch (project.linkerFlags.crtLinkType)
+        {
+        case Project::LinkerFlags::CRT_LinkType::STATIC:
+        {
+            lldArgs.push_back("/use/lib/libSystem.B.tbd");
+        }
+        break;
+        case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
+        {
+            lldArgs.push_back("-lSystem");
+            lldArgs.push_back("-syslibroot $(xcrun --show-sdk-path)");
+        }
+        break;
+        }
+    }
+#elif __linux__
+    switch (project.type)
+    {
+    case Project::Type::EXE:
+    {
+        lldArgs.push_back("ld.lld");
+        lldArgs.push_back(objFileName.c_str());
+        lldArgs.push_back("-o");
+    }
+    break;
+    case Project::Type::ZLIB:
+    {
+        break;
+    }
+    break;
+    case Project::Type::STATIC_LIB:
+    {
+        lldArgs.push_back("llvm-ar");
+        lldArgs.push_back("rcs");
+        lldArgs.push_back(std::format("{}.a"), output).c_str());
+    }
+    break;
+    case Project::Type::SHARED_LIB:
+    {
+        lldArgs.push_back("ld.lld");
+        lldArgs.push_back("-shared");
+        lldArgs.push_back("-o");
+        lldArgs.push_back(std::format("{}.so", output).c_str());
+    }
+    break;
+    }
+    if (!project.linkerFlags.entry.empty())
+    {
+        lldArgs.push_back("-e");
+        lldArgs.push_back(project.linkerFlags.entry.c_str());
+    }
+    if (!project.linkerFlags.noCRT)
+    {
+        switch (project.linkerFlags.crtLinkType)
+        {
+        case Project::LinkerFlags::CRT_LinkType::STATIC:
+        {
+            lldArgs.push_back("/usr/lib/crt1.o");
+            lldArgs.push_back("/usr/lib/crti.o");
+            lldArgs.push_back("-lc");
+            lldArgs.push_back("/usr/lib/crtn.o");
+        }
+        break;
+        case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
+        {
+            lldArgs.push_back("/usr/lib/crt1.o");
+            lldArgs.push_back("/usr/lib/crti.o");
+            lldArgs.push_back("-libc.so");
+            lldArgs.push_back("/usr/lib/crtn.o");
+        }
+        break;
+        }
+    }
+#else
+#error "Unknown platform"
+#endif
+
+    printf("Building %s...\n", project.name.c_str());
+    printf("Linker Flags: \n");
+    for (auto f : lldArgs)
+    {
+        printf("%s\n", f);
+    }
+    printf("\n\n");
+    lld::Result result =
+        lld::lldMain(lldArgs, llvm::outs(), llvm::errs(), LLD_ALL_DRIVERS);
+    if (result.retCode)
+    {
+        PrintError("Failed to link obj files.");
+    }
+}
 llvm::Constant *
 CodeGen::InitListToArrayConstant(ArrayDataType *arrType,
                                  InitializerListExpression *listExpr)

@@ -77,15 +77,14 @@ class CodeGen
     CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch);
     ~CodeGen();
     void GenIR();
-
-    void GenBinary(Project &project);
+    void Compile(Project &project);
+    static void Link(Project &project);
     void AddIRSymbol(IRSymbol *irSymbol);
     IRSymbol *GetIRSymbol(std::string name);
     std::unique_ptr<llvm::LLVMContext> ctx;
     std::unique_ptr<llvm::Module> module;
     std::unique_ptr<llvm::IRBuilder<>> irBuilder;
     std::unique_ptr<llvm::DataLayout> moduleDataLayout;
-    llvm::TargetMachine *targetMachine = nullptr;
 
   private:
     void AssignValueToVarArray(IRValue ptr, Expression *expr,

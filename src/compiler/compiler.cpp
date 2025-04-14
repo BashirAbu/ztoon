@@ -136,10 +136,6 @@ Compiler::Compiler(int argv, char **argc)
             }
             info.type = Project::StrToPrjectType(
                 proj->second["type"].as<std::string>());
-            if (info.type == Project::Type::NONE)
-            {
-                PrintError(std::format("{}'s type is invalid'", info.name));
-            }
             workSpace.projectsInfo.push_back(info);
         }
 
@@ -171,6 +167,8 @@ Compiler::Compiler(int argv, char **argc)
                 }
 
                 Project project;
+                project.debugBuild =
+                    argParser->buildType == ArgTokenizer::TokenType::DEBUG;
                 project.relativePathToWorkSpace = proj.relativePath;
                 if (!projectRoot[proj.name].IsDefined())
                 {
@@ -185,39 +183,64 @@ Compiler::Compiler(int argv, char **argc)
                 project.type = Project::StrToPrjectType(
                     projectRoot[proj.name]["type"].as<std::string>());
 
-                std::function<void(std::vector<std::string> &, std::string)>
-                    parseFlags = [&](std::vector<std::string> &flagsVector,
-                                     std::string key)
+                if (projectRoot[proj.name]["common_flags"])
                 {
-                    if (projectRoot[proj.name][key])
-                    {
-                        if (!projectRoot[proj.name][key].IsSequence())
-                        {
-                            PrintError(
-                                std::format("{}'s '{}' "
-                                            "key must be a sequence type",
-                                            proj.name, key));
-                        }
+                }
 
-                        for (auto flag : projectRoot[proj.name][key])
-                        {
-                            if (flag.IsDefined())
-                            {
-                                flagsVector.push_back(flag.as<std::string>());
-                            }
-                        }
+                if (projectRoot[proj.name]["debug_flags"])
+                {
+                    if (projectRoot[proj.name]["debug_flags"]["opt_level"]
+                            .IsDefined())
+                    {
+                        project.debugFlags.optLevel = project.StrToOptLevel(
+                            projectRoot[proj.name]["debug_flags"]["opt_level"]
+                                .as<std::string>());
                     }
-                };
-                parseFlags(project.common_compiler_flags,
-                           "common_compiler_flags");
-                parseFlags(project.debug_compiler_flags,
-                           "debug_compiler_flags");
-                parseFlags(project.release_compiler_flags,
-                           "release_compiler_flags");
-                parseFlags(project.common_linker_flags, "common_linker_flags");
-                parseFlags(project.debug_linker_flags, "debug_linker_flags");
-                parseFlags(project.release_linker_flags,
-                           "release_linker_flags");
+                }
+                if (projectRoot[proj.name]["release_flags"])
+                {
+                    if (projectRoot[proj.name]["release_flags"]["opt_level"]
+                            .IsDefined())
+                    {
+                        project.releaseFlags.optLevel = project.StrToOptLevel(
+                            projectRoot[proj.name]["release_flags"]["opt_level"]
+                                .as<std::string>());
+                    }
+                }
+                if (projectRoot[proj.name]["linker_flags"])
+                {
+
+                    if (projectRoot[proj.name]["linker_flags"]["exe_type"]
+                            .IsDefined())
+                    {
+                        project.linkerFlags.SetType(
+                            projectRoot[proj.name]["linker_flags"]["exe_type"]
+                                .as<std::string>());
+                    }
+
+                    if (projectRoot[proj.name]["linker_flags"]["no_crt"]
+                            .IsDefined())
+                    {
+                        project.linkerFlags.noCRT =
+                            projectRoot[proj.name]["linker_flags"]["no_crt"]
+                                .as<bool>();
+                    }
+                    if (projectRoot[proj.name]["linker_flags"]["crt_link_type"]
+                            .IsDefined())
+                    {
+                        project.linkerFlags.SetCRTLinkType(
+                            projectRoot[proj.name]["linker_flags"]
+                                       ["crt_link_type"]
+                                           .as<std::string>());
+                    }
+                    if (projectRoot[proj.name]["linker_flags"]["entry"]
+                            .IsDefined())
+                    {
+                        project.linkerFlags.entry =
+                            projectRoot[proj.name]["linker_flags"]["entry"]
+                                .as<std::string>();
+                    }
+                }
 
                 if (projectRoot[proj.name]["deps"])
                 {
@@ -316,7 +339,7 @@ Compiler::Compiler(int argv, char **argc)
     }
     else
     {
-        std::cout << "Hi from ztoon compiler\n";
+        std::cout << "Hi from ztoon compiler. TODO: add -help section\n";
     }
 }
 
@@ -357,13 +380,21 @@ void Compiler::BuildWorkSpace()
             SemanticAnalyzer semanticAnalyzer(stmts);
             semanticAnalyzer.Analize();
             CodeGen codeGen(semanticAnalyzer, proj.targetArch);
-            codeGen.GenBinary(proj);
+            codeGen.GenIR();
+            codeGen.Compile(proj);
         }
         else
         {
             PrintError(std::format("Project '{}' src directory is missing",
                                    proj.name));
         }
+    }
+
+    // linking stage
+    for (auto proj : workSpace.projects)
+    {
+        if (proj.type != Project::Type::ZLIB)
+            CodeGen::Link(proj);
     }
 }
 
@@ -377,8 +408,8 @@ void ArgTokenizer::Tokenize(std::vector<std::string> args)
 
     std::vector<Pattern> patterns;
     patterns.push_back({std::regex(R"(-new)"), TokenType::NEW});
-    patterns.push_back({std::regex(R"(-release)"), TokenType::RELEASE});
-    patterns.push_back({std::regex(R"(-debug)"), TokenType::DEBUG});
+    patterns.push_back({std::regex(R"(release)"), TokenType::RELEASE});
+    patterns.push_back({std::regex(R"(debug)"), TokenType::DEBUG});
     patterns.push_back({std::regex(R"(-build)"), TokenType::BUILD});
     patterns.push_back({std::regex(R"(--eoa)"), TokenType::EOA});
     patterns.push_back(
@@ -402,7 +433,7 @@ void ArgTokenizer::Tokenize(std::vector<std::string> args)
         }
         if (!matched)
         {
-            std::cout << "Invalid argument '" << arg << "'" << std::endl;
+            PrintError(std::format("Invalid argument '{}'", arg));
         }
     }
 }

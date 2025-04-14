@@ -1,9 +1,9 @@
 
-
 fn printf(msg: readonly i8*, ...);
-
 fn main() -> i32
 {
-    printf("hi");
+    for i: i32 = 0; i <1000000; i++ {
+        printf("%d\n", i);
+    }
     ret 0;
 }

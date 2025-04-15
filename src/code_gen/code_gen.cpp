@@ -1084,14 +1084,34 @@ void CodeGen::AssignValueToVarStruct(IRValue ptr, Expression *expr,
 CodeGen::~CodeGen() {}
 void CodeGen::GenIR()
 {
-    for (Statement *statement : semanticAnalyzer.statements)
+    for (auto pkg : semanticAnalyzer.packages)
+    {
+        packageIRDoneMap[pkg] = false;
+    }
+    for (auto pkg : semanticAnalyzer.packages)
+    {
+        GenPackageIR(pkg);
+    }
+}
+
+void CodeGen::GenPackageIR(Package *pkg)
+{
+    for (Statement *statement : pkg->GetStatements())
     {
         GenStatementIR(statement);
     }
+    packageIRDoneMap[pkg] = true;
 }
 void CodeGen::GenStatementIR(Statement *statement)
 {
-    if (dynamic_cast<EnumStatement *>(statement))
+    if (dynamic_cast<ImportStatement *>(statement))
+    {
+        auto importStmt = dynamic_cast<ImportStatement *>(statement);
+        if (!packageIRDoneMap[importStmt])
+        {
+        }
+    }
+    else if (dynamic_cast<EnumStatement *>(statement))
     {
         auto enumStmt = dynamic_cast<EnumStatement *>(statement);
 

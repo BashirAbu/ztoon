@@ -30,6 +30,7 @@ class DataType
         POINTER,
         ARRAY,
         InitList,
+        PACKAGE,
     };
     Type GetType() { return type; }
 
@@ -72,6 +73,16 @@ class Symbol
 
   private:
 };
+
+class PackageDataType : public DataType, public Symbol
+{
+  public:
+    virtual std::string GetName() override { return name; }
+    virtual DataType *GetDataType() override { return this; }
+    Package *pkg = nullptr;
+    std::string name;
+};
+
 class StructDataType : public DataType, public Symbol
 {
   public:
@@ -204,6 +215,8 @@ class Scope
     DataType *GetDataType(DataTypeToken *dataTypeToken);
 
   private:
+    std::vector<Scope *> importedPackages;
+
     Scope *parent = nullptr;
     bool lookUpParent = true;
     std::unordered_map<std::string, Symbol *> symbolsMap;
@@ -216,11 +229,14 @@ class Scope
 class SemanticAnalyzer
 {
   public:
-    SemanticAnalyzer(std::vector<Statement *> &statements);
+    SemanticAnalyzer(std::vector<Package *> &packages);
     ~SemanticAnalyzer();
     void Analize();
 
   private:
+    void AnalizePackageFirstPass(Package *pkg);
+    void AnalizePackageSecondPass(Package *pkg);
+    void AnalizePackageThirdPass(Package *pkg);
     void AnalizeStatement(Statement *statement);
 
     void ValidateAssignValueToVarArray(Expression *expr,
@@ -232,10 +248,12 @@ class SemanticAnalyzer
     DataType::Type DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);
     Scope *currentScope = nullptr;
+    std::unordered_map<Package *, Scope *> pkgToScopeMap;
     std::unordered_map<BlockStatement *, Scope *> blockToScopeMap;
     std::unordered_map<Expression *, DataType *> exprToDataTypeMap;
     std::unordered_map<Statement *, DataType *> stmtToDataTypeMap;
-    std::vector<Statement *> &statements;
+    std::vector<Package *> &packages;
+    Package *currentPackage = nullptr;
     BlockStatement *currentBlockStatement = nullptr;
     size_t statementCurrentIndex = 0;
     Function *currentFunction = nullptr;

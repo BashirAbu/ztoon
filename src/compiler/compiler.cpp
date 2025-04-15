@@ -376,8 +376,8 @@ void Compiler::BuildWorkSpace()
             }
 
             Parser parser(lexer.GetTokens());
-            auto stmts = parser.Parse();
-            SemanticAnalyzer semanticAnalyzer(stmts);
+            auto packages = parser.Parse();
+            SemanticAnalyzer semanticAnalyzer(packages);
             semanticAnalyzer.Analize();
             CodeGen codeGen(semanticAnalyzer, proj.targetArch);
             codeGen.GenIR();

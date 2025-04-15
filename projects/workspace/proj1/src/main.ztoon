@@ -1,9 +1,15 @@
+package mainPkg
 
-fn printf(msg: readonly i8*, ...);
+import core;
+
 fn main() -> i32
 {
-    for i: i32 = 0; i <1000000; i++ {
-        printf("%d\n", i);
+    
+    num: f32 = 12.0;
+     
+    PrintCore();
+    for i: i32 = 0; i < 10; i++ {
+        printf("%d\n", i + (num as i32));
     }
     ret 0;
 }

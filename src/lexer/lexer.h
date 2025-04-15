@@ -113,6 +113,8 @@ enum class TokenType
     SWITCH,
     CASE,
     DEFAULT,
+    PACKAGE,
+    IMPORT,
 };
 
 std::string TokenDataTypeToString(TokenType type);

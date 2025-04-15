@@ -79,6 +79,7 @@ struct CodeErrString
     Token const *firstToken;
     std::string str;
 };
+
 class DataTypeToken
 {
 
@@ -137,8 +138,6 @@ class Expression
 {
   public:
     virtual ~Expression() {}
-    //// virtual //std::string PrettyString(std::string &prefix, bool isLeft) =
-    /// 0;
     virtual CodeErrString GetCodeErrString() = 0;
     virtual Token const *GetFirstToken() const = 0;
     bool IsLValue() { return isLvalue; }
@@ -154,6 +153,39 @@ class Statement
     virtual ~Statement() {}
     //// virtual //std::string PrettyString(std::string &prefix) = 0;
     virtual CodeErrString GetCodeErrString() = 0;
+};
+class Package
+{
+  public:
+    const Token *GetIdentifier() { return identifier; }
+    std::vector<Statement *> &GetStatements() { return statements; }
+
+  private:
+    const Token *identifier = nullptr;
+    std::vector<Statement *> statements;
+
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
+
+class ImportStatement : public Statement
+{
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = token;
+        es.str += std::format("import {}", package->GetCodeErrString().str);
+        return es;
+    }
+
+    Expression *GetPackageExpression() { return package; }
+
+  private:
+    Expression *package = nullptr;
+    const Token *token = nullptr;
+    friend class Parser;
+    friend class SemanticAnalyzer;
 };
 class EmptyStatement : public Statement
 {
@@ -1019,12 +1051,15 @@ class Parser
     Parser(const std::vector<Token *> &tokens);
     ~Parser();
     void PrettyPrintAST();
-    std::vector<Statement *> &Parse();
+    std::vector<Package *> &Parse();
     bool IsDataType(TokenType type);
 
   private:
     // ParseProgram
     // ParsePackage
+
+    Package *ParsePackage();
+
     Statement *ParseDeclaration();
 
     Statement *ParseStatement();
@@ -1046,6 +1081,7 @@ class Parser
     Statement *ParseUnionStatement();
     Statement *ParseEnumStatement();
     Statement *ParseRetStatement();
+    Statement *ParseImportStatement();
 
     Expression *ParseExpression();
     Expression *ParseLambdaExpression();
@@ -1082,5 +1118,5 @@ class Parser
     void Advance();
     size_t currentIndex = 0;
     const std::vector<Token *> tokens;
-    std::vector<Statement *> statements;
+    std::vector<Package *> packages;
 };

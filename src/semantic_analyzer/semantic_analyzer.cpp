@@ -6,7 +6,6 @@
 #include <cstring>
 #include <format>
 #include <functional>
-#include <ratio>
 
 std::string DataType::ToString()
 {
@@ -160,6 +159,13 @@ std::string DataType::ToString()
         str += ")";
     }
     break;
+    case DataType::Type::PACKAGE:
+    {
+        auto pkg = dynamic_cast<PackageDataType *>(this);
+        str += pkg->GetName();
+    }
+    break;
+        break;
     default:
     {
         str += "Unknown type";
@@ -485,6 +491,15 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString)
         {
             symbol = current->symbolsMap.at(name);
         }
+
+        for (auto pkgScope : current->importedPackages)
+        {
+            if (pkgScope->symbolsMap.contains(name))
+            {
+                symbol = pkgScope->symbolsMap.at(name);
+                break;
+            }
+        }
         // go up one level;
         if (!current->parent || !lookUpParent)
         {
@@ -644,37 +659,120 @@ void SemanticAnalyzer::ValidateAssignValueToVarStruct(
     }
 }
 
-SemanticAnalyzer::SemanticAnalyzer(std::vector<Statement *> &statements)
-    : statements(statements)
+SemanticAnalyzer::SemanticAnalyzer(std::vector<Package *> &packages)
+    : packages(packages)
 {
     currentStage = Stage::SEMANTIC_ANALYZER;
-    currentScope = gZtoonArena.Allocate<Scope>(this);
+    // currentScope = gZtoonArena.Allocate<Scope>(this);
 }
 SemanticAnalyzer::~SemanticAnalyzer() {}
 void SemanticAnalyzer::Analize()
 {
-
-    for (size_t i = 0; i < statements.size(); i++)
+    for (auto pkg : packages)
     {
-        AnalizeStatement(statements[i]);
+        AnalizePackageFirstPass(pkg);
+    }
+    for (auto pkg : packages)
+    {
+        AnalizePackageSecondPass(pkg);
+    }
+    for (auto pkg : packages)
+    {
+        AnalizePackageThirdPass(pkg);
+    }
+}
+
+void SemanticAnalyzer::AnalizePackageFirstPass(Package *pkg)
+{
+    currentPackage = pkg;
+
+    currentScope = gZtoonArena.Allocate<Scope>(this);
+
+    pkgToScopeMap[pkg] = currentScope;
+
+    for (auto stmt : pkg->statements)
+    {
+        if (dynamic_cast<StructStatement *>(stmt))
+        {
+            auto structStmt = dynamic_cast<StructStatement *>(stmt);
+        }
+        else if (dynamic_cast<EnumStatement *>(stmt))
+        {
+            auto enumStmt = dynamic_cast<EnumStatement *>(stmt);
+        }
+        else if (dynamic_cast<UnionStatement *>(stmt))
+        {
+            auto UnionStmt = dynamic_cast<UnionStatement *>(stmt);
+        }
+    }
+}
+
+void SemanticAnalyzer::AnalizePackageSecondPass(Package *pkg) {}
+void SemanticAnalyzer::AnalizePackageThirdPass(Package *pkg)
+{
+
+    PackageDataType *pkgType = gZtoonArena.Allocate<PackageDataType>();
+    pkgType->type = PackageDataType::Type::PACKAGE;
+    pkgType->name = pkg->identifier->GetLexeme();
+    pkgType->pkg = pkg;
+    CodeErrString ces;
+    ces.firstToken = pkg->identifier;
+    ces.str = ces.firstToken->GetLexeme();
+    currentScope->AddSymbol(pkgType, ces);
+
+    for (size_t i = 0; i < pkg->statements.size(); i++)
+    {
+        AnalizeStatement(pkg->statements[i]);
 
         statementCurrentIndex++;
     }
 }
-
 void SemanticAnalyzer::PreAnalizeStatement(Statement *statement, size_t index)
 {
     if (dynamic_cast<ForLoopStatement *>(statement))
     {
         BlockStatement *blockStatement = gZtoonArena.Allocate<BlockStatement>();
         blockStatement->statements.push_back(statement);
-        statements.at(index) = blockStatement;
+        currentPackage->statements.at(index) = blockStatement;
     }
 }
 
 void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 {
-    if (dynamic_cast<StructStatement *>(statement))
+    if (dynamic_cast<ImportStatement *>(statement))
+    {
+        auto importStmt = dynamic_cast<ImportStatement *>(statement);
+
+        // look up package if exists or not.
+        // if so merge its scope with this package
+        auto pe = dynamic_cast<PrimaryExpression *>(
+            importStmt->GetPackageExpression());
+        Package *pkgFound = nullptr;
+        for (auto pkg : packages)
+        {
+            if (pkg->identifier->lexeme == pe->primary->GetLexeme())
+            {
+                pkgFound = pkg;
+                break;
+            }
+        }
+
+        if (!pkgFound)
+        {
+            ReportError(
+                std::format(
+                    "Unkown package '{}'",
+                    importStmt->GetPackageExpression()->GetCodeErrString().str),
+                importStmt->GetPackageExpression()->GetCodeErrString());
+        }
+
+        Scope *pkgScope = pkgToScopeMap[pkgFound];
+
+        currentScope->importedPackages.push_back(pkgScope);
+
+        // EvaluateAndAssignDataTypeToExpression(importStmt->package);
+    }
+    else if (dynamic_cast<StructStatement *>(statement))
     {
         auto structStmt = dynamic_cast<StructStatement *>(statement);
 
@@ -1694,23 +1792,38 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
 
         if (maExpr->token->GetType() == TokenType::DOUBLE_COLON)
         {
-            if (left->GetType() != DataType::Type::ENUM)
+            if (left->GetType() != DataType::Type::ENUM &&
+                left->GetType() != DataType::Type::PACKAGE)
             {
                 ReportError(
                     "'::' operator is only used on 'enum' and 'package'",
                     maExpr->GetCodeErrString());
             }
         }
-        else if (maExpr->token->GetType() == TokenType::COLON)
+        else if (maExpr->token->GetType() == TokenType::PERIOD)
         {
-            if (left->GetType() == DataType::Type::ENUM)
+            if (left->GetType() == DataType::Type::ENUM ||
+                left->GetType() == DataType::Type::PACKAGE)
             {
                 ReportError("'.' operator is only used on 'struct' and 'union'",
                             maExpr->GetCodeErrString());
             }
         }
+        if (left->GetType() == DataType::Type::PACKAGE)
+        {
+            auto pkgType = dynamic_cast<PackageDataType *>(left);
 
-        if (left->GetType() == DataType::Type::ENUM)
+            auto temp = currentScope;
+            currentScope = pkgToScopeMap[currentPackage];
+
+            PrimaryExpression *packageMember =
+                dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+
+            EvaluateAndAssignDataTypeToExpression(packageMember);
+            currentScope = temp;
+            exprToDataTypeMap[maExpr] = left;
+        }
+        else if (left->GetType() == DataType::Type::ENUM)
         {
             auto enumType = dynamic_cast<EnumDataType *>(left);
             auto enumStmt = enumType->enumStmt;
@@ -1720,8 +1833,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
 
             auto itr =
                 std::find_if(enumStmt->fields.begin(), enumStmt->fields.end(),
-                             [field](EnumStatement::Field *other)
-                             {
+                             [field](EnumStatement::Field *other) {
                                  return field->primary->GetLexeme() ==
                                         other->identifier->GetLexeme();
                              });
@@ -1804,8 +1916,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             // Check if struct has this field
             auto itr = std::find_if(
                 structStmt->fields.begin(), structStmt->fields.end(),
-                [field](VarDeclStatement *f)
-                {
+                [field](VarDeclStatement *f) {
                     return f->GetIdentifier()->GetLexeme() ==
                            field->primary->GetLexeme();
                 });

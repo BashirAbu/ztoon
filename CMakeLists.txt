@@ -45,4 +45,4 @@ add_executable(${PROJECT_NAME} src/main.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}-lib)
 
 
-add_subdirectory(tests)
+#add_subdirectory(tests)

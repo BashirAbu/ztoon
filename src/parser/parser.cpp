@@ -303,13 +303,39 @@ Parser::Parser(const std::vector<Token *> &tokens) : tokens(tokens)
 
 Parser::~Parser() {}
 
-std::vector<Statement *> &Parser::Parse()
+std::vector<Package *> &Parser::Parse()
 {
     while (Peek()->GetType() != TokenType::END_OF_FILE)
     {
-        statements.push_back(ParseDeclaration());
+        if (!Consume(TokenType::PACKAGE))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Source file must begin with 'package'", ces);
+        }
+        else
+        {
+            Package *package = gZtoonArena.Allocate<Package>();
+            if (!Consume(TokenType::IDENTIFIER))
+            {
+                CodeErrString ces;
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Missing identifiers after 'package'", ces);
+            }
+            package->identifier = Prev();
+            Consume(TokenType::SEMICOLON);
+            while (Peek()->GetType() != TokenType::END_OF_FILE)
+            {
+                package->statements.push_back(ParseDeclaration());
+                packages.push_back(package);
+            }
+            Consume(TokenType::END_OF_FILE);
+        }
     }
-    return statements;
+
+    return packages;
 }
 
 Statement *Parser::ParseDeclaration()
@@ -321,7 +347,8 @@ Statement *Parser::ParseDeclaration()
         dynamic_cast<FnStatement *>(declStmt) ||
         dynamic_cast<StructStatement *>(declStmt) ||
         dynamic_cast<UnionStatement *>(declStmt) ||
-        dynamic_cast<EnumStatement *>(declStmt))
+        dynamic_cast<EnumStatement *>(declStmt) ||
+        dynamic_cast<ImportStatement *>(declStmt))
     {
         VarDeclStatement *varDecl = dynamic_cast<VarDeclStatement *>(declStmt);
         if (varDecl)
@@ -384,9 +411,43 @@ Statement *Parser::ParseBlockStatement()
         }
         return blockStatement;
     }
-    return ParseStructStatement();
+    return ParseImportStatement();
 }
 
+Statement *Parser::ParseImportStatement()
+{
+    if (Consume(TokenType::IMPORT))
+    {
+        ImportStatement *importStmt = gZtoonArena.Allocate<ImportStatement>();
+        importStmt->token = Prev();
+        importStmt->package = ParseExpression();
+        auto pe = dynamic_cast<PrimaryExpression *>(importStmt->package);
+        auto ma = dynamic_cast<MemberAccessExpression *>(importStmt->package);
+
+        if (!importStmt->package)
+        {
+            CodeErrString ces;
+            ces.firstToken = importStmt->token;
+            ces.str = ces.firstToken->GetLexeme();
+
+            ReportError("Expected expression after 'import'", ces);
+        }
+
+        if (!(pe && pe->primary->GetType() == TokenType::IDENTIFIER) && !ma)
+        {
+            ReportError("Invalid expression after 'import'",
+                        importStmt->GetCodeErrString());
+        }
+        if (ma)
+        {
+            ma->accessType = MemberAccessExpression::AccessType::PACKAGE;
+        }
+
+        return importStmt;
+    }
+
+    return ParseStructStatement();
+}
 Statement *Parser::ParseStructStatement(bool anonymous)
 {
     if (Consume(TokenType::STRUCT))
@@ -578,8 +639,7 @@ Statement *Parser::ParseEnumStatement()
 
             auto itr =
                 std::find_if(enumStmt->fields.begin(), enumStmt->fields.end(),
-                             [field](EnumStatement::Field *other)
-                             {
+                             [field](EnumStatement::Field *other) {
                                  return field->identifier->GetLexeme() ==
                                         other->identifier->GetLexeme();
                              });
@@ -1711,7 +1771,9 @@ Expression *Parser::ParsePostfixExpression()
                 CodeErrString ces;
                 ces.firstToken = op;
                 ces.str = op->GetLexeme();
-                ReportError("Invalid expression after '.'", ces);
+                ReportError(std::format("Invalid expression after '{}'",
+                                        op->GetLexeme()),
+                            ces);
             }
             MemberAccessExpression *maExpr =
                 gZtoonArena.Allocate<MemberAccessExpression>();
@@ -1719,7 +1781,7 @@ Expression *Parser::ParsePostfixExpression()
             maExpr->isLvalue = true;
             maExpr->leftExpr = expr;
             maExpr->rightExpr = rightExpr;
-            maExpr->accessType = MemberAccessExpression::AccessType::ENUM;
+            maExpr->accessType = MemberAccessExpression::AccessType::UNKNOWN;
             expr = maExpr;
         }
     }

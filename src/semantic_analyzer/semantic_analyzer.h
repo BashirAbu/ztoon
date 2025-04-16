@@ -176,7 +176,7 @@ class Variable : public Symbol
     Token const *token = nullptr;
     std::string name = "";
     DataType *dataType = nullptr;
-
+    VarDeclStatement *varDeclStmt = nullptr;
     friend class SemanticAnalyzer;
     friend class CodeGen;
 };
@@ -229,19 +229,18 @@ class Scope
 class SemanticAnalyzer
 {
   public:
-    SemanticAnalyzer(std::vector<Package *> &packages);
+    SemanticAnalyzer(std::vector<Package *> &_packages);
     ~SemanticAnalyzer();
     void Analize();
 
   private:
-    void AnalizePackageFirstPass(Package *pkg);
-    void AnalizePackageSecondPass(Package *pkg);
-    void AnalizePackageThirdPass(Package *pkg);
+    void AnalizePackageGlobalTypes(Package *pkg);
+    void AnalizePackageGlobalFuncsAndVars(Package *pkg);
+    void AnalizePackageGlobalTypeBodies(Package *pkg);
+    void AnalizePackageVarAndFuncBodies(Package *pkg);
     void AnalizeStatement(Statement *statement);
-
     void ValidateAssignValueToVarArray(Expression *expr,
                                        ArrayDataType *arrType);
-
     void ValidateAssignValueToVarStruct(Expression *expr,
                                         StructDataType *arrType);
     void PreAnalizeStatement(Statement *statement, size_t index);

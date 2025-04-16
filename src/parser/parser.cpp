@@ -305,8 +305,11 @@ Parser::~Parser() {}
 
 std::vector<Package *> &Parser::Parse()
 {
-    while (Peek()->GetType() != TokenType::END_OF_FILE)
+    while (!Consume(TokenType::END_OF_PROGRAM))
     {
+        while (Consume(TokenType::END_OF_FILE))
+        {
+        }
         if (!Consume(TokenType::PACKAGE))
         {
             CodeErrString ces;
@@ -329,8 +332,8 @@ std::vector<Package *> &Parser::Parse()
             while (Peek()->GetType() != TokenType::END_OF_FILE)
             {
                 package->statements.push_back(ParseDeclaration());
-                packages.push_back(package);
             }
+            packages.push_back(package);
             Consume(TokenType::END_OF_FILE);
         }
     }

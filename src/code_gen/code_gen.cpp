@@ -1107,9 +1107,6 @@ void CodeGen::GenStatementIR(Statement *statement)
     if (dynamic_cast<ImportStatement *>(statement))
     {
         auto importStmt = dynamic_cast<ImportStatement *>(statement);
-        if (!packageIRDoneMap[importStmt])
-        {
-        }
     }
     else if (dynamic_cast<EnumStatement *>(statement))
     {

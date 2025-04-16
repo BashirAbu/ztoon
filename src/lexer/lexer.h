@@ -89,6 +89,7 @@ enum class TokenType
     AS,
     SIZEOF,
     END_OF_FILE,
+    END_OF_PROGRAM,
     LEFT_PAREN,
     RIGHT_PAREN,
     DOT,
@@ -190,6 +191,11 @@ class Lexer
     void Tokenize(std::string sourceCode, std::string filename);
     void DebugPrint();
     const std::vector<Token *> &GetTokens() { return tokens; }
+    void EndProgram()
+    {
+        Token *token = gZtoonArena.Allocate<Token>(TokenType::END_OF_PROGRAM);
+        tokens.push_back(token);
+    }
 
   private:
     struct Pattern

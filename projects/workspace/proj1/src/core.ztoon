@@ -1,9 +1,9 @@
-package core
+// package core
 
-fn printf(msg: readonly i8*, ...);
+// fn printf(msg: readonly i8*, ...);
 
 
-fn PrintCore()
-{
-    printf("Hi from core pkg!!!");
-}
+// fn PrintCore()
+// {
+//     printf("Hi from core pkg!!!");
+// }

@@ -374,7 +374,7 @@ void Compiler::BuildWorkSpace()
                     lexer.Tokenize(content, filename);
                 }
             }
-
+            lexer.EndProgram();
             Parser parser(lexer.GetTokens());
             auto packages = parser.Parse();
             SemanticAnalyzer semanticAnalyzer(packages);

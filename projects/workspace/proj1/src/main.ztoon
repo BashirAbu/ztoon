@@ -1,15 +1,50 @@
 package mainPkg
 
-import core;
+// import core;
+
+
+union uFoo
+{
+    x: i32;
+    f: Foo;
+}struct Foo
+{
+    x: i32 = 0;
+    m: Moo;
+    pi_: f32 = pi;
+    uF: uFoo;
+}
+
+
+pi : readonly f32 = 3.142;
+
+
+f: Foo;
+
+struct Moo
+{
+    b: Boo;
+}
+
+struct Boo
+{
+    y: i32 = 0;
+}
+
+
+
+
+
 
 fn main() -> i32
 {
     
     num: f32 = 12.0;
      
-    PrintCore();
+    // PrintCore();
+
     for i: i32 = 0; i < 10; i++ {
-        printf("%d\n", i + (num as i32));
+        i++;
     }
     ret 0;
 }

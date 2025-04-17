@@ -12,6 +12,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -39,11 +40,9 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
-#include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/Reassociate.h"
-#include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -270,8 +269,6 @@ IRSymbol *CodeGen::GetIRSymbol(std::string name)
             break;
         }
     }
-
-    assert(0);
     return nullptr;
 }
 
@@ -840,7 +837,33 @@ CodeGen::InitListToStructConstant(StructDataType *structType,
         {
             if (expr)
             {
-                value = GenExpressionIR(expr);
+
+                llvm::BasicBlock *block = irBuilder->GetInsertBlock();
+                auto pe = dynamic_cast<PrimaryExpression *>(expr);
+                if (!block && pe &&
+                    pe->GetPrimary()->GetType() == TokenType::IDENTIFIER &&
+                    semanticAnalyzer.exprToDataTypeMap[expr]->IsReadOnly())
+                {
+                    auto var = dynamic_cast<Variable *>(
+                        semanticAnalyzer.currentScope->GetSymbol(
+                            pe->GetPrimary()->GetLexeme(),
+                            pe->GetCodeErrString()));
+                    auto irSymbol = GetIRSymbol(pe->GetPrimary()->GetLexeme());
+                    if (!irSymbol)
+                    {
+                        GenGlobalVariableIR(var->varDeclStmt);
+                    }
+                    value = globalConstsMap[var->varDeclStmt];
+                }
+                else
+                {
+                    value = GenExpressionIR(expr);
+                    if (value.value->getType()->isPointerTy())
+                    {
+                        value.value =
+                            irBuilder->CreateLoad(value.type.type, value.value);
+                    }
+                }
             }
             else
             {
@@ -848,6 +871,7 @@ CodeGen::InitListToStructConstant(StructDataType *structType,
                     ZtoonTypeToLLVMType(fieldType).type);
             }
         }
+
         llvm::Constant *valueConst =
             llvm::dyn_cast<llvm::Constant>(value.value);
         if (!valueConst)
@@ -1086,22 +1110,356 @@ void CodeGen::GenIR()
 {
     for (auto pkg : semanticAnalyzer.packages)
     {
-        packageIRDoneMap[pkg] = false;
+        GenPackageGlobalTypesIR(pkg);
     }
     for (auto pkg : semanticAnalyzer.packages)
     {
-        GenPackageIR(pkg);
+        GenPackageGlobalFuncsAndVarsIR(pkg);
+    }
+    for (auto pkg : semanticAnalyzer.packages)
+    {
+        GenPackageGlobalVarAndFuncBodiesIR(pkg);
     }
 }
 
-void CodeGen::GenPackageIR(Package *pkg)
+void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
 {
-    for (Statement *statement : pkg->GetStatements())
+
+    std::function<void(StructDataType *)> genStructIR = nullptr;
+    std::function<void(UnionDataType *)> genUnionIR = nullptr;
+
+    genStructIR = [&](StructDataType *structZtoonType)
     {
-        GenStatementIR(statement);
+        llvm::StructType *structIRType =
+            llvm::StructType::getTypeByName(*ctx, structZtoonType->name);
+        if (!structIRType)
+        {
+            structIRType =
+                llvm::StructType::create(*ctx, structZtoonType->name);
+            std::vector<llvm::Type *> bodyFields;
+            for (DataType *fieldType : structZtoonType->fields)
+            {
+                if (fieldType->GetType() == DataType::Type::STRUCT)
+                {
+                    auto fieldStructType =
+                        dynamic_cast<StructDataType *>(fieldType);
+
+                    llvm::StructType *structFieldIRType =
+                        llvm::StructType::getTypeByName(
+                            *ctx, fieldStructType->GetName());
+                    if (!structFieldIRType)
+                    {
+                        genStructIR(fieldStructType);
+                    }
+                    structFieldIRType = llvm::StructType::getTypeByName(
+                        *ctx, fieldStructType->GetName());
+                    bodyFields.push_back(structFieldIRType);
+                }
+                else if (fieldType->GetType() == DataType::Type::UNION)
+                {
+                    auto fieldUnionType =
+                        dynamic_cast<UnionDataType *>(fieldType);
+                    if (!fieldUnionType->largestDatatype)
+                    {
+                        genUnionIR(fieldUnionType);
+                    }
+                    bodyFields.push_back(
+                        ZtoonTypeToLLVMType(fieldUnionType->largestDatatype)
+                            .type);
+                }
+                else
+                {
+                    IRType irFieldType = ZtoonTypeToLLVMType(fieldType);
+                    bodyFields.push_back(irFieldType.type);
+                }
+            }
+            structIRType->setBody(bodyFields);
+        }
+    };
+
+    genUnionIR = [&](UnionDataType *unionZtoonType)
+    {
+        if (!unionZtoonType->largestDatatype)
+        {
+            // Get Largest datatype.
+            size_t largestSize = 0;
+            for (DataType *fieldType : unionZtoonType->fields)
+            {
+
+                if (fieldType->GetType() == DataType::Type::STRUCT)
+                {
+                    auto fieldStructType =
+                        dynamic_cast<StructDataType *>(fieldType);
+
+                    llvm::StructType *structFieldIRType =
+                        llvm::StructType::getTypeByName(
+                            *ctx, fieldStructType->GetName());
+
+                    if (!structFieldIRType)
+                    {
+                        // need to do soemthing
+                        genStructIR(fieldStructType);
+                    }
+                }
+                else if (fieldType->GetType() == DataType::Type::UNION)
+                {
+                    auto fieldUnionType =
+                        dynamic_cast<UnionDataType *>(fieldType);
+                    if (!fieldUnionType->largestDatatype)
+                    {
+                        genUnionIR(fieldUnionType);
+                    }
+                }
+
+                IRType irFieldType = ZtoonTypeToLLVMType(fieldType);
+                size_t sizeInBytes =
+                    moduleDataLayout->getTypeSizeInBits(irFieldType.type) / 8;
+                if (largestSize < sizeInBytes)
+                {
+                    unionZtoonType->largestDatatype = fieldType;
+                    largestSize = sizeInBytes;
+                }
+            }
+        }
+    };
+
+    for (auto stmt : pkg->GetStatements())
+    {
+        if (dynamic_cast<StructStatement *>(stmt))
+        {
+            StructStatement *structStmt = dynamic_cast<StructStatement *>(stmt);
+
+            auto structZtoonType = dynamic_cast<StructDataType *>(
+                semanticAnalyzer.stmtToDataTypeMap[structStmt]);
+            genStructIR(structZtoonType);
+        }
+        else if (dynamic_cast<UnionStatement *>(stmt))
+        {
+            UnionStatement *unionStmt = dynamic_cast<UnionStatement *>(stmt);
+            auto unionType = dynamic_cast<UnionDataType *>(
+                semanticAnalyzer.stmtToDataTypeMap[unionStmt]);
+            genUnionIR(unionType);
+        }
     }
-    packageIRDoneMap[pkg] = true;
 }
+void CodeGen::GenGlobalVariableIR(VarDeclStatement *varDeclStatement)
+{
+
+    globalStatementIRDoneMap[varDeclStatement] = true;
+    UnionDataType *unionType = dynamic_cast<UnionDataType *>(
+        semanticAnalyzer.stmtToDataTypeMap[varDeclStatement]);
+    if (unionType)
+    {
+        semanticAnalyzer.stmtToDataTypeMap[varDeclStatement] =
+            unionType->largestDatatype;
+    }
+    DataType *type = semanticAnalyzer.stmtToDataTypeMap[varDeclStatement];
+    ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(type);
+    StructDataType *structType = dynamic_cast<StructDataType *>(type);
+
+    IRType varDeclType = {};
+    varDeclType.type = ZtoonTypeToLLVMType(type).type;
+    varDeclType.isSigned = type->IsSigned();
+
+    llvm::GlobalVariable *globalVar;
+    if (varDeclStatement->GetExpression())
+    {
+        auto pe = dynamic_cast<PrimaryExpression *>(
+            varDeclStatement->GetExpression());
+
+        if (pe && pe->GetPrimary()->GetType() == TokenType::IDENTIFIER)
+        {
+            auto irSymbol = GetIRSymbol(pe->GetPrimary()->GetLexeme());
+            if (!irSymbol)
+            {
+                Variable *rVar = dynamic_cast<Variable *>(
+                    semanticAnalyzer.currentScope->GetSymbol(
+                        pe->GetPrimary()->GetLexeme(),
+                        varDeclStatement->GetExpression()->GetCodeErrString()));
+
+                GenGlobalVariableIR(rVar->varDeclStmt);
+            }
+        }
+
+        if (arrType || structType)
+        {
+            auto listExpr = dynamic_cast<InitializerListExpression *>(
+                varDeclStatement->GetExpression());
+            if (!listExpr)
+            {
+                ReportError(
+                    std::format("Global {} variables can only be  initialized "
+                                "with a list of constant expressions",
+                                arrType ? " array " : "struct"),
+                    varDeclStatement->GetCodeErrString());
+            }
+            llvm::Constant *consts =
+                arrType ? InitListToArrayConstant(arrType, listExpr)
+                        : InitListToStructConstant(structType, listExpr);
+
+            globalVar = new llvm::GlobalVariable(
+                *module, varDeclType.type, type->IsReadOnly(),
+                llvm::GlobalValue::ExternalLinkage, consts,
+                std::format("g_{}",
+                            varDeclStatement->GetIdentifier()->GetLexeme()));
+            globalConstsMap[varDeclStatement] = {consts, false};
+        }
+        else
+        {
+
+            bool isExprGlobalVar =
+                pe ? pe->GetPrimary()->GetType() == TokenType::IDENTIFIER
+                   : false;
+            IRValue exprValue =
+                GenExpressionIR(varDeclStatement->GetExpression());
+            if (!llvm::isa<llvm::Constant>(exprValue.value) ||
+                type->GetType() == DataType::Type::FN)
+            {
+                ReportError(
+                    std::format("Expression '{}' is not known at "
+                                "compile time",
+                                varDeclStatement->GetExpression()
+                                    ->GetCodeErrString()
+                                    .str),
+                    varDeclStatement->GetExpression()->GetCodeErrString());
+            }
+            llvm::Constant *constValue =
+                llvm::cast<llvm::Constant>(exprValue.value);
+            globalVar = new llvm::GlobalVariable(
+                *module, varDeclType.type, type->IsReadOnly(),
+                llvm::GlobalValue::ExternalLinkage,
+                isExprGlobalVar
+                    ? llvm::cast<llvm::GlobalVariable>(exprValue.value)
+                          ->getInitializer()
+                    : constValue,
+                std::format("g_{}",
+                            varDeclStatement->GetIdentifier()->GetLexeme()));
+            globalConstsMap[varDeclStatement] = {constValue, false};
+        }
+    }
+    else
+    {
+        llvm::Constant *constValue =
+            structType ? InitListToStructConstant(structType,
+                                                  structType->defaultValuesList)
+                       : llvm::Constant::getNullValue(varDeclType.type);
+        globalVar = new llvm::GlobalVariable(
+            *module, varDeclType.type, type->IsReadOnly(),
+            llvm::GlobalValue::ExternalLinkage, constValue,
+            std::format("g_{}",
+                        varDeclStatement->GetIdentifier()->GetLexeme()));
+
+        globalConstsMap[varDeclStatement] = {constValue, false};
+    }
+
+    IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
+    irVariable->value = globalVar;
+    irVariable->variabel =
+        dynamic_cast<Variable *>(semanticAnalyzer.currentScope->GetSymbol(
+            varDeclStatement->GetIdentifier()->GetLexeme(),
+            varDeclStatement->GetCodeErrString()));
+    irVariable->irType = varDeclType;
+    AddIRSymbol(irVariable);
+}
+void CodeGen::GenPackageGlobalFuncsAndVarsIR(Package *pkg)
+{
+    semanticAnalyzer.currentPackage = pkg;
+    semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
+
+    for (auto stmt : pkg->GetStatements())
+    {
+        if (dynamic_cast<VarDeclStatement *>(stmt))
+        {
+            VarDeclStatement *varDeclStatement =
+                dynamic_cast<VarDeclStatement *>(stmt);
+
+            if (!globalStatementIRDoneMap.contains(varDeclStatement))
+                GenGlobalVariableIR(varDeclStatement);
+        }
+        else if (dynamic_cast<FnStatement *>(stmt))
+        {
+            FnStatement *fnStmt = dynamic_cast<FnStatement *>(stmt);
+            Function *fn = dynamic_cast<Function *>(
+                semanticAnalyzer.currentScope->GetSymbol(
+                    fnStmt->GetIdentifier()->GetLexeme(),
+                    fnStmt->GetCodeErrString()));
+
+            FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
+            llvm::FunctionType *fnType = llvm::dyn_cast<llvm::FunctionType>(
+                ZtoonTypeToLLVMType(fnDataType).type);
+            llvm::Function *function = llvm::Function::Create(
+                fnType, llvm::GlobalValue::ExternalLinkage, fn->GetName(),
+                *module);
+
+            IRFunction *irFunc = gZtoonArena.Allocate<IRFunction>();
+            irFunc->fn = function;
+            irFunc->fnType = fnType;
+            irFunc->ztoonFn = fn;
+            AddIRSymbol(irFunc);
+        }
+    }
+}
+
+void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
+{
+    semanticAnalyzer.currentPackage = pkg;
+    semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
+    for (auto stmt : pkg->GetStatements())
+    {
+        if (dynamic_cast<FnStatement *>(stmt))
+        {
+            FnStatement *fnStmt = dynamic_cast<FnStatement *>(stmt);
+            Function *fn = dynamic_cast<Function *>(
+                semanticAnalyzer.currentScope->GetSymbol(
+                    fnStmt->GetIdentifier()->GetLexeme(),
+                    fnStmt->GetCodeErrString()));
+
+            FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
+
+            IRFunction *irFunc = dynamic_cast<IRFunction *>(
+                GetIRSymbol(fnStmt->GetIdentifier()->GetLexeme()));
+            if (!fnStmt->IsPrototype())
+            {
+                llvm::BasicBlock *fnBB = llvm::BasicBlock::Create(
+                    *ctx, std::format("{}FnBlock", fn->GetName()), irFunc->fn);
+                irFunc->fnBB = fnBB;
+                irBuilder->SetInsertPoint(fnBB);
+
+                size_t index = 0;
+                for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
+                {
+                    GenStatementIR(paramStmt);
+                    IRVariable *paramVar = dynamic_cast<IRVariable *>(
+                        GetIRSymbol(paramStmt->GetIdentifier()->GetLexeme()));
+                    llvm::Value *value = irFunc->fn->getArg(index);
+                    irBuilder->CreateStore(value, paramVar->value);
+                    index++;
+                }
+                GenStatementIR(fnStmt->GetBlockStatement());
+
+                llvm::Instruction *term =
+                    irBuilder->GetInsertBlock()->getTerminator();
+
+                if (!term || !llvm::isa<llvm::ReturnInst>(term))
+                {
+                    if (irFunc->ztoonFn->GetFnDataTypeFromFnPTR()
+                            ->returnDataType->type != DataType::Type::NOTYPE)
+                    {
+                        irBuilder->CreateRet(
+                            GenExpressionIR(
+                                irFunc->ztoonFn->retStmt->GetExpression())
+                                .value);
+                    }
+                    else
+                    {
+                        irBuilder->CreateRetVoid();
+                    }
+                }
+            }
+        }
+    }
+}
+
 void CodeGen::GenStatementIR(Statement *statement)
 {
     if (dynamic_cast<ImportStatement *>(statement))
@@ -1199,10 +1557,10 @@ void CodeGen::GenStatementIR(Statement *statement)
                     if (!listExpr)
                     {
                         ReportError(
-                            std::format(
-                                "Global {} variables can only be initialized "
-                                "with a list of constant expressions",
-                                arrType ? "array" : "struct"),
+                            std::format("Global {} variables can only be "
+                                        "initialized "
+                                        "with a list of constant expressions",
+                                        arrType ? "array" : "struct"),
                             varDeclStatement->GetCodeErrString());
                     }
                     llvm::Constant *consts =
@@ -1231,11 +1589,11 @@ void CodeGen::GenStatementIR(Statement *statement)
                         type->GetType() == DataType::Type::FN)
                     {
                         ReportError(
-                            std::format(
-                                "Expression '{}' is not known at compile time",
-                                varDeclStatement->GetExpression()
-                                    ->GetCodeErrString()
-                                    .str),
+                            std::format("Expression '{}' is not known at "
+                                        "compile time",
+                                        varDeclStatement->GetExpression()
+                                            ->GetCodeErrString()
+                                            .str),
                             varDeclStatement->GetExpression()
                                 ->GetCodeErrString());
                     }
@@ -1815,9 +2173,9 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                 }
                 else
                 {
-                    ReportError(
-                        "Arguments are not compatible with function parameters",
-                        fnCallExpr->GetCodeErrString());
+                    ReportError("Arguments are not compatible with "
+                                "function parameters",
+                                fnCallExpr->GetCodeErrString());
                 }
             }
 

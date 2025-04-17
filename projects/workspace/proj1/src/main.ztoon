@@ -6,20 +6,19 @@ package mainPkg
 union uFoo
 {
     x: i32;
-    f: Foo;
 }struct Foo
 {
     x: i32 = 0;
     m: Moo;
-    pi_: f32 = pi;
+    _pi: f32 = pi;
     uF: uFoo;
 }
 
 
+f: Foo;
 pi : readonly f32 = 3.142;
 
 
-f: Foo;
 
 struct Moo
 {
@@ -30,21 +29,15 @@ struct Boo
 {
     y: i32 = 0;
 }
-
-
-
-
-
-
+fn printf(msg: readonly i8*, ...);
 fn main() -> i32
 {
-    
     num: f32 = 12.0;
      
     // PrintCore();
 
     for i: i32 = 0; i < 10; i++ {
-        i++;
+        printf("%d\n", i);
     }
-    ret 0;
+    ret num as i32;
 }

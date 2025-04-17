@@ -102,7 +102,10 @@ class CodeGen
     llvm::Constant *
     InitListToStructConstant(StructDataType *structType,
                              InitializerListExpression *listExpr);
-    void GenPackageIR(Package *pkg);
+    void GenPackageGlobalTypesIR(Package *pkg);
+    void GenPackageGlobalFuncsAndVarsIR(Package *pkg);
+    void GenGlobalVariableIR(VarDeclStatement *varDeclStatement);
+    void GenPackageGlobalVarAndFuncBodiesIR(Package *pkg);
     void GenStatementIR(Statement *statement);
     void GenIfStatementIR(Statement *statement, IfStatementData *ifData);
     IRValue GenExpressionIR(Expression *expression, bool isWrite = false);
@@ -124,5 +127,6 @@ class CodeGen
     std::unordered_map<std::string, IRSymbol *> irSymbolsMap;
     IRLoop *currentLoop = nullptr;
     SemanticAnalyzer &semanticAnalyzer;
-    std::unordered_map<Package *, bool> packageIRDoneMap;
+    std::unordered_map<Statement *, bool> globalStatementIRDoneMap;
+    std::unordered_map<VarDeclStatement *, IRValue> globalConstsMap;
 };

@@ -225,7 +225,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^false\b)"), TokenType::FALSE});
     patterns.push_back({std::regex(R"(^true\b)"), TokenType::TRUE});
     patterns.push_back(
-        {std::regex(R"(^[a-zA-Z][a-zA-Z0-9_]*)"), TokenType::IDENTIFIER});
+        {std::regex(R"(^[_a-zA-Z][a-zA-Z0-9_]*)"), TokenType::IDENTIFIER});
 }
 
 Lexer::~Lexer() {}

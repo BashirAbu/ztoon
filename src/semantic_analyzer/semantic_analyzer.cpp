@@ -777,6 +777,7 @@ void SemanticAnalyzer::AnalizePackageGlobalTypes(Package *pkg)
 
 void SemanticAnalyzer::AnalizePackageGlobalFuncsAndVars(Package *pkg)
 {
+    currentPackage = pkg;
     currentScope = pkgToScopeMap[pkg];
     for (auto stmt : pkg->statements)
     {
@@ -824,6 +825,7 @@ void SemanticAnalyzer::AnalizePackageGlobalFuncsAndVars(Package *pkg)
 
 void SemanticAnalyzer::AnalizePackageGlobalTypeBodies(Package *pkg)
 {
+    currentPackage = pkg;
     currentScope = pkgToScopeMap[pkg];
     for (auto stmt : pkg->statements)
     {
@@ -1172,6 +1174,7 @@ void SemanticAnalyzer::AnalizePackageGlobalTypeBodies(Package *pkg)
 }
 void SemanticAnalyzer::AnalizePackageVarAndFuncBodies(Package *pkg)
 {
+    currentPackage = pkg;
     currentScope = pkgToScopeMap[pkg];
     for (auto stmt : pkg->statements)
     {
@@ -1498,188 +1501,181 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         Scope *pkgScope = pkgToScopeMap[pkgFound];
 
         currentScope->importedPackages.push_back(pkgScope);
-
-        // EvaluateAndAssignDataTypeToExpression(importStmt->package);
     }
-    // else if (dynamic_cast<StructStatement *>(statement))
-    // {
-    //     auto structStmt = dynamic_cast<StructStatement *>(statement);
+    else if (dynamic_cast<StructStatement *>(statement))
+    {
+        auto structStmt = dynamic_cast<StructStatement *>(statement);
 
-    //     StructDataType *structType;
-    //     if (!currentScope->datatypesMap.contains(
-    //             structStmt->identifier->GetLexeme()))
-    //     {
-    //         structType = gZtoonArena.Allocate<StructDataType>();
-    //         structType->structStmt = structStmt;
-    //         structType->type = DataType::Type::STRUCT;
-    //         structType->complete = false;
-    //         if (structStmt->identifier)
-    //         {
-    //             structType->name = structStmt->identifier->GetLexeme();
-    //         }
-    //         else
-    //         {
-    //             structType->name =
-    //             std::format("__anonymous_struct__number__{}",
-    //                                            (size_t)(structStmt));
-    //         }
-    //         currentScope->datatypesMap[structType->name] = structType;
-    //         currentScope->AddSymbol(structType,
-    //         structStmt->GetCodeErrString());
-    //         stmtToDataTypeMap[structStmt] = structType;
-    //     }
-    //     else
-    //     {
+        StructDataType *structType;
+        if (!currentScope->datatypesMap.contains(
+                structStmt->identifier->GetLexeme()))
+        {
+            structType = gZtoonArena.Allocate<StructDataType>();
+            structType->structStmt = structStmt;
+            structType->type = DataType::Type::STRUCT;
+            structType->complete = false;
+            if (structStmt->identifier)
+            {
+                structType->name = structStmt->identifier->GetLexeme();
+            }
+            else
+            {
+                structType->name = std::format("__anonymous_struct__number__{}",
+                                               (size_t)(structStmt));
+            }
+            currentScope->datatypesMap[structType->name] = structType;
+            currentScope->AddSymbol(structType, structStmt->GetCodeErrString());
+            stmtToDataTypeMap[structStmt] = structType;
+        }
+        else
+        {
 
-    //         structType = dynamic_cast<StructDataType *>(
-    //             currentScope
-    //                 ->datatypesMap[structStmt->identifier->GetLexeme()]);
-    //     }
+            structType = dynamic_cast<StructDataType *>(
+                currentScope
+                    ->datatypesMap[structStmt->identifier->GetLexeme()]);
+        }
 
-    //     Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
-    //     Scope *temp = currentScope;
+        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
+        Scope *temp = currentScope;
 
-    //     currentScope = scope;
-    //     structType->scope = currentScope;
-    //     structType->defaultValuesList =
-    //         gZtoonArena.Allocate<InitializerListExpression>();
-    //     size_t index = 0;
-    //     for (auto field : structStmt->fields)
-    //     {
-    //         structType->defaultValuesList->expressions.push_back(
-    //             field->GetExpression());
+        currentScope = scope;
+        structType->scope = currentScope;
+        structType->defaultValuesList =
+            gZtoonArena.Allocate<InitializerListExpression>();
+        size_t index = 0;
+        for (auto field : structStmt->fields)
+        {
+            structType->defaultValuesList->expressions.push_back(
+                field->GetExpression());
 
-    //         AnalizeStatement(field);
+            AnalizeStatement(field);
 
-    //         auto fieldDataType = stmtToDataTypeMap[field];
-    //         if (!fieldDataType->complete)
-    //         {
-    //             ReportError("Field variable has incomplete type",
-    //                         field->GetCodeErrString());
-    //         }
+            auto fieldDataType = stmtToDataTypeMap[field];
+            if (!fieldDataType->complete)
+            {
+                ReportError("Field variable has incomplete type",
+                            field->GetCodeErrString());
+            }
 
-    //         structType->fields.push_back(fieldDataType);
-    //         index++;
-    //     }
+            structType->fields.push_back(fieldDataType);
+            index++;
+        }
 
-    //     InitListType *listType = gZtoonArena.Allocate<InitListType>();
-    //     listType->type = DataType::Type::InitList;
+        InitListType *listType = gZtoonArena.Allocate<InitListType>();
+        listType->type = DataType::Type::InitList;
 
-    //     listType->dataTypes = structType->fields;
+        listType->dataTypes = structType->fields;
 
-    //     exprToDataTypeMap[structType->defaultValuesList] = listType;
+        exprToDataTypeMap[structType->defaultValuesList] = listType;
 
-    //     structType->complete = true;
-    //     currentScope = temp;
-    // }
-    // else if (dynamic_cast<UnionStatement *>(statement))
-    // {
-    //     auto unionStmt = dynamic_cast<UnionStatement *>(statement);
+        structType->complete = true;
+        currentScope = temp;
+    }
+    else if (dynamic_cast<UnionStatement *>(statement))
+    {
+        auto unionStmt = dynamic_cast<UnionStatement *>(statement);
 
-    //     UnionDataType *unionType;
-    //     if (!currentScope->datatypesMap.contains(
-    //             unionStmt->identifier->GetLexeme()))
-    //     {
-    //         unionType = gZtoonArena.Allocate<UnionDataType>();
-    //         unionType->unionStmt = unionStmt;
-    //         unionType->type = DataType::Type::UNION;
-    //         unionType->name = unionStmt->identifier->GetLexeme();
+        UnionDataType *unionType;
+        if (!currentScope->datatypesMap.contains(
+                unionStmt->identifier->GetLexeme()))
+        {
+            unionType = gZtoonArena.Allocate<UnionDataType>();
+            unionType->unionStmt = unionStmt;
+            unionType->type = DataType::Type::UNION;
+            unionType->name = unionStmt->identifier->GetLexeme();
 
-    //         currentScope->datatypesMap[unionType->name] = unionType;
-    //         currentScope->AddSymbol(unionType,
-    //         unionStmt->GetCodeErrString()); stmtToDataTypeMap[unionStmt]
-    //         = unionType;
-    //     }
-    //     else
-    //     {
-    //         unionType = dynamic_cast<UnionDataType *>(
-    //             currentScope->datatypesMap[unionStmt->identifier->GetLexeme()]);
-    //     }
+            currentScope->datatypesMap[unionType->name] = unionType;
+            currentScope->AddSymbol(unionType, unionStmt->GetCodeErrString());
+            stmtToDataTypeMap[unionStmt] = unionType;
+        }
+        else
+        {
+            unionType = dynamic_cast<UnionDataType *>(
+                currentScope->datatypesMap[unionStmt->identifier->GetLexeme()]);
+        }
 
-    //     Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
-    //     Scope *temp = currentScope;
+        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
+        Scope *temp = currentScope;
 
-    //     currentScope = scope;
-    //     unionType->scope = currentScope;
-    //     std::vector<VarDeclStatement *> toAddFields;
-    //     for (auto field : unionStmt->fields)
-    //     {
-    //         AnalizeStatement(field);
-    //         StructStatement *structField =
-    //             dynamic_cast<StructStatement *>(field);
+        currentScope = scope;
+        unionType->scope = currentScope;
+        std::vector<VarDeclStatement *> toAddFields;
+        for (auto field : unionStmt->fields)
+        {
+            AnalizeStatement(field);
+            StructStatement *structField =
+                dynamic_cast<StructStatement *>(field);
 
-    //         auto fieldDataType = stmtToDataTypeMap[field];
-    //         if (!fieldDataType->complete)
-    //         {
-    //             ReportError("Field variable has incomplete type",
-    //                         field->GetCodeErrString());
-    //         }
-    //         if (structField)
-    //         {
-    //             for (auto f : structField->fields)
-    //             {
-    //                 toAddFields.push_back(f);
-    //             }
-    //         }
-    //         unionType->fields.push_back(fieldDataType);
-    //     }
-    //     for (auto f : toAddFields)
-    //     {
-    //         Variable *var =
-    //             gZtoonArena.Allocate<Variable>(f->GetIdentifier()->GetLexeme());
-    //         var->token = f->GetIdentifier();
-    //         var->dataType = stmtToDataTypeMap[f];
-    //         currentScope->AddSymbol(var, f->GetCodeErrString());
-    //     }
-    //     currentScope = temp;
-    // }
-    // else if (dynamic_cast<EnumStatement *>(statement))
-    // {
-    //     auto enumStmt = dynamic_cast<EnumStatement *>(statement);
+            auto fieldDataType = stmtToDataTypeMap[field];
+            if (!fieldDataType->complete)
+            {
+                ReportError("Field variable has incomplete type",
+                            field->GetCodeErrString());
+            }
+            if (structField)
+            {
+                for (auto f : structField->fields)
+                {
+                    toAddFields.push_back(f);
+                }
+            }
+            unionType->fields.push_back(fieldDataType);
+        }
+        for (auto f : toAddFields)
+        {
+            Variable *var =
+                gZtoonArena.Allocate<Variable>(f->GetIdentifier()->GetLexeme());
+            var->token = f->GetIdentifier();
+            var->dataType = stmtToDataTypeMap[f];
+            currentScope->AddSymbol(var, f->GetCodeErrString());
+        }
+        currentScope = temp;
+    }
+    else if (dynamic_cast<EnumStatement *>(statement))
+    {
+        auto enumStmt = dynamic_cast<EnumStatement *>(statement);
 
-    //     EnumDataType *enumType;
-    //     if (!currentScope->datatypesMap.contains(
-    //             enumStmt->identifier->GetLexeme()))
-    //     {
-    //         auto enumType = gZtoonArena.Allocate<EnumDataType>();
-    //         enumType->type = DataType::Type::ENUM;
-    //         enumType->name = enumStmt->identifier->GetLexeme();
-    //         enumType->enumStmt = enumStmt;
-    //         enumType->datatype =
-    //         currentScope->GetDataType(enumStmt->datatype);
+        EnumDataType *enumType;
+        if (!currentScope->datatypesMap.contains(
+                enumStmt->identifier->GetLexeme()))
+        {
+            auto enumType = gZtoonArena.Allocate<EnumDataType>();
+            enumType->type = DataType::Type::ENUM;
+            enumType->name = enumStmt->identifier->GetLexeme();
+            enumType->enumStmt = enumStmt;
+            enumType->datatype = currentScope->GetDataType(enumStmt->datatype);
 
-    //         if (!enumType->datatype->IsInteger())
-    //         {
-    //             ReportError("Enum type must be interger",
-    //                         enumStmt->GetCodeErrString());
-    //         }
+            if (!enumType->datatype->IsInteger())
+            {
+                ReportError("Enum type must be interger",
+                            enumStmt->GetCodeErrString());
+            }
 
-    //         stmtToDataTypeMap[enumStmt] = enumType;
+            stmtToDataTypeMap[enumStmt] = enumType;
 
-    //         currentScope->datatypesMap[enumType->name] = enumType;
-    //         currentScope->AddSymbol(enumType,
-    //         enumStmt->GetCodeErrString());
-    //     }
-    //     else
-    //     {
-    //         enumType = dynamic_cast<EnumDataType *>(
-    //             currentScope->datatypesMap[enumStmt->identifier->GetLexeme()]);
-    //     }
+            currentScope->datatypesMap[enumType->name] = enumType;
+            currentScope->AddSymbol(enumType, enumStmt->GetCodeErrString());
+        }
+        else
+        {
+            enumType = dynamic_cast<EnumDataType *>(
+                currentScope->datatypesMap[enumStmt->identifier->GetLexeme()]);
+        }
 
-    //     for (auto f : enumStmt->fields)
-    //     {
-    //         if (f->expr)
-    //         {
-    //             EvaluateAndAssignDataTypeToExpression(f->expr);
-    //             auto fDataType = exprToDataTypeMap[f->expr];
-    //             if (!fDataType->IsInteger())
-    //             {
-    //                 ReportError("Only integer types are allowed",
-    //                             f->expr->GetCodeErrString());
-    //             }
-    //         }
-    //     }
-    // }
+        for (auto f : enumStmt->fields)
+        {
+            if (f->expr)
+            {
+                EvaluateAndAssignDataTypeToExpression(f->expr);
+                auto fDataType = exprToDataTypeMap[f->expr];
+                if (!fDataType->IsInteger())
+                {
+                    ReportError("Only integer types are allowed",
+                                f->expr->GetCodeErrString());
+                }
+            }
+        }
+    }
     else if (dynamic_cast<VarDeclStatement *>(statement))
     {
         VarDeclStatement *varDeclStatement =

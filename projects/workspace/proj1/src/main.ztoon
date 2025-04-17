@@ -1,6 +1,6 @@
 package mainPkg
 
-// import core;
+import core;
 
 
 union uFoo
@@ -8,7 +8,8 @@ union uFoo
     x: i32;
 }struct Foo
 {
-    x: i32 = 0;
+    vx: readonly i32 = 3333;
+    x: i32 = _x;
     m: Moo;
     _pi: f32 = pi;
     uF: uFoo;
@@ -17,7 +18,7 @@ union uFoo
 
 f: Foo;
 pi : readonly f32 = 3.142;
-
+_x: readonly i32 = 2222;
 
 
 struct Moo
@@ -29,15 +30,14 @@ struct Boo
 {
     y: i32 = 0;
 }
-fn printf(msg: readonly i8*, ...);
 fn main() -> i32
 {
     num: f32 = 12.0;
      
-    // PrintCore();
+    PrintCore();
 
     for i: i32 = 0; i < 10; i++ {
-        printf("%d\n", i);
+        printf("%d\n", i+1);
     }
-    ret num as i32;
+    ret 0;
 }

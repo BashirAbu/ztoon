@@ -1,9 +1,10 @@
-// package core
+package core
+import mainPkg;
+fn printf(msg: readonly i8*, ...);
 
-// fn printf(msg: readonly i8*, ...);
 
-
-// fn PrintCore()
-// {
-//     printf("Hi from core pkg!!!");
-// }
+foo: Foo;
+fn PrintCore()
+{
+    printf("Hi from core pkg!!!\npi = %f\n x = %d\n", foo._pi as f64, foo.x);
+}

@@ -234,6 +234,7 @@ class SemanticAnalyzer
     void Analize();
 
   private:
+    void AnalizePackage(Package *pkg);
     void AnalizePackageGlobalTypes(Package *pkg);
     void AnalizePackageGlobalFuncsAndVars(Package *pkg);
     void AnalizePackageGlobalTypeBodies(Package *pkg);

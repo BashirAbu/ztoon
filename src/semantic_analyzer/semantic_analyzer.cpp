@@ -197,7 +197,15 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 DataType *type = currentScope->datatypesMap[typeStr];
                 return type;
             }
+            for (auto pkg : currentScope->importedPackages)
+            {
 
+                if (pkg->datatypesMap.contains(typeStr))
+                {
+                    DataType *type = pkg->datatypesMap[typeStr];
+                    return type;
+                }
+            }
             currentScope = currentScope->parent;
         }
     }
@@ -667,28 +675,14 @@ SemanticAnalyzer::SemanticAnalyzer(std::vector<Package *> &_packages)
     // currentScope = gZtoonArena.Allocate<Scope>(this);
 }
 SemanticAnalyzer::~SemanticAnalyzer() {}
-void SemanticAnalyzer::Analize()
+void SemanticAnalyzer::AnalizePackage(Package *pkg)
 {
-    for (auto pkg : packages)
+    if (pkgToScopeMap.contains(pkg))
     {
-        AnalizePackageGlobalTypes(pkg);
+        currentPackage = pkg;
+        currentScope = pkgToScopeMap[pkg];
+        return;
     }
-    for (auto pkg : packages)
-    {
-        AnalizePackageGlobalFuncsAndVars(pkg);
-    }
-    for (auto pkg : packages)
-    {
-        AnalizePackageGlobalTypeBodies(pkg);
-    }
-    for (auto pkg : packages)
-    {
-        AnalizePackageVarAndFuncBodies(pkg);
-    }
-}
-
-void SemanticAnalyzer::AnalizePackageGlobalTypes(Package *pkg)
-{
     PackageDataType *pkgType = gZtoonArena.Allocate<PackageDataType>();
     pkgType->type = PackageDataType::Type::PACKAGE;
     pkgType->name = pkg->identifier->GetLexeme();
@@ -702,6 +696,64 @@ void SemanticAnalyzer::AnalizePackageGlobalTypes(Package *pkg)
     ces.str = ces.firstToken->GetLexeme();
     currentScope->AddSymbol(pkgType, ces);
     currentPackage = pkg;
+
+    for (auto stmt : pkg->GetStatements())
+    {
+        if (dynamic_cast<ImportStatement *>(stmt))
+        {
+            auto importStmt = dynamic_cast<ImportStatement *>(stmt);
+            auto pe = dynamic_cast<PrimaryExpression *>(
+                importStmt->GetPackageExpression());
+            if (pe && pe->GetPrimary()->GetType() == TokenType::IDENTIFIER)
+            {
+                std::string pkgName = pe->GetPrimary()->GetLexeme();
+                // find pkg
+                Package *importedPkg = nullptr;
+
+                for (auto p : packages)
+                {
+                    if (p->GetIdentifier()->GetLexeme() == pkgName)
+                    {
+                        importedPkg = p;
+                        break;
+                    }
+                }
+                if (!importedPkg)
+                {
+                    ReportError(
+                        std::format("Package '{}' is not found", pkgName),
+                        importStmt->GetPackageExpression()->GetCodeErrString());
+                }
+
+                // check if package is analized
+                if (!pkgToScopeMap.contains(importedPkg))
+                {
+                    AnalizePackage(importedPkg);
+                    currentPackage = pkg;
+                    currentScope = pkgToScopeMap[pkg];
+                }
+                auto importedPkgScope = pkgToScopeMap[importedPkg];
+                pkgToScopeMap[pkg]->importedPackages.push_back(
+                    importedPkgScope);
+            }
+        }
+    }
+
+    AnalizePackageGlobalTypes(pkg);
+    AnalizePackageGlobalFuncsAndVars(pkg);
+    AnalizePackageGlobalTypeBodies(pkg);
+}
+void SemanticAnalyzer::Analize()
+{
+    for (auto pkg : packages)
+    {
+        AnalizePackage(pkg);
+        AnalizePackageVarAndFuncBodies(pkg);
+    }
+}
+
+void SemanticAnalyzer::AnalizePackageGlobalTypes(Package *pkg)
+{
 
     for (auto stmt : pkg->statements)
     {
@@ -1328,6 +1380,7 @@ void SemanticAnalyzer::AnalizePackageVarAndFuncBodies(Package *pkg)
                                         fnStmt->GetCodeErrString()));
 
             Function *temp = currentFunction;
+            currentFunction = fp;
             AnalizeStatement(fnStmt->blockStatement);
             currentFunction = temp;
 
@@ -1756,6 +1809,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             varDeclStatement->GetIdentifier()->GetLexeme());
         var->token = varDeclStatement->GetIdentifier();
         var->dataType = stmtToDataTypeMap[varDeclStatement];
+        var->varDeclStmt = varDeclStatement;
         currentScope->AddSymbol(var, varDeclStatement->GetCodeErrString());
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))

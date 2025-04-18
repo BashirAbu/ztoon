@@ -122,12 +122,12 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
     {
         auto structZtoonType = dynamic_cast<StructDataType *>(type);
 
-        llvm::StructType *structIRType =
-            llvm::StructType::getTypeByName(*ctx, structZtoonType->name);
+        llvm::StructType *structIRType = llvm::StructType::getTypeByName(
+            *ctx, structZtoonType->GetFullName());
         if (!structIRType)
         {
             structIRType =
-                llvm::StructType::create(*ctx, structZtoonType->name);
+                llvm::StructType::create(*ctx, structZtoonType->GetFullName());
             std::vector<llvm::Type *> bodyFields;
             for (DataType *fieldType : structZtoonType->fields)
             {
@@ -476,7 +476,7 @@ void CodeGen::Compile(Project &project)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    // codeGen.module->print(llvm::outs(), nullptr);
+    module->print(llvm::outs(), nullptr);
 
     std::string error;
     const llvm::Target *target =
@@ -901,10 +901,25 @@ CodeGen::InitListToStructConstant(StructDataType *structType,
         }
         consts.push_back(valueConst);
     }
-
-    return llvm::ConstantStruct::get(
-        llvm::dyn_cast<llvm::StructType>(ZtoonTypeToLLVMType(structType).type),
-        consts);
+    llvm::StructType *st =
+        llvm::dyn_cast<llvm::StructType>(ZtoonTypeToLLVMType(structType).type);
+    size_t stSize = st->elements().size();
+    size_t c = consts.size();
+    bool eq = stSize == c;
+    if (eq)
+    {
+        for (size_t i = 0; i < c; i++)
+        {
+            auto sF = st->elements()[i];
+            auto lF = consts[i]->getType();
+            assert(sF == lF);
+        }
+    }
+    else
+    {
+        assert(0);
+    }
+    return llvm::ConstantStruct::get(st, consts);
 }
 void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
                                     ArrayDataType *arrType,
@@ -1147,20 +1162,23 @@ void CodeGen::GenIR()
 void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
 {
 
+    semanticAnalyzer.currentPackage = pkg;
+    semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
     std::function<void(StructDataType *)> genStructIR = nullptr;
     std::function<void(UnionDataType *)> genUnionIR = nullptr;
 
     genStructIR = [&](StructDataType *structZtoonType)
     {
-        llvm::StructType *structIRType =
-            llvm::StructType::getTypeByName(*ctx, structZtoonType->name);
+        llvm::StructType *structIRType = llvm::StructType::getTypeByName(
+            *ctx, structZtoonType->GetFullName());
         if (!structIRType)
         {
             structIRType =
-                llvm::StructType::create(*ctx, structZtoonType->name);
+                llvm::StructType::create(*ctx, structZtoonType->GetFullName());
             std::vector<llvm::Type *> bodyFields;
             for (DataType *fieldType : structZtoonType->fields)
             {
+
                 if (fieldType->GetType() == DataType::Type::STRUCT)
                 {
                     auto fieldStructType =
@@ -1168,13 +1186,13 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
 
                     llvm::StructType *structFieldIRType =
                         llvm::StructType::getTypeByName(
-                            *ctx, fieldStructType->GetName());
+                            *ctx, fieldStructType->GetFullName());
                     if (!structFieldIRType)
                     {
                         genStructIR(fieldStructType);
                     }
                     structFieldIRType = llvm::StructType::getTypeByName(
-                        *ctx, fieldStructType->GetName());
+                        *ctx, fieldStructType->GetFullName());
                     bodyFields.push_back(structFieldIRType);
                 }
                 else if (fieldType->GetType() == DataType::Type::UNION)
@@ -2246,6 +2264,20 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                 enumField->useSigned ? enumField->sValue : enumField->uValue);
             irValue.value = value;
             irValue.type = type;
+        }
+        else if (maExpr->accessType ==
+                 MemberAccessExpression::AccessType::PACKAGE)
+        {
+            auto pgkType = dynamic_cast<PackageDataType *>(
+                semanticAnalyzer
+                    .exprToDataTypeMap[maExpr->GetLeftExpression()]);
+            auto temp = semanticAnalyzer.currentScope;
+            semanticAnalyzer.currentScope =
+                semanticAnalyzer.pkgToScopeMap[pgkType->pkg];
+
+            irValue = GenExpressionIR(maExpr->GetRightExpression());
+
+            semanticAnalyzer.currentScope = temp;
         }
     }
     else if (dynamic_cast<SubscriptExpression *>(expression))

@@ -188,6 +188,29 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
     }
 
     Scope *currentScope = this;
+    if (dataTypeToken->pkgToken)
+    {
+        Package *pkgFound = nullptr;
+        for (auto pkg : semanticAnalyzer->packages)
+        {
+            if (pkg->GetIdentifier()->GetLexeme() ==
+                dataTypeToken->pkgToken->GetLexeme())
+            {
+                pkgFound = pkg;
+                break;
+            }
+        }
+        if (!pkgFound)
+        {
+            CodeErrString ces;
+            ces.firstToken = dataTypeToken->pkgToken;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError(std::format("Package '{}' is not found",
+                                    dataTypeToken->pkgToken->GetLexeme()),
+                        ces);
+        }
+        currentScope = semanticAnalyzer->pkgToScopeMap[pkgFound];
+    }
     if (!dataTypeToken->arrayDesc)
     {
         while (currentScope)
@@ -199,7 +222,6 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
             }
             for (auto pkg : currentScope->importedPackages)
             {
-
                 if (pkg->datatypesMap.contains(typeStr))
                 {
                     DataType *type = pkg->datatypesMap[typeStr];
@@ -675,7 +697,7 @@ SemanticAnalyzer::SemanticAnalyzer(std::vector<Package *> &_packages)
     // currentScope = gZtoonArena.Allocate<Scope>(this);
 }
 SemanticAnalyzer::~SemanticAnalyzer() {}
-void SemanticAnalyzer::AnalizePackage(Package *pkg)
+void SemanticAnalyzer::AnalyzePackage(Package *pkg)
 {
     if (pkgToScopeMap.contains(pkg))
     {
@@ -725,10 +747,10 @@ void SemanticAnalyzer::AnalizePackage(Package *pkg)
                         importStmt->GetPackageExpression()->GetCodeErrString());
                 }
 
-                // check if package is analized
+                // check if package is d
                 if (!pkgToScopeMap.contains(importedPkg))
                 {
-                    AnalizePackage(importedPkg);
+                    AnalyzePackage(importedPkg);
                     currentPackage = pkg;
                     currentScope = pkgToScopeMap[pkg];
                 }
@@ -739,20 +761,21 @@ void SemanticAnalyzer::AnalizePackage(Package *pkg)
         }
     }
 
-    AnalizePackageGlobalTypes(pkg);
-    AnalizePackageGlobalFuncsAndVars(pkg);
-    AnalizePackageGlobalTypeBodies(pkg);
+    AnalyzePackageGlobalTypes(pkg);
+    AnalyzePackageGlobalFuncsAndVars(pkg);
+    AnalyzePackageGlobalTypeBodies(pkg);
 }
-void SemanticAnalyzer::Analize()
+void SemanticAnalyzer::Analyze()
 {
+
     for (auto pkg : packages)
     {
-        AnalizePackage(pkg);
-        AnalizePackageVarAndFuncBodies(pkg);
+        AnalyzePackage(pkg);
+        AnalyzePackageVarAndFuncBodies(pkg);
     }
 }
 
-void SemanticAnalyzer::AnalizePackageGlobalTypes(Package *pkg)
+void SemanticAnalyzer::AnalyzePackageGlobalTypes(Package *pkg)
 {
 
     for (auto stmt : pkg->statements)
@@ -782,6 +805,9 @@ void SemanticAnalyzer::AnalizePackageGlobalTypes(Package *pkg)
                 currentScope->AddSymbol(structType,
                                         structStmt->GetCodeErrString());
                 stmtToDataTypeMap[structStmt] = structType;
+                structType->fullName = std::format(
+                    "{}::{}", currentPackage->GetIdentifier()->GetLexeme(),
+                    structType->name);
             }
             else
             {
@@ -827,7 +853,7 @@ void SemanticAnalyzer::AnalizePackageGlobalTypes(Package *pkg)
     }
 }
 
-void SemanticAnalyzer::AnalizePackageGlobalFuncsAndVars(Package *pkg)
+void SemanticAnalyzer::AnalyzePackageGlobalFuncsAndVars(Package *pkg)
 {
     currentPackage = pkg;
     currentScope = pkgToScopeMap[pkg];
@@ -865,7 +891,7 @@ void SemanticAnalyzer::AnalizePackageGlobalFuncsAndVars(Package *pkg)
             currentFunction = fp;
             for (Statement *p : fnStmt->parameters)
             {
-                AnalizeStatement(p);
+                AnalyzeStatement(p);
                 fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
             }
 
@@ -875,7 +901,7 @@ void SemanticAnalyzer::AnalizePackageGlobalFuncsAndVars(Package *pkg)
     }
 }
 
-void SemanticAnalyzer::AnalizePackageGlobalTypeBodies(Package *pkg)
+void SemanticAnalyzer::AnalyzePackageGlobalTypeBodies(Package *pkg)
 {
     currentPackage = pkg;
     currentScope = pkgToScopeMap[pkg];
@@ -899,7 +925,7 @@ void SemanticAnalyzer::AnalizePackageGlobalTypeBodies(Package *pkg)
                 structType->defaultValuesList->expressions.push_back(
                     field->GetExpression());
 
-                AnalizeStatement(field);
+                AnalyzeStatement(field);
 
                 auto fieldDataType = stmtToDataTypeMap[field];
                 auto fieldStructType =
@@ -1075,7 +1101,7 @@ void SemanticAnalyzer::AnalizePackageGlobalTypeBodies(Package *pkg)
             std::vector<VarDeclStatement *> toAddFields;
             for (auto field : unionStmt->fields)
             {
-                AnalizeStatement(field);
+                AnalyzeStatement(field);
                 StructStatement *fieldStructStmt =
                     dynamic_cast<StructStatement *>(field);
 
@@ -1224,7 +1250,7 @@ void SemanticAnalyzer::AnalizePackageGlobalTypeBodies(Package *pkg)
         }
     }
 }
-void SemanticAnalyzer::AnalizePackageVarAndFuncBodies(Package *pkg)
+void SemanticAnalyzer::AnalyzePackageVarAndFuncBodies(Package *pkg)
 {
     currentPackage = pkg;
     currentScope = pkgToScopeMap[pkg];
@@ -1358,16 +1384,19 @@ void SemanticAnalyzer::AnalizePackageVarAndFuncBodies(Package *pkg)
                             varDeclStatement->GetCodeErrString());
                     }
                 }
-
-                if ((!exprToDataTypeMap[varDeclStatement->GetExpression()]
-                          ->IsReadOnly() &&
-                     exprToDataTypeMap[varDeclStatement->GetExpression()]
-                             ->GetType() != DataType::Type::InitList))
+                bool isReadonly =
+                    exprToDataTypeMap[varDeclStatement->GetExpression()]
+                        ->IsReadOnly();
+                bool isListType =
+                    exprToDataTypeMap[varDeclStatement->GetExpression()]
+                        ->GetType() != DataType::Type::InitList;
+                if (!isReadonly && !isListType)
                 {
                     ReportError(
-                        std::format("ReadOnly or compile time expression are "
-                                    "allowd to be "
-                                    "assigned to global variables"),
+                        std::format(
+                            "Only readonly or compile time expression are "
+                            "allowd to be "
+                            "assigned to global variables"),
                         varDeclStatement->GetExpression()->GetCodeErrString());
                 }
             }
@@ -1381,7 +1410,7 @@ void SemanticAnalyzer::AnalizePackageVarAndFuncBodies(Package *pkg)
 
             Function *temp = currentFunction;
             currentFunction = fp;
-            AnalizeStatement(fnStmt->blockStatement);
+            AnalyzeStatement(fnStmt->blockStatement);
             currentFunction = temp;
 
             if (!fnStmt->IsPrototype())
@@ -1512,7 +1541,7 @@ void SemanticAnalyzer::AnalizePackageVarAndFuncBodies(Package *pkg)
         }
     }
 }
-void SemanticAnalyzer::PreAnalizeStatement(Statement *statement, size_t index)
+void SemanticAnalyzer::PreAnalyzeStatement(Statement *statement, size_t index)
 {
     if (dynamic_cast<ForLoopStatement *>(statement))
     {
@@ -1522,7 +1551,7 @@ void SemanticAnalyzer::PreAnalizeStatement(Statement *statement, size_t index)
     }
 }
 
-void SemanticAnalyzer::AnalizeStatement(Statement *statement)
+void SemanticAnalyzer::AnalyzeStatement(Statement *statement)
 {
     if (dynamic_cast<ImportStatement *>(statement))
     {
@@ -1579,6 +1608,9 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             currentScope->datatypesMap[structType->name] = structType;
             currentScope->AddSymbol(structType, structStmt->GetCodeErrString());
             stmtToDataTypeMap[structStmt] = structType;
+            structType->fullName = std::format(
+                "{}::{}", currentPackage->GetIdentifier()->GetLexeme(),
+                structType->name);
         }
         else
         {
@@ -1601,7 +1633,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             structType->defaultValuesList->expressions.push_back(
                 field->GetExpression());
 
-            AnalizeStatement(field);
+            AnalyzeStatement(field);
 
             auto fieldDataType = stmtToDataTypeMap[field];
             if (!fieldDataType->complete)
@@ -1655,7 +1687,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         std::vector<VarDeclStatement *> toAddFields;
         for (auto field : unionStmt->fields)
         {
-            AnalizeStatement(field);
+            AnalyzeStatement(field);
             StructStatement *structField =
                 dynamic_cast<StructStatement *>(field);
 
@@ -1930,7 +1962,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
 
         for (size_t i = 0; i < blockStatement->statements.size(); i++)
         {
-            AnalizeStatement(blockStatement->statements[i]);
+            AnalyzeStatement(blockStatement->statements[i]);
             blockStatement->index = i;
         }
         currentScope = temp;
@@ -2038,7 +2070,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             elseStmt->blockStatement = switchStmt->defualtCase->blockStatement;
             ifStmt->nextElseIforElseStatements.push_back(elseStmt);
         }
-        AnalizeStatement(ifStmt);
+        AnalyzeStatement(ifStmt);
         for (size_t index = 0; index < currentBlockStatement->statements.size();
              index++)
         {
@@ -2061,11 +2093,11 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                         ifStatement->GetCodeErrString());
         }
 
-        AnalizeStatement(ifStatement->GetBlockStatement());
+        AnalyzeStatement(ifStatement->GetBlockStatement());
 
         for (Statement *s : ifStatement->GetNextElseIforElseStatements())
         {
-            AnalizeStatement(s);
+            AnalyzeStatement(s);
         }
     }
     else if (dynamic_cast<ElseIfStatement *>(statement))
@@ -2080,13 +2112,13 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             ReportError(std::format("Expression after 'if' must be boolean."),
                         elifStatement->GetCodeErrString());
         }
-        AnalizeStatement(elifStatement->GetBlockStatement());
+        AnalyzeStatement(elifStatement->GetBlockStatement());
     }
     else if (dynamic_cast<ElseStatement *>(statement))
     {
         ElseStatement *elseStatement = dynamic_cast<ElseStatement *>(statement);
 
-        AnalizeStatement(elseStatement->GetBlockStatement());
+        AnalyzeStatement(elseStatement->GetBlockStatement());
     }
     else if (dynamic_cast<ExpressionStatement *>(statement))
     {
@@ -2113,7 +2145,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
                 whileStatement->GetCondition()->GetCodeErrString());
         }
         inLoop++;
-        AnalizeStatement(whileStatement->GetBlockStatement());
+        AnalyzeStatement(whileStatement->GetBlockStatement());
         inLoop--;
     }
     else if (dynamic_cast<ForLoopStatement *>(statement))
@@ -2122,7 +2154,7 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
             dynamic_cast<ForLoopStatement *>(statement);
 
         if (forLoopStatement->GetInit() != nullptr)
-            AnalizeStatement(forLoopStatement->GetInit());
+            AnalyzeStatement(forLoopStatement->GetInit());
         if (forLoopStatement->GetCondition() != nullptr)
         {
             EvaluateAndAssignDataTypeToExpression(
@@ -2141,11 +2173,11 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         }
         if (forLoopStatement->GetUpdate())
         {
-            AnalizeStatement(forLoopStatement->GetUpdate());
+            AnalyzeStatement(forLoopStatement->GetUpdate());
         }
         inLoop++;
 
-        AnalizeStatement(forLoopStatement->GetBlockStatement());
+        AnalyzeStatement(forLoopStatement->GetBlockStatement());
         inLoop--;
     }
     else if (dynamic_cast<BreakStatement *>(statement))
@@ -2251,10 +2283,10 @@ void SemanticAnalyzer::AnalizeStatement(Statement *statement)
         currentFunction = fp;
         for (Statement *p : fnStmt->parameters)
         {
-            AnalizeStatement(p);
+            AnalyzeStatement(p);
             fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
         }
-        AnalizeStatement(fnStmt->blockStatement);
+        AnalyzeStatement(fnStmt->blockStatement);
         currentFunction = temp;
         // check for ret statement;
         if (!fnStmt->IsPrototype())
@@ -2441,6 +2473,8 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                         ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
                         : nullptr;
                 exprToDataTypeMap[castExpr] = leftDataType;
+                exprToDataTypeMap[castExpr]->isReadOnly =
+                    rightDataType->IsReadOnly();
                 *right = castExpr;
                 return leftDataType->type;
             }
@@ -2588,7 +2622,42 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
     {
         auto maExpr = dynamic_cast<MemberAccessExpression *>(expression);
         maExpr->isLvalue = true;
-        EvaluateAndAssignDataTypeToExpression(maExpr->GetLeftExpression());
+
+        Package *pkgFound = nullptr;
+        auto primaryExpression =
+            dynamic_cast<PrimaryExpression *>(maExpr->GetLeftExpression());
+        if (primaryExpression &&
+            primaryExpression->GetPrimary()->GetType() == TokenType::IDENTIFIER)
+        {
+            for (auto pkg : packages)
+            {
+                if (pkg->GetIdentifier()->GetLexeme() ==
+                    primaryExpression->GetPrimary()->GetLexeme())
+                {
+                    pkgFound = pkg;
+                    break;
+                }
+            }
+            if (pkgFound)
+            {
+                // See if pkg is analyzed
+                if (!pkgToScopeMap.contains(pkgFound))
+                {
+                    AnalyzePackage(pkgFound);
+                }
+                CodeErrString ces;
+                ces.firstToken = pkgFound->GetIdentifier();
+                ces.str = ces.firstToken->GetLexeme();
+                auto pkgType = dynamic_cast<PackageDataType *>(
+                    pkgToScopeMap[pkgFound]->GetSymbol(
+                        pkgFound->GetIdentifier()->GetLexeme(), ces));
+                exprToDataTypeMap[maExpr->GetLeftExpression()] = pkgType;
+            }
+        }
+        if (!pkgFound)
+        {
+            EvaluateAndAssignDataTypeToExpression(maExpr->GetLeftExpression());
+        }
 
         DataType *left = exprToDataTypeMap[maExpr->GetLeftExpression()];
 
@@ -2613,17 +2682,18 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         }
         if (left->GetType() == DataType::Type::PACKAGE)
         {
+            maExpr->accessType = MemberAccessExpression::AccessType::PACKAGE;
             auto pkgType = dynamic_cast<PackageDataType *>(left);
 
             auto temp = currentScope;
-            currentScope = pkgToScopeMap[currentPackage];
+            currentScope = pkgToScopeMap[pkgType->pkg];
 
             PrimaryExpression *packageMember =
                 dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
 
             EvaluateAndAssignDataTypeToExpression(packageMember);
             currentScope = temp;
-            exprToDataTypeMap[maExpr] = left;
+            exprToDataTypeMap[maExpr] = exprToDataTypeMap[packageMember];
         }
         else if (left->GetType() == DataType::Type::ENUM)
         {
@@ -3394,11 +3464,13 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         case TokenType::IDENTIFIER:
         {
             primaryExpression->isLvalue = true;
+
             exprToDataTypeMap[primaryExpression] =
                 currentScope
                     ->GetSymbol(primaryExpression->primary->GetLexeme(),
                                 primaryExpression->GetCodeErrString())
                     ->GetDataType();
+
             break;
         }
         case TokenType::NULL_PTR:

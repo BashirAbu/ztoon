@@ -87,8 +87,10 @@ class StructDataType : public DataType, public Symbol
 {
   public:
     virtual std::string GetName() override { return name; }
+    std::string GetFullName() { return fullName; }
     virtual DataType *GetDataType() override { return this; }
     std::string name = "";
+    std::string fullName = "";
     Scope *scope = nullptr;
     StructStatement *structStmt;
     InitializerListExpression *defaultValuesList = nullptr;
@@ -231,20 +233,20 @@ class SemanticAnalyzer
   public:
     SemanticAnalyzer(std::vector<Package *> &_packages);
     ~SemanticAnalyzer();
-    void Analize();
+    void Analyze();
 
   private:
-    void AnalizePackage(Package *pkg);
-    void AnalizePackageGlobalTypes(Package *pkg);
-    void AnalizePackageGlobalFuncsAndVars(Package *pkg);
-    void AnalizePackageGlobalTypeBodies(Package *pkg);
-    void AnalizePackageVarAndFuncBodies(Package *pkg);
-    void AnalizeStatement(Statement *statement);
+    void AnalyzePackage(Package *pkg);
+    void AnalyzePackageGlobalTypes(Package *pkg);
+    void AnalyzePackageGlobalFuncsAndVars(Package *pkg);
+    void AnalyzePackageGlobalTypeBodies(Package *pkg);
+    void AnalyzePackageVarAndFuncBodies(Package *pkg);
+    void AnalyzeStatement(Statement *statement);
     void ValidateAssignValueToVarArray(Expression *expr,
                                        ArrayDataType *arrType);
     void ValidateAssignValueToVarStruct(Expression *expr,
                                         StructDataType *arrType);
-    void PreAnalizeStatement(Statement *statement, size_t index);
+    void PreAnalyzeStatement(Statement *statement, size_t index);
     DataType::Type DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);
     Scope *currentScope = nullptr;

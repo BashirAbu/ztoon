@@ -82,7 +82,6 @@ struct CodeErrString
 
 class DataTypeToken
 {
-
   public:
     Token const *GetDataType() const { return dataType; }
 
@@ -123,6 +122,9 @@ class DataTypeToken
 
     PointerDesc *pointerDesc = nullptr;
 
+    const Token *libToken = nullptr;
+    const Token *pkgToken = nullptr;
+
     friend class Parser;
     friend class DataType;
     friend class Scope;
@@ -157,7 +159,7 @@ class Statement
 class Package
 {
   public:
-    const Token *GetIdentifier() { return identifier; }
+    const Token *GetIdentifier() const { return identifier; }
     std::vector<Statement *> &GetStatements() { return statements; }
 
   private:

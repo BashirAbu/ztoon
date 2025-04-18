@@ -114,7 +114,6 @@ Token const *Parser::Prev()
 
 DataTypeToken *Parser::ParseDataType()
 {
-
     DataTypeToken *dataType = gZtoonArena.Allocate<DataTypeToken>();
     if (Consume(TokenType::READONLY))
     {
@@ -229,7 +228,98 @@ DataTypeToken *Parser::ParseDataType()
     else if (IsDataType(Peek()->GetType()))
     {
         Advance();
-        dataType->dataType = Prev();
+        bool libAccess = false;
+        const Token *firstAccessStage = Prev();
+        const Token *secondAccessStage = nullptr;
+        const Token *thirdAccessStage = nullptr;
+        if (Consume(TokenType::DOUBLE_COLON))
+        {
+            if (IsDataType(Peek()->GetType()))
+            {
+                Advance();
+                secondAccessStage = Prev();
+                if (Consume(TokenType::DOUBLE_COLON))
+                {
+                    libAccess = true;
+                    if (IsDataType(Peek()->GetType()))
+                    {
+                        Advance();
+                        thirdAccessStage = Prev();
+                    }
+                    else
+                    {
+                        CodeErrString ces;
+                        ces.firstToken = Peek();
+                        ces.str = ces.firstToken->GetLexeme();
+                        ReportError(
+                            std::format("Expected 'identifier' after '::'"),
+                            ces);
+                    }
+                }
+            }
+            else
+            {
+                CodeErrString ces;
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError(std::format("Expected 'identifier' after '::'"),
+                            ces);
+            }
+        }
+        else
+        {
+            firstAccessStage = Prev();
+        }
+
+        if (libAccess)
+        {
+            // lib::pkg::datatype
+            dataType->libToken = firstAccessStage;
+            dataType->pkgToken = secondAccessStage;
+            if (IsDataType(thirdAccessStage->GetType()))
+            {
+                dataType->dataType = thirdAccessStage;
+            }
+            else
+            {
+                CodeErrString ces;
+                ces.firstToken = thirdAccessStage;
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError(std::format("Expected 'datatype' after '::'"), ces);
+            }
+        }
+        else if (secondAccessStage)
+        {
+            // pkg::datatype
+            dataType->pkgToken = firstAccessStage;
+
+            if (IsDataType(secondAccessStage->GetType()))
+            {
+                dataType->dataType = secondAccessStage;
+            }
+            else
+            {
+                CodeErrString ces;
+                ces.firstToken = secondAccessStage;
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError(std::format("Expected 'datatype' after '::'"), ces);
+            }
+        }
+        else
+        {
+            // datatype
+            if (IsDataType(firstAccessStage->GetType()))
+            {
+                dataType->dataType = firstAccessStage;
+            }
+            else
+            {
+                CodeErrString ces;
+                ces.firstToken = firstAccessStage;
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError(std::format("Expected 'datatype' after '::'"), ces);
+            }
+        }
     }
     else
     {

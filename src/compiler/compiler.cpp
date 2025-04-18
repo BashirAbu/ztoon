@@ -1,6 +1,7 @@
 #include "code_gen/code_gen.h"
 #include "compiler.h"
 #include "lexer/lexer.h"
+#include "parser/parser.h"
 #include "semantic_analyzer/semantic_analyzer.h"
 #include <cstdio>
 #include <filesystem>
@@ -129,13 +130,6 @@ Compiler::Compiler(int argv, char **argc)
                 PrintError(std::format(
                     "{}'s 'relative_path' value cannot be empty", info.name));
             }
-            if (!proj->second["type"].IsDefined())
-            {
-                PrintError(
-                    std::format("{}'s 'type' key is missing", info.name));
-            }
-            info.type = Project::StrToPrjectType(
-                proj->second["type"].as<std::string>());
             workSpace.projectsInfo.push_back(info);
         }
 
@@ -165,123 +159,8 @@ Compiler::Compiler(int argv, char **argc)
                                        proj.name)
                         << e.what() << "\n";
                 }
-
-                Project project;
-                project.debugBuild =
-                    argParser->buildType == ArgTokenizer::TokenType::DEBUG;
-                project.relativePathToWorkSpace = proj.relativePath;
-                if (!projectRoot[proj.name].IsDefined())
-                {
-                    PrintError(std::format("'{}' key is not found", proj.name));
-                }
-                project.name = projectRoot.begin()->first.as<std::string>();
-                if (!projectRoot[proj.name]["type"].IsDefined())
-                {
-                    PrintError(
-                        std::format("{}'s 'type' key is not found", proj.name));
-                }
-                project.type = Project::StrToPrjectType(
-                    projectRoot[proj.name]["type"].as<std::string>());
-
-                if (projectRoot[proj.name]["common_flags"])
-                {
-                }
-
-                if (projectRoot[proj.name]["debug_flags"])
-                {
-                    if (projectRoot[proj.name]["debug_flags"]["opt_level"]
-                            .IsDefined())
-                    {
-                        project.debugFlags.optLevel = project.StrToOptLevel(
-                            projectRoot[proj.name]["debug_flags"]["opt_level"]
-                                .as<std::string>());
-                    }
-                }
-                if (projectRoot[proj.name]["release_flags"])
-                {
-                    if (projectRoot[proj.name]["release_flags"]["opt_level"]
-                            .IsDefined())
-                    {
-                        project.releaseFlags.optLevel = project.StrToOptLevel(
-                            projectRoot[proj.name]["release_flags"]["opt_level"]
-                                .as<std::string>());
-                    }
-                }
-                if (projectRoot[proj.name]["linker_flags"])
-                {
-
-                    if (projectRoot[proj.name]["linker_flags"]["exe_type"]
-                            .IsDefined())
-                    {
-                        project.linkerFlags.SetType(
-                            projectRoot[proj.name]["linker_flags"]["exe_type"]
-                                .as<std::string>());
-                    }
-
-                    if (projectRoot[proj.name]["linker_flags"]["no_crt"]
-                            .IsDefined())
-                    {
-                        project.linkerFlags.noCRT =
-                            projectRoot[proj.name]["linker_flags"]["no_crt"]
-                                .as<bool>();
-                    }
-                    if (projectRoot[proj.name]["linker_flags"]["crt_link_type"]
-                            .IsDefined())
-                    {
-                        project.linkerFlags.SetCRTLinkType(
-                            projectRoot[proj.name]["linker_flags"]
-                                       ["crt_link_type"]
-                                           .as<std::string>());
-                    }
-                    if (projectRoot[proj.name]["linker_flags"]["entry"]
-                            .IsDefined())
-                    {
-                        project.linkerFlags.entry =
-                            projectRoot[proj.name]["linker_flags"]["entry"]
-                                .as<std::string>();
-                    }
-                }
-
-                if (projectRoot[proj.name]["deps"])
-                {
-                    if (!projectRoot[proj.name]["deps"].IsSequence())
-                    {
-                        PrintError(std::format("{}'s 'deps' "
-                                               "key must be a sequence type",
-                                               proj.name));
-                    }
-
-                    for (auto dep : projectRoot[proj.name]["deps"])
-                    {
-                        auto depMap = dep.begin();
-                        if (!depMap->first.IsDefined())
-                        {
-                            PrintError(std::format(
-                                "Missing key in '{}'s deps sequence",
-                                proj.name));
-                        }
-                        Project::Dependency dependency;
-                        dependency.name = depMap->first.as<std::string>();
-                        if (!depMap->second["relative_path"].IsDefined())
-                        {
-                            PrintError(std::format(
-                                "'{}' key in project {}'s deps is missing",
-                                dependency.name, proj.name));
-                        }
-                        dependency.relativePath =
-                            depMap->second["relative_path"].as<std::string>();
-                    }
-                }
-                if (projectRoot[proj.name]["arch"].IsDefined())
-                {
-                    project.targetArch =
-                        projectRoot[proj.name]["arch"].as<std::string>();
-                }
-                else
-                {
-                    // TODO remove
-                    project.targetArch = "x86_64-pc-windows-msvc";
-                }
+                Project project =
+                    ParseProject(proj.name, proj.relativePath, projectRoot);
 
                 workSpace.projects.push_back(project);
             }
@@ -290,7 +169,6 @@ Compiler::Compiler(int argv, char **argc)
                 // create project
                 std::filesystem::create_directories(proj.relativePath);
                 std::filesystem::create_directory(proj.relativePath / "src");
-                std::filesystem::create_directory(proj.relativePath / "deps");
                 YAML::Node projNode;
                 std::string type = "none";
                 switch (proj.type)
@@ -301,6 +179,15 @@ Compiler::Compiler(int argv, char **argc)
                     std::ofstream defFile(proj.relativePath / "src" /
                                           "main.ztoon");
                     defFile << basicZtoonExeMainFile;
+                    defFile.close();
+                }
+                break;
+                case Project::Type::ZLIB:
+                {
+                    type = "zlib";
+                    std::ofstream defFile(proj.relativePath / "src" /
+                                          "lib.ztoon");
+                    defFile << basicZtoonLibraryFile;
                     defFile.close();
                 }
                 break;
@@ -343,51 +230,253 @@ Compiler::Compiler(int argv, char **argc)
     }
 }
 
+Project
+Compiler::ParseProject(std::string projectName,
+                       std::filesystem::path projectRelativePathToWorkSpace,
+                       YAML::Node &projectRoot)
+{
+    Project project;
+    project.debugBuild = argParser->buildType == ArgTokenizer::TokenType::DEBUG;
+    project.relativePathToWorkSpace = projectRelativePathToWorkSpace;
+    if (!projectRoot[projectName].IsDefined())
+    {
+        PrintError(std::format("'{}' key is not found", projectName));
+    }
+    project.name = projectRoot.begin()->first.as<std::string>();
+    if (!projectRoot[projectName]["type"].IsDefined())
+    {
+        PrintError(std::format("{}'s 'type' key is not found", projectName));
+    }
+    project.type = Project::StrToPrjectType(
+        projectRoot[projectName]["type"].as<std::string>());
+
+    if (projectRoot[projectName]["common_flags"])
+    {
+    }
+
+    if (projectRoot[projectName]["debug_flags"])
+    {
+        if (projectRoot[projectName]["debug_flags"]["opt_level"].IsDefined())
+        {
+            project.debugFlags.optLevel = project.StrToOptLevel(
+                projectRoot[projectName]["debug_flags"]["opt_level"]
+                    .as<std::string>());
+        }
+    }
+    if (projectRoot[projectName]["release_flags"])
+    {
+        if (projectRoot[projectName]["release_flags"]["opt_level"].IsDefined())
+        {
+            project.releaseFlags.optLevel = project.StrToOptLevel(
+                projectRoot[projectName]["release_flags"]["opt_level"]
+                    .as<std::string>());
+        }
+    }
+    if (projectRoot[projectName]["linker_flags"])
+    {
+
+        if (projectRoot[projectName]["linker_flags"]["exe_type"].IsDefined())
+        {
+            project.linkerFlags.SetType(
+                projectRoot[projectName]["linker_flags"]["exe_type"]
+                    .as<std::string>());
+        }
+
+        if (projectRoot[projectName]["linker_flags"]["no_crt"].IsDefined())
+        {
+            project.linkerFlags.noCRT =
+                projectRoot[projectName]["linker_flags"]["no_crt"].as<bool>();
+        }
+        if (projectRoot[projectName]["linker_flags"]["crt_link_type"]
+                .IsDefined())
+        {
+            project.linkerFlags.SetCRTLinkType(
+                projectRoot[projectName]["linker_flags"]["crt_link_type"]
+                    .as<std::string>());
+        }
+        if (projectRoot[projectName]["linker_flags"]["entry"].IsDefined())
+        {
+            project.linkerFlags.entry =
+                projectRoot[projectName]["linker_flags"]["entry"]
+                    .as<std::string>();
+        }
+
+        if (projectRoot[projectName]["linker_flags"]["native_libs"].IsDefined())
+        {
+            if (!projectRoot[projectName]["linker_flags"]["native_libs"]
+                     .IsSequence())
+            {
+                PrintError(
+                    std::format("'native_libs' key must be a sequence in "
+                                "project '{}' ztoon.lib",
+                                projectName));
+            }
+            for (auto nlMap :
+                 projectRoot[projectName]["linker_flags"]["native_libs"])
+            {
+                Project::LinkerFlags::NativeLib nativeLibrary;
+                auto nativeLib = nlMap.begin()->second;
+
+                nativeLibrary.name = nlMap.begin()->first.as<std::string>();
+                if (!nativeLib["type"].IsDefined())
+                {
+                    PrintError(
+                        std::format("Missing 'type' key in native lib '{}' in "
+                                    "'{}' "
+                                    "ztoon.yaml",
+                                    nativeLibrary.name, projectName));
+                }
+                nativeLibrary.type = project.StrToPrjectType(
+                    nativeLib["type"].as<std::string>());
+
+                if (!nativeLib["relative_path"].IsDefined())
+                {
+                    PrintError(
+                        std::format("Missing 'relative_path' key in native lib "
+                                    "'{}' in '{}' "
+                                    "ztoon.yaml",
+                                    nativeLibrary.name, projectName));
+                }
+                nativeLibrary.relative_path =
+                    nativeLib["relative_path"].as<std::string>();
+                project.linkerFlags.nativeLibs.push_back(nativeLibrary);
+            }
+        }
+    }
+
+    if (projectRoot[projectName]["deps"])
+    {
+        if (!projectRoot[projectName]["deps"].IsSequence())
+        {
+            PrintError(std::format("{}'s 'deps' "
+                                   "key must be a sequence type",
+                                   projectName));
+        }
+
+        for (auto dep : projectRoot[projectName]["deps"])
+        {
+            auto depMap = dep.begin();
+            if (!depMap->first.IsDefined())
+            {
+                PrintError(std::format("Missing key in '{}'s deps sequence",
+                                       projectName));
+            }
+            Project::Dependency dependency;
+            dependency.name = depMap->first.as<std::string>();
+            if (!depMap->second["relative_path"].IsDefined())
+            {
+                PrintError(
+                    std::format("'{}' key in project {}'s deps is missing",
+                                dependency.name, projectName));
+            }
+            dependency.relativePath =
+                depMap->second["relative_path"].as<std::string>();
+        }
+    }
+    if (projectRoot[projectName]["arch"].IsDefined())
+    {
+        project.targetArch = projectRoot[projectName]["arch"].as<std::string>();
+    }
+    else
+    {
+        // TODO remove
+        project.targetArch = "x86_64-pc-windows-msvc";
+    }
+
+    std::function<void(Project & project)> parseDeps = nullptr;
+    parseDeps = [&](Project &_project)
+    {
+        for (auto depProj : _project.deps)
+        {
+            std::fstream depZtoonYamlFile(depProj.relativePath / "ztoon.yaml");
+            if (!depZtoonYamlFile.is_open())
+            {
+                PrintError(std::format(
+                    "Project '{}' 'ztoon.yaml' file is missing", depProj.name));
+            }
+
+            YAML::Node depProjRoot;
+            try
+            {
+                depProjRoot = YAML::Load(depZtoonYamlFile);
+            }
+            catch (const YAML::Exception &e)
+            {
+                std::cerr
+                    << std::format(
+                           "Error parsing project {}'s 'ztoon.yaml' file: ",
+                           depProj.name)
+                    << e.what() << "\n";
+            }
+            Project parsedDepProject =
+                ParseProject(depProj.name, depProj.relativePath, depProjRoot);
+            parseDeps(parsedDepProject);
+            for (auto nl : parsedDepProject.linkerFlags.nativeLibs)
+            {
+                // make it relative path
+                // TODO
+                _project.linkerFlags.nativeLibs.push_back(nl);
+            }
+        }
+    };
+    parseDeps(project);
+    return project;
+}
+
+void Compiler::BuildProject(Project &project)
+{
+
+    auto srcPath = project.relativePathToWorkSpace / "src";
+    if (std::filesystem::exists(srcPath) &&
+        std::filesystem::is_directory(srcPath))
+    {
+        Lexer lexer;
+        for (auto sourceFile :
+             std::filesystem::recursive_directory_iterator(srcPath))
+        {
+            if (sourceFile.path().extension() == ".ztoon")
+            {
+                std::fstream srcFile(sourceFile.path());
+                if (!srcFile.is_open())
+                {
+                    PrintError(std::format("Failed to open file '{}'",
+                                           sourceFile.path().generic_string()));
+                }
+
+                std::stringstream ss;
+                ss << srcFile.rdbuf();
+                std::string content = ss.str();
+                std::string filename =
+                    sourceFile.path().filename().generic_string();
+                lexer.Tokenize(content, filename);
+            }
+        }
+        lexer.EndProgram();
+        Parser parser(lexer.GetTokens());
+        auto packages = parser.Parse();
+        // TODO
+        std::vector<Package *> combinedPackages;
+
+        SemanticAnalyzer semanticAnalyzer(packages);
+        semanticAnalyzer.Analyze();
+        CodeGen codeGen(semanticAnalyzer, project.targetArch);
+        codeGen.GenIR();
+        codeGen.Compile(project);
+    }
+    else
+    {
+        PrintError(
+            std::format("Project '{}' src directory is missing", project.name));
+    }
+}
+
 void Compiler::BuildWorkSpace()
 {
     // go over each project
     for (auto proj : workSpace.projects)
     {
-        auto srcPath = proj.relativePathToWorkSpace / "src";
-        if (std::filesystem::exists(srcPath) &&
-            std::filesystem::is_directory(srcPath))
-        {
-            Lexer lexer;
-            for (auto sourceFile :
-                 std::filesystem::recursive_directory_iterator(srcPath))
-            {
-                if (sourceFile.path().extension() == ".ztoon")
-                {
-                    std::fstream srcFile(sourceFile.path());
-                    if (!srcFile.is_open())
-                    {
-                        PrintError(
-                            std::format("Failed to open file '{}'",
-                                        sourceFile.path().generic_string()));
-                    }
-
-                    std::stringstream ss;
-                    ss << srcFile.rdbuf();
-                    std::string content = ss.str();
-                    std::string filename =
-                        sourceFile.path().filename().generic_string();
-                    lexer.Tokenize(content, filename);
-                }
-            }
-            lexer.EndProgram();
-            Parser parser(lexer.GetTokens());
-            auto packages = parser.Parse();
-            SemanticAnalyzer semanticAnalyzer(packages);
-            semanticAnalyzer.Analyze();
-            CodeGen codeGen(semanticAnalyzer, proj.targetArch);
-            codeGen.GenIR();
-            codeGen.Compile(proj);
-        }
-        else
-        {
-            PrintError(std::format("Project '{}' src directory is missing",
-                                   proj.name));
-        }
+        if (proj.type != Project::Type::ZLIB)
+            BuildProject(proj);
     }
 
     // linking stage

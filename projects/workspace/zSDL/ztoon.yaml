@@ -1,0 +1,12 @@
+zSDL:
+  type: zlib
+  linker_flags:
+    - native_libs:
+        - sdl:
+            type: static-lib
+            relative_path: deps/sdl
+        - sdl-main:
+            type: shared-lib
+            relative_path: deps/sdl-main
+    
+        

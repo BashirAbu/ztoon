@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <vector>
-
+#include <yaml-cpp/yaml.h>
 void PrintError(std::string err);
 class ArgTokenizer
 {
@@ -176,6 +176,15 @@ struct Project
         }
         CRT_LinkType crtLinkType = CRT_LinkType::STATIC;
         std::string entry = "";
+
+        struct NativeLib
+        {
+            std::string name;
+            std::filesystem::path relative_path;
+            Project::Type type;
+        };
+
+        std::vector<NativeLib> nativeLibs;
     };
     LinkerFlags linkerFlags;
 
@@ -212,6 +221,9 @@ class Compiler
     std::vector<std::string> args;
     ArgParser *argParser = nullptr;
     WorkSpace workSpace;
-
+    void BuildProject(Project &project);
     void BuildWorkSpace();
+    Project ParseProject(std::string projectName,
+                         std::filesystem::path projectRelativePathToWorkSpace,
+                         YAML::Node &projectRoot);
 };

@@ -8,4 +8,8 @@ proj1:
     exe_type: console
     no_crt: false
     crt_link_type: static
-    entry: mainCRTStartup
+    entry: mainCRTStartup    
+  deps:
+    - zSDL:
+      relative_path: ../zSDL
+    

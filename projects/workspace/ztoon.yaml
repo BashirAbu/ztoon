@@ -3,7 +3,5 @@ workspace:
   projects:
     - proj1:
         relative_path: proj1/
-        type: exe
-    - proj2:
-        relative_path: proj2/
-        type: static-lib
+    - zSDL:
+        relative_path: zSDL/

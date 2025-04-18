@@ -2,9 +2,14 @@ package core
 import mainPkg;
 fn printf(msg: readonly i8*, ...);
 
+struct Foo
+{
+    i: f32 = 12.22;
+}
 
-foo: Foo;
+age: i64 = 24;
 fn PrintCore()
 {
+    foo: mainPkg::Foo;
     printf("Hi from core pkg!!!\npi = %f\n x = %d\n", foo._pi as f64, foo.x);
 }

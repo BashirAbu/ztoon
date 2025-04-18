@@ -33,11 +33,11 @@ struct Boo
 fn main() -> i32
 {
     num: f32 = 12.0;
-     
+    coreF: Foo; 
     PrintCore();
 
     for i: i32 = 0; i < 10; i++ {
-        printf("%d\n", i+1);
+        core::printf("%d\n_x: %d\n", i + core::age as i32, coreF.x);
     }
     ret 0;
 }

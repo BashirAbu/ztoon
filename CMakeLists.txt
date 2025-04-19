@@ -18,7 +18,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
 include(FetchContent)
-
+#Fetching YAML-CPP
 FetchContent_Declare(
   yaml-cpp
   GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
@@ -26,6 +26,8 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(yaml-cpp)
 
 project(ztoon)
+
+
 file (GLOB_RECURSE ZTOON_SOURCES src/*.cpp src/*.c third_party/*.cpp third_party/*.c)
 list(REMOVE_ITEM ${ZTOON_SOURCES} src/main.cpp)
 
@@ -45,4 +47,4 @@ add_executable(${PROJECT_NAME} src/main.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}-lib)
 
 
-#add_subdirectory(tests)
+add_subdirectory(tests)

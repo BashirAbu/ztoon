@@ -1598,7 +1598,7 @@ Expression *Parser::ParseORExpression()
     while (Consume(TokenType::OR))
     {
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseANDExpression());
     }
     return expr;
 }
@@ -1608,7 +1608,7 @@ Expression *Parser::ParseANDExpression()
     while (Consume(TokenType::AND))
     {
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseBitwiseORExpression());
     }
     return expr;
 }
@@ -1618,7 +1618,7 @@ Expression *Parser::ParseBitwiseORExpression()
     while (Consume(TokenType::BITWISE_OR))
     {
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseBitwiseXORExpression());
     }
     return expr;
 }
@@ -1628,7 +1628,7 @@ Expression *Parser::ParseBitwiseXORExpression()
     while (Consume(TokenType::BITWISE_XOR))
     {
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseBitwiseANDExpression());
     }
     return expr;
 }
@@ -1651,7 +1651,7 @@ Expression *Parser::ParseEqualEqualNotEqualExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseLessGreaterExpression());
     }
     return expr;
 }
@@ -1663,7 +1663,7 @@ Expression *Parser::ParseLessGreaterExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseLessGreaterExpression());
     }
     return expr;
 }
@@ -1675,7 +1675,7 @@ Expression *Parser::ParseShiftExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseTermExpression());
     }
     return expr;
 }
@@ -1686,7 +1686,7 @@ Expression *Parser::ParseTermExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseFactorExpression());
     }
     return expr;
 }
@@ -1700,7 +1700,7 @@ Expression *Parser::ParseFactorExpression()
     {
         Advance();
         Token const *op = Prev();
-        expr = BuildBinaryExpression(op, expr, ParseExpression());
+        expr = BuildBinaryExpression(op, expr, ParseCastExpression());
     }
     return expr;
 }

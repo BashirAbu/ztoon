@@ -12,6 +12,7 @@ class ArgTokenizer
         INVALID,
         NEW,
         BUILD,
+        PROJECT,
         DEBUG,
         RELEASE,
         IDENTIFIER,
@@ -41,6 +42,8 @@ class ArgParser
     std::string workSpaceName;
 
     ArgTokenizer::TokenType buildType = ArgTokenizer::TokenType::INVALID;
+
+    std::string buildThisProject = "";
 
   private:
     size_t currentIndex = 0;

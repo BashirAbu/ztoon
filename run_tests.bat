@@ -1,3 +1,4 @@
 @echo off
-
-build\tests\ztests.exe %1
+pushd tests\workspaces
+..\..\build\tests\ztests.exe
+popd

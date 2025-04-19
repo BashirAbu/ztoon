@@ -1,0 +1,9 @@
+workspace:
+  name: basics
+  projects:
+    - basic_arithmetics:
+        relative_path: basic_arithmetics/
+        type: exe
+    - for_loop:
+        relative_path: for_loop/
+        type: exe

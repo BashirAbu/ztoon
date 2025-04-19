@@ -492,7 +492,7 @@ void CodeGen::Compile(Project &project)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    module->print(llvm::outs(), nullptr);
+    // module->print(llvm::outs(), nullptr);
 
     std::string error;
     const llvm::Target *target =

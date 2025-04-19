@@ -1,0 +1,7 @@
+package mainPkg
+fn main() -> i32
+{
+     res: i32 = 2 * 4 - 1;
+     result : bool = res == 7;
+     ret result as i32;
+}

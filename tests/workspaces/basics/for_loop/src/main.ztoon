@@ -1,0 +1,9 @@
+package mainPkg
+fn main() -> i32
+{
+    a: i32 = 0;
+    for i: i32 = 0; i < 10; i++ {
+        a = a + i;
+    }
+    ret (a == 45) as i32;
+}

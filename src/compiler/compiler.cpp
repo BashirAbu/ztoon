@@ -130,6 +130,11 @@ Compiler::Compiler(int argv, char **argc)
                 PrintError(std::format(
                     "{}'s 'relative_path' value cannot be empty", info.name));
             }
+            if (proj->second["type"].IsDefined())
+            {
+                info.type = Project::StrToPrjectType(
+                    proj->second["type"].as<std::string>());
+            }
             workSpace.projectsInfo.push_back(info);
         }
 
@@ -563,6 +568,38 @@ void Compiler::BuildProject(Project &project)
 
 void Compiler::BuildWorkSpace()
 {
+
+    if (!argParser->buildThisProject.empty())
+    {
+
+        Project buildProj;
+        bool found = false;
+        for (auto proj : workSpace.projects)
+        {
+            if (proj.name == argParser->buildThisProject)
+            {
+                buildProj = proj;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            PrintError(std::format("Project '{}' is not found",
+                                   argParser->buildThisProject));
+        }
+
+        BuildProject(buildProj);
+
+        if (buildProj.type != Project::Type::ZLIB)
+        {
+            CodeGen::Link(buildProj);
+        }
+
+        return;
+    }
+
     // go over each project
     for (auto proj : workSpace.projects)
     {
@@ -591,6 +628,7 @@ void ArgTokenizer::Tokenize(std::vector<std::string> args)
     patterns.push_back({std::regex(R"(release)"), TokenType::RELEASE});
     patterns.push_back({std::regex(R"(debug)"), TokenType::DEBUG});
     patterns.push_back({std::regex(R"(-build)"), TokenType::BUILD});
+    patterns.push_back({std::regex(R"(-project)"), TokenType::PROJECT});
     patterns.push_back({std::regex(R"(--eoa)"), TokenType::EOA});
     patterns.push_back(
         {std::regex(R"([a-zA-Z][a-zA-Z0-9_]*)"), TokenType::IDENTIFIER});
@@ -683,6 +721,14 @@ void ArgParser::Parse()
                 buildType = ArgTokenizer::TokenType::DEBUG;
             }
         }
+        else if (Consume(ArgTokenizer::TokenType::PROJECT))
+        {
+            if (!Consume(ArgTokenizer::TokenType::IDENTIFIER))
+            {
+                PrintError(std::format("Expected project name after '-new'"));
+            }
+            buildThisProject = Prev()->arg;
+        }
         else
         {
             PrintError(std::format("Invalid argument '{}'", Peek()->arg));
@@ -693,5 +739,6 @@ void ArgParser::Parse()
 void PrintError(std::string err)
 {
     printf("[Error]: %s", err.c_str());
-    assert(0);
+    exit(-1);
+    // assert(0);
 }

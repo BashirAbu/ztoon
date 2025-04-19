@@ -1,11 +1,6 @@
-package core
-import mainPkg;
+package mainPkg;
 fn printf(msg: readonly i8*, ...);
 
-struct Foo
-{
-    i: f32 = 12.22;
-}
 
 age: i64 = 24;
 fn PrintCore()

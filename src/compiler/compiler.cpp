@@ -338,6 +338,7 @@ Compiler::ParseProject(std::string projectName,
                                     nativeLibrary.name, projectName));
                 }
                 nativeLibrary.relative_path =
+                    project.relativePathToWorkSpace /
                     nativeLib["relative_path"].as<std::string>();
                 project.linkerFlags.nativeLibs.push_back(nativeLibrary);
             }
@@ -370,7 +371,9 @@ Compiler::ParseProject(std::string projectName,
                                 dependency.name, projectName));
             }
             dependency.relativePath =
+                project.relativePathToWorkSpace /
                 depMap->second["relative_path"].as<std::string>();
+            project.deps.push_back(dependency);
         }
     }
     if (projectRoot[projectName]["arch"].IsDefined())
@@ -386,7 +389,7 @@ Compiler::ParseProject(std::string projectName,
     std::function<void(Project & project)> parseDeps = nullptr;
     parseDeps = [&](Project &_project)
     {
-        for (auto depProj : _project.deps)
+        for (auto &depProj : _project.deps)
         {
             std::fstream depZtoonYamlFile(depProj.relativePath / "ztoon.yaml");
             if (!depZtoonYamlFile.is_open())
@@ -410,13 +413,18 @@ Compiler::ParseProject(std::string projectName,
             }
             Project parsedDepProject =
                 ParseProject(depProj.name, depProj.relativePath, depProjRoot);
+            parsedDepProject.relativePathToWorkSpace = depProj.relativePath;
             parseDeps(parsedDepProject);
             for (auto nl : parsedDepProject.linkerFlags.nativeLibs)
             {
-                // make it relative path
-                // TODO
-                _project.linkerFlags.nativeLibs.push_back(nl);
+                Project::LinkerFlags::NativeLib lib = nl;
+                lib.relative_path = lib.relative_path;
+
+                _project.linkerFlags.nativeLibs.push_back(lib);
             }
+
+            depProj.project = gZtoonArena.Allocate<Project>();
+            *depProj.project = parsedDepProject;
         }
     };
     parseDeps(project);
@@ -426,48 +434,131 @@ Compiler::ParseProject(std::string projectName,
 void Compiler::BuildProject(Project &project)
 {
 
-    auto srcPath = project.relativePathToWorkSpace / "src";
-    if (std::filesystem::exists(srcPath) &&
-        std::filesystem::is_directory(srcPath))
+    std::function<std::vector<Package *>(Project & project)>
+        lexerAndParseProject = nullptr;
+
+    lexerAndParseProject = [&](Project &project) -> std::vector<Package *>
     {
-        Lexer lexer;
-        for (auto sourceFile :
-             std::filesystem::recursive_directory_iterator(srcPath))
+        auto srcPath = project.relativePathToWorkSpace / "src";
+        if (std::filesystem::exists(srcPath) &&
+            std::filesystem::is_directory(srcPath))
         {
-            if (sourceFile.path().extension() == ".ztoon")
+
+            Lexer lexer;
+            for (auto sourceFile :
+                 std::filesystem::recursive_directory_iterator(srcPath))
             {
-                std::fstream srcFile(sourceFile.path());
-                if (!srcFile.is_open())
+                if (sourceFile.path().extension() == ".ztoon")
                 {
-                    PrintError(std::format("Failed to open file '{}'",
-                                           sourceFile.path().generic_string()));
+                    std::fstream srcFile(sourceFile.path());
+                    if (!srcFile.is_open())
+                    {
+                        PrintError(
+                            std::format("Failed to open file '{}'",
+                                        sourceFile.path().generic_string()));
+                    }
+
+                    std::stringstream ss;
+                    ss << srcFile.rdbuf();
+                    std::string content = ss.str();
+                    std::string filename =
+                        sourceFile.path().filename().generic_string();
+                    lexer.Tokenize(content, filename);
+                }
+            }
+            lexer.EndProgram();
+            Parser parser(lexer.GetTokens());
+            auto packages = parser.Parse();
+            std::unordered_map<std::string, bool> done;
+            auto pkgItr = packages.begin();
+            while (pkgItr != packages.end())
+            {
+                std::string pkgName = (*pkgItr)->GetIdentifier()->GetLexeme();
+                if (done.contains(pkgName))
+                {
+                    pkgItr = packages.erase(pkgItr);
+                    continue;
                 }
 
-                std::stringstream ss;
-                ss << srcFile.rdbuf();
-                std::string content = ss.str();
-                std::string filename =
-                    sourceFile.path().filename().generic_string();
-                lexer.Tokenize(content, filename);
+                for (auto innerPkg : packages)
+                {
+                    if (innerPkg->GetIdentifier()->GetLexeme() == pkgName)
+                    {
+                        if (innerPkg != (*pkgItr))
+                        {
+                            for (auto stmt : innerPkg->GetStatements())
+                            {
+                                (*pkgItr)->GetStatements().push_back(stmt);
+                            }
+                        }
+                    }
+                }
+
+                // we done with this package
+                done[pkgName] = true;
+                ++pkgItr;
+            }
+
+            return packages;
+        }
+        else
+        {
+            PrintError(std::format("Project '{}' src directory is missing",
+                                   project.name));
+            return {};
+        }
+    };
+
+    std::function<std::vector<Library *>(Project & project)> goOverDeps;
+    goOverDeps = [&](Project &project) -> std::vector<Library *>
+    {
+        std::vector<Library *> libs;
+        for (auto dep : project.deps)
+        {
+            Library *lib = gZtoonArena.Allocate<Library>();
+            lib->name = dep.name;
+            lib->packages = lexerAndParseProject(*dep.project);
+            lib->libs = goOverDeps(*dep.project);
+            libs.push_back(lib);
+        }
+        return libs;
+    };
+
+    auto packages = lexerAndParseProject(project);
+    auto libs = goOverDeps(project);
+
+    for (auto lib : libs)
+    {
+        for (auto otherLib : libs)
+        {
+            if (lib != otherLib)
+            {
+                if (lib->name == otherLib->name)
+                {
+                    PrintError(std::format(
+                        "Libraries '{}' and '{}' have the same names",
+                        lib->name, otherLib->name));
+                }
             }
         }
-        lexer.EndProgram();
-        Parser parser(lexer.GetTokens());
-        auto packages = parser.Parse();
-        // TODO
-        std::vector<Package *> combinedPackages;
-
-        SemanticAnalyzer semanticAnalyzer(packages);
-        semanticAnalyzer.Analyze();
-        CodeGen codeGen(semanticAnalyzer, project.targetArch);
-        codeGen.GenIR();
-        codeGen.Compile(project);
     }
-    else
+    for (auto lib : libs)
     {
-        PrintError(
-            std::format("Project '{}' src directory is missing", project.name));
+        for (auto pkg : packages)
+        {
+            if (lib->name == pkg->GetIdentifier()->GetLexeme())
+            {
+                PrintError(std::format(
+                    "Package '{}' has same name as library '{}'. Try changing "
+                    "the name of the libarry in project '{}' ztoon.yaml",
+                    pkg->GetIdentifier()->GetLexeme(), lib->name,
+                    project.name));
+            }
+        }
     }
+    SemanticAnalyzer semanticAnalyzer(packages, libs);
+    CodeGen codeGen(semanticAnalyzer, project.targetArch);
+    codeGen.Compile(project);
 }
 
 void Compiler::BuildWorkSpace()

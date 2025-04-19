@@ -471,7 +471,23 @@ LLD_HAS_DRIVER(wasm)
 
 void CodeGen::Compile(Project &project)
 {
+    std::function<void(Library * lib)> GenLibIR;
+    GenLibIR = [&](Library *lib)
+    {
+        GenIR(lib->packages);
+        for (auto l : lib->libs)
+        {
+            GenLibIR(l);
+        }
+        lib->analyed = true;
+    };
 
+    for (auto lib : semanticAnalyzer.libraries)
+    {
+        GenLibIR(lib);
+    }
+
+    GenIR(semanticAnalyzer.packages);
     if (llvm::verifyModule(*module, &llvm::errs()))
     {
         llvm::errs() << "Module verification failed\n";
@@ -586,6 +602,7 @@ void CodeGen::Link(Project &project)
     break;
     case Project::Type::ZLIB:
     {
+        assert(0);
         break;
     }
     break;
@@ -609,6 +626,12 @@ void CodeGen::Link(Project &project)
     break;
     }
     lldArgs.push_back(objFileName.c_str());
+    std::vector<std::string> libPaths;
+    for (auto &libPath : project.linkerFlags.nativeLibs)
+    {
+        libPaths.push_back(libPath.relative_path.generic_string());
+        lldArgs.push_back(libPaths[libPaths.size() - 1].c_str());
+    }
     if (!project.linkerFlags.noCRT && project.type != Project::Type::STATIC_LIB)
     {
         switch (project.linkerFlags.crtLinkType)
@@ -1143,17 +1166,17 @@ void CodeGen::AssignValueToVarStruct(IRValue ptr, Expression *expr,
 }
 CodeGen::~CodeGen() {}
 
-void CodeGen::GenIR()
+void CodeGen::GenIR(std::vector<Package *> &packages)
 {
-    for (auto pkg : semanticAnalyzer.packages)
+    for (auto pkg : packages)
     {
         GenPackageGlobalTypesIR(pkg);
     }
-    for (auto pkg : semanticAnalyzer.packages)
+    for (auto pkg : packages)
     {
         GenPackageGlobalFuncsAndVarsIR(pkg);
     }
-    for (auto pkg : semanticAnalyzer.packages)
+    for (auto pkg : packages)
     {
         GenPackageGlobalVarAndFuncBodiesIR(pkg);
     }

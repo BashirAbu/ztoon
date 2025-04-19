@@ -31,6 +31,7 @@ class DataType
         ARRAY,
         InitList,
         PACKAGE,
+        LIBRARY,
     };
     Type GetType() { return type; }
 
@@ -83,6 +84,14 @@ class PackageDataType : public DataType, public Symbol
     std::string name;
 };
 
+class LibraryDataType : public DataType, public Symbol
+{
+  public:
+    virtual std::string GetName() override { return name; }
+    virtual DataType *GetDataType() override { return this; }
+    class Library *lib = nullptr;
+    std::string name;
+};
 class StructDataType : public DataType, public Symbol
 {
   public:
@@ -228,14 +237,23 @@ class Scope
     friend class CodeGen;
 };
 
+struct Library
+{
+    std::string name;
+    std::vector<Package *> packages;
+    std::vector<Library *> libs;
+    bool analyed = false;
+};
+
 class SemanticAnalyzer
 {
   public:
-    SemanticAnalyzer(std::vector<Package *> &_packages);
+    SemanticAnalyzer(std::vector<Package *> _packages,
+                     std::vector<Library *> _libraries);
     ~SemanticAnalyzer();
-    void Analyze();
 
   private:
+    void Analyze(std::vector<Package *> &packages);
     void AnalyzePackage(Package *pkg);
     void AnalyzePackageGlobalTypes(Package *pkg);
     void AnalyzePackageGlobalFuncsAndVars(Package *pkg);
@@ -250,12 +268,16 @@ class SemanticAnalyzer
     DataType::Type DecideDataType(Expression **left, Expression **right);
     void EvaluateAndAssignDataTypeToExpression(Expression *expression);
     Scope *currentScope = nullptr;
+    std::unordered_map<Library *, LibraryDataType *> libToDataTypeMap;
+    std::unordered_map<Package *, PackageDataType *> pkgToDataTypeMap;
     std::unordered_map<Package *, Scope *> pkgToScopeMap;
     std::unordered_map<BlockStatement *, Scope *> blockToScopeMap;
     std::unordered_map<Expression *, DataType *> exprToDataTypeMap;
     std::unordered_map<Statement *, DataType *> stmtToDataTypeMap;
-    std::vector<Package *> &packages;
+    std::vector<Package *> packages;
+    std::vector<Library *> libraries;
     Package *currentPackage = nullptr;
+    Library *currentLibrary = nullptr;
     BlockStatement *currentBlockStatement = nullptr;
     size_t statementCurrentIndex = 0;
     Function *currentFunction = nullptr;

@@ -76,7 +76,7 @@ class CodeGen
   public:
     CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch);
     ~CodeGen();
-    void GenIR();
+    void GenIR(std::vector<Package *> &packages);
     void Compile(Project &project);
     static void Link(Project &project);
     void AddIRSymbol(IRSymbol *irSymbol);

@@ -1,10 +1,4 @@
-#include <stdio.h>
-
-int main()
+extern "C" int super_add(int x, int y)
 {
-    for (int i = 0; i < 1000000; i++)
-    {
-        printf("%d\n", i);
-    }
-    return 0;
+    return x + y;
 }

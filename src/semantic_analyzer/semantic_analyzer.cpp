@@ -1,3 +1,4 @@
+#include "compiler/compiler.h"
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -690,11 +691,35 @@ void SemanticAnalyzer::ValidateAssignValueToVarStruct(
     }
 }
 
-SemanticAnalyzer::SemanticAnalyzer(std::vector<Package *> &_packages)
-    : packages(_packages)
+SemanticAnalyzer::SemanticAnalyzer(std::vector<Package *> _packages,
+                                   std::vector<Library *> _libraries)
+    : packages(_packages), libraries(_libraries)
 {
     currentStage = Stage::SEMANTIC_ANALYZER;
-    // currentScope = gZtoonArena.Allocate<Scope>(this);
+
+    std::function<void(Library * lib)> analyzeLib;
+    analyzeLib = [&](Library *lib)
+    {
+        Analyze(lib->packages);
+        for (auto l : lib->libs)
+        {
+            analyzeLib(l);
+        }
+        lib->analyed = true;
+    };
+
+    for (auto lib : libraries)
+    {
+        LibraryDataType *libType = gZtoonArena.Allocate<LibraryDataType>();
+        libType->type = DataType::Type::LIBRARY;
+        libType->name = lib->name;
+        libType->lib = lib;
+        libToDataTypeMap[lib] = libType;
+        if (!lib->analyed)
+            analyzeLib(lib);
+    }
+
+    Analyze(packages);
 }
 SemanticAnalyzer::~SemanticAnalyzer() {}
 void SemanticAnalyzer::AnalyzePackage(Package *pkg)
@@ -706,6 +731,9 @@ void SemanticAnalyzer::AnalyzePackage(Package *pkg)
         return;
     }
     PackageDataType *pkgType = gZtoonArena.Allocate<PackageDataType>();
+
+    pkgToDataTypeMap[pkg] = pkgType;
+
     pkgType->type = PackageDataType::Type::PACKAGE;
     pkgType->name = pkg->identifier->GetLexeme();
     pkgType->pkg = pkg;
@@ -726,37 +754,145 @@ void SemanticAnalyzer::AnalyzePackage(Package *pkg)
             auto importStmt = dynamic_cast<ImportStatement *>(stmt);
             auto pe = dynamic_cast<PrimaryExpression *>(
                 importStmt->GetPackageExpression());
-            if (pe && pe->GetPrimary()->GetType() == TokenType::IDENTIFIER)
+            auto maExpr = dynamic_cast<MemberAccessExpression *>(
+                importStmt->GetPackageExpression());
+            if (maExpr)
             {
-                std::string pkgName = pe->GetPrimary()->GetLexeme();
+                auto peLeft = dynamic_cast<PrimaryExpression *>(
+                    maExpr->GetLeftExpression());
+                if (!peLeft)
+                {
+                    ReportError(
+                        std::format("Expected library identiifer"),
+                        maExpr->GetLeftExpression()->GetCodeErrString());
+                }
+                auto peRight = dynamic_cast<PrimaryExpression *>(
+                    maExpr->GetRightExpression());
+
+                Library *lib = nullptr;
+                for (auto l : libraries)
+                {
+                    if (l->name == peLeft->GetPrimary()->GetLexeme())
+                    {
+                        lib = l;
+                        break;
+                    }
+                }
+
+                if (!lib)
+                {
+                    ReportError(std::format("Library '{}' is not found",
+                                            peLeft->GetPrimary()->GetLexeme()),
+                                peLeft->GetCodeErrString());
+                }
+                Package *pkg = nullptr;
+                for (auto p : lib->packages)
+                {
+                    if (p->GetIdentifier()->GetLexeme() ==
+                        peRight->GetPrimary()->GetLexeme())
+                    {
+                        pkg = p;
+                        break;
+                    }
+                }
+
+                if (!pkg)
+                {
+                    ReportError(
+                        std::format("Package '{}' is not found in library '{}'",
+                                    peLeft->GetPrimary()->GetLexeme(),
+                                    lib->name),
+                        peRight->GetCodeErrString());
+                }
+
+                if (!lib->analyed)
+                {
+                    auto tempPackages = packages;
+                    auto tempPkg = currentPackage;
+                    auto temp = currentLibrary;
+                    currentLibrary = lib;
+                    packages = tempPackages;
+                    Analyze(lib->packages);
+                    currentLibrary = temp;
+                    lib->analyed = true;
+                    currentPackage = tempPkg;
+                    currentScope = pkgToScopeMap[tempPkg];
+                    packages = tempPackages;
+                }
+                currentScope->importedPackages.push_back(pkgToScopeMap[pkg]);
+            }
+            else if (pe && pe->GetPrimary()->GetType() == TokenType::IDENTIFIER)
+            {
+                std::string importedName = pe->GetPrimary()->GetLexeme();
                 // find pkg
                 Package *importedPkg = nullptr;
+                Library *importedLibrary = nullptr;
 
                 for (auto p : packages)
                 {
-                    if (p->GetIdentifier()->GetLexeme() == pkgName)
+                    if (p->GetIdentifier()->GetLexeme() == importedName)
                     {
                         importedPkg = p;
                         break;
                     }
                 }
+
                 if (!importedPkg)
                 {
-                    ReportError(
-                        std::format("Package '{}' is not found", pkgName),
-                        importStmt->GetPackageExpression()->GetCodeErrString());
+                    for (auto lib : libraries)
+                    {
+                        if (lib->name == importedName)
+                        {
+                            importedLibrary = lib;
+                            break;
+                        }
+                    }
                 }
 
-                // check if package is d
-                if (!pkgToScopeMap.contains(importedPkg))
+                if (!importedPkg && !importedLibrary)
+
                 {
-                    AnalyzePackage(importedPkg);
-                    currentPackage = pkg;
-                    currentScope = pkgToScopeMap[pkg];
+                    ReportError(
+                        std::format("Package or library '{}' is not found",
+                                    importedName),
+                        importStmt->GetPackageExpression()->GetCodeErrString());
                 }
-                auto importedPkgScope = pkgToScopeMap[importedPkg];
-                pkgToScopeMap[pkg]->importedPackages.push_back(
-                    importedPkgScope);
+                if (importedPkg)
+                {
+                    // check if package is analyzed
+                    if (!pkgToScopeMap.contains(importedPkg))
+                    {
+                        AnalyzePackage(importedPkg);
+                        currentPackage = pkg;
+                        currentScope = pkgToScopeMap[pkg];
+                    }
+                    auto importedPkgScope = pkgToScopeMap[importedPkg];
+                    pkgToScopeMap[pkg]->importedPackages.push_back(
+                        importedPkgScope);
+                }
+                else if (importedLibrary)
+                {
+                    if (!importedLibrary->analyed)
+                    {
+                        auto tempPackages = packages;
+                        auto tempPkg = currentPackage;
+                        auto temp = currentLibrary;
+                        currentLibrary = importedLibrary;
+                        packages = tempPackages;
+                        Analyze(importedLibrary->packages);
+                        currentLibrary = temp;
+                        importedLibrary->analyed = true;
+                        currentPackage = tempPkg;
+                        currentScope = pkgToScopeMap[tempPkg];
+                        packages = tempPackages;
+                    }
+                    for (auto impPkg : importedLibrary->packages)
+                    {
+                        auto importedPkgScope = pkgToScopeMap[impPkg];
+                        pkgToScopeMap[pkg]->importedPackages.push_back(
+                            importedPkgScope);
+                    }
+                }
             }
         }
     }
@@ -765,9 +901,8 @@ void SemanticAnalyzer::AnalyzePackage(Package *pkg)
     AnalyzePackageGlobalFuncsAndVars(pkg);
     AnalyzePackageGlobalTypeBodies(pkg);
 }
-void SemanticAnalyzer::Analyze()
+void SemanticAnalyzer::Analyze(std::vector<Package *> &packages)
 {
-
     for (auto pkg : packages)
     {
         AnalyzePackage(pkg);
@@ -806,15 +941,20 @@ void SemanticAnalyzer::AnalyzePackageGlobalTypes(Package *pkg)
                                         structStmt->GetCodeErrString());
                 stmtToDataTypeMap[structStmt] = structType;
                 structType->fullName = std::format(
-                    "{}::{}", currentPackage->GetIdentifier()->GetLexeme(),
+                    "{}::{}",
+                    currentLibrary
+                        ? std::format(
+                              "{}::{}", currentLibrary->name,
+                              currentPackage->GetIdentifier()->GetLexeme())
+                        : currentPackage->GetIdentifier()->GetLexeme(),
                     structType->name);
             }
             else
             {
-
-                structType = dynamic_cast<StructDataType *>(
-                    currentScope
-                        ->datatypesMap[structStmt->identifier->GetLexeme()]);
+                ReportError(
+                    std::format("struct '{}' is already defined in this scope",
+                                structStmt->identifier->GetLexeme()),
+                    structStmt->GetCodeErrString());
             }
         }
         else if (dynamic_cast<EnumStatement *>(stmt))
@@ -2624,8 +2764,10 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         maExpr->isLvalue = true;
 
         Package *pkgFound = nullptr;
+        Library *libFound = nullptr;
         auto primaryExpression =
             dynamic_cast<PrimaryExpression *>(maExpr->GetLeftExpression());
+
         if (primaryExpression &&
             primaryExpression->GetPrimary()->GetType() == TokenType::IDENTIFIER)
         {
@@ -2653,8 +2795,27 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                         pkgFound->GetIdentifier()->GetLexeme(), ces));
                 exprToDataTypeMap[maExpr->GetLeftExpression()] = pkgType;
             }
+            if (!pkgFound)
+            {
+                for (auto lib : libraries)
+                {
+                    if (lib->name ==
+                        primaryExpression->GetPrimary()->GetLexeme())
+                    {
+                        libFound = lib;
+                        break;
+                    }
+                }
+                if (libFound)
+                {
+                    maExpr->accessType =
+                        MemberAccessExpression::AccessType::LIBRARY;
+                    auto libType = libToDataTypeMap[libFound];
+                    exprToDataTypeMap[maExpr->GetLeftExpression()] = libType;
+                }
+            }
         }
-        if (!pkgFound)
+        if (!pkgFound && !libFound)
         {
             EvaluateAndAssignDataTypeToExpression(maExpr->GetLeftExpression());
         }
@@ -2664,7 +2825,8 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         if (maExpr->token->GetType() == TokenType::DOUBLE_COLON)
         {
             if (left->GetType() != DataType::Type::ENUM &&
-                left->GetType() != DataType::Type::PACKAGE)
+                left->GetType() != DataType::Type::PACKAGE &&
+                left->GetType() != DataType::Type::LIBRARY)
             {
                 ReportError(
                     "'::' operator is only used on 'enum' and 'package'",
@@ -2694,6 +2856,33 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             EvaluateAndAssignDataTypeToExpression(packageMember);
             currentScope = temp;
             exprToDataTypeMap[maExpr] = exprToDataTypeMap[packageMember];
+        }
+        else if (left->GetType() == DataType::Type::LIBRARY)
+        {
+            auto libType = dynamic_cast<LibraryDataType *>(left);
+
+            PrimaryExpression *package =
+                dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+            Package *pkgFound = nullptr;
+            for (auto pkg : libType->lib->packages)
+            {
+                if (pkg->GetIdentifier()->GetLexeme() ==
+                    package->GetPrimary()->GetLexeme())
+                {
+                    pkgFound = pkg;
+                    break;
+                }
+            }
+            if (!pkgFound)
+            {
+                ReportError(
+                    std::format("Package '{}' is not found in library '{}'",
+                                package->GetPrimary()->GetLexeme(),
+                                libType->lib->name),
+                    package->GetCodeErrString());
+            }
+            auto pkgType = pkgToDataTypeMap[pkgFound];
+            exprToDataTypeMap[maExpr] = pkgType;
         }
         else if (left->GetType() == DataType::Type::ENUM)
         {

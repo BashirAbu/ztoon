@@ -755,7 +755,8 @@ class MemberAccessExpression : public Expression
         STRUCT,
         UNION,
         ENUM,
-        PACKAGE
+        PACKAGE,
+        LIBRARY,
     };
 
     AccessType accessType = AccessType::UNKNOWN;

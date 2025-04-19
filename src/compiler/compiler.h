@@ -192,6 +192,7 @@ struct Project
     {
         std::string name;
         std::filesystem::path relativePath;
+        Project *project;
     };
 
     std::vector<Dependency> deps;

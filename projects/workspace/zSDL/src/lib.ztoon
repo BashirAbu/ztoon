@@ -1,6 +1,2 @@
-package theLib;
-fn add(a: i32, b: i32) -> i32
-{
-    ret a + b;
-}
- 
+package zSDL;
+fn super_add(x: i32, y : i32) -> i32;

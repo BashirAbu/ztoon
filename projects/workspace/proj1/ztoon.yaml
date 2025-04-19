@@ -11,5 +11,5 @@ proj1:
     entry: mainCRTStartup    
   deps:
     - zSDL:
-      relative_path: ../zSDL
+        relative_path: ../zSDL
     

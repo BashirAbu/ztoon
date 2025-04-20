@@ -7,6 +7,8 @@ fn main() -> i32
     b: i32* = &a;
     c: i32** = &b;
     // cc: i32 = **c;
+    *b = 1211;
+    c = &a;
     
     // printf("address of            a: %lld\n", &a as u64);
     // printf("value of              b: %lld\n", b as u64);

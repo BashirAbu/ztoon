@@ -1,0 +1,17 @@
+
+package mainPkg;
+fn main() -> i32 {
+    a: i32 = 0;
+    for i: i32 = 0; i < 10; i++ {
+        for j: i32 = 0; j < 10; j++ {
+            for k: i32 = 0; k < 10; k++ {
+                b: i32 = 1;
+                while b < 123 {
+                    a += i * b;
+                    b++;
+                }
+            }
+        }
+    }
+    ret (a == 33763500) as i32;
+}

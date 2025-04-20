@@ -1,0 +1,33 @@
+
+package mainPkg;
+fn printf(msg: readonly i8*, ...) -> i32;
+fn main() -> i32
+{
+    a: i32 = 422;
+    b: i32* = &a;
+    c: i32** = &b;
+    // cc: i32 = **c;
+    
+    // printf("address of            a: %lld\n", &a as u64);
+    // printf("value of              b: %lld\n", b as u64);
+    // printf("deref value of        b: %d\n", *b as u64);
+    // printf("address of            b: %lld\n", &b);
+    // printf("value of              c: %lld\n", c);
+    // printf("deref value of        c: %lld\n", *c);
+    // printf("double deref value of c: %d\n", *(*c));
+    // printf("%d", *b);
+    c1: bool =  (b as u64) == (&a as u64);
+    c2: bool = *b as u64 == a as u64;
+    c3: bool = c as u64 == &b as u64;
+    c4: bool = *c  as u64== b as u64;
+    c5: bool = **c as u64== a as u64; 
+
+    printf("c1: %d, c2: %d, c3: %d, c4: %d, c5: %d\n",
+     c1 as i32, c2 as i32, c3 as i32, c4 as i32, c5 as i32);
+
+    // all: bool = ( c1 && c2 && c3 && c4 && c5 );
+
+    // all? printf("pass") : printf("fail");
+    
+    ret 1 as i32;
+}

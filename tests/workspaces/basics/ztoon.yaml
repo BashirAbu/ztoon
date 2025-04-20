@@ -4,6 +4,64 @@ workspace:
     - basic_arithmetics:
         relative_path: basic_arithmetics/
         type: exe
+    - boolean_ops:
+        relative_path: boolean_ops/
+        type: exe
+    - shift_ops:
+        relative_path: shift_ops/
+        type: exe 
+    - bitwise_ops:
+        relative_path: bitwise_ops/
+        type: exe 
     - for_loop:
         relative_path: for_loop/
         type: exe
+    
+    - for_loop_break:
+            relative_path: for_loop_break/
+            type: exe
+    - for_loop_continue:
+            relative_path: for_loop_continue/
+            type: exe
+    - while_loop:
+            relative_path: while_loop/
+            type: exe
+    - while_loop_break:
+          relative_path: while_loop_break/
+          type: exe
+    - while_loop_continue:
+          relative_path: while_loop_continue/
+          type: exe
+    - nested_loops:
+            relative_path: nested_loops/
+            type: exe
+    - nested_loops_break_continue:
+            relative_path: nested_loops_break_continue/
+            type: exe
+    - if_statement:
+            relative_path: if_statement/
+            type: exe
+    - ternary_expression:
+            relative_path: ternary_expression/
+            type: exe
+    - function_call:
+            relative_path: function_call/
+            type: exe
+    - recursion:
+            relative_path: recursion/
+            type: exe
+    - unary_minus:
+            relative_path: unary_minus/
+            type: exe           
+    - unary_sizeof:
+            relative_path: unary_sizeof/
+            type: exe  
+    - compound_assignment:
+            relative_path: compound_assignment/
+            type: exe  
+    - casting:
+            relative_path: casting/
+            type: exe  
+    - pointers:
+            relative_path: pointers/
+            type: exe  

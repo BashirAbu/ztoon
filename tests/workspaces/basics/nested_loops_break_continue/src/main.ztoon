@@ -1,0 +1,29 @@
+
+package mainPkg;
+fn main() -> i32 {
+    a: i32 = 0;
+    for i: i32 = 0; i < 10; i++ {
+        a += i;
+        while a < 5 {
+            a++;
+            if a == 2 {
+                continue;
+            }
+
+            if a == 4
+            {
+                break;
+            }
+        }
+
+        if i != a {
+            continue;
+        }
+
+        if ( a > 15)
+        {
+            break;
+        }
+    }
+    ret (a == 49) as i32;
+}

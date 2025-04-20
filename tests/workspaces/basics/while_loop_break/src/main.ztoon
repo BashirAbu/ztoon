@@ -1,0 +1,15 @@
+
+package mainPkg;
+fn main() -> i32 {
+    a: i32 = 0;
+    b: i32 = 1;
+    while b < 5 {
+        if b == 3
+        {
+            break;
+        }
+        a = a + b;
+        b++;
+    }
+    ret (a == 3) as i32;
+}

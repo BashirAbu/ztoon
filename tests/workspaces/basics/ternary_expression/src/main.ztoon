@@ -1,0 +1,7 @@
+
+package mainPkg;
+fn main() -> i32
+{
+    res: f32 = 1 < 0 ? 3.14 : 2.33;
+    ret (res == 2.33) as i32;
+}

@@ -1,0 +1,11 @@
+
+package mainPkg;
+fn main() -> i32 {
+    a: i32 = 0;
+    b: i32 = 1;
+    while b < 5 {
+        a = a + b;
+        b++;
+    }
+    ret (a == 10) as i32;
+}

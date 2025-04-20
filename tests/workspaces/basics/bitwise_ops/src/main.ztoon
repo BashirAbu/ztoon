@@ -1,0 +1,6 @@
+
+package mainPkg;
+fn main() -> i32
+{
+    ret (((5 & 3) | (4 ^ 1)) == 5) as i32;
+}

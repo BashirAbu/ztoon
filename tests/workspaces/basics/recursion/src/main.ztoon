@@ -1,0 +1,13 @@
+
+package mainPkg;
+fn fact(n: i32) -> i32 {
+    if n <= 1
+    {
+        ret 1;
+    }
+    else
+    {
+        ret n * fact(n - 1);
+    }
+}
+fn main() -> i32 { ret (fact(5) == 120) as i32; }

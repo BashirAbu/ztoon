@@ -1,0 +1,7 @@
+
+package mainPkg;
+fn main() -> i32
+{
+    pi: f64 = 3.142;
+    ret (pi as i32 == 3) as i32;
+}

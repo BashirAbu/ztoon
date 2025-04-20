@@ -1,0 +1,10 @@
+
+package mainPkg;
+
+fn printf(msg: readonly i8*, ...) -> i32;
+fn main() -> i32
+{
+    arr: i32[11];
+    printf("%d\n", sizeof(i32[11]));
+    ret (sizeof(i32[11]) == sizeof(i32) * 11 as u64) as i32;
+}

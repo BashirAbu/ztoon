@@ -1,0 +1,8 @@
+
+package mainPkg;
+fn main() -> i32
+{
+    a: i32 = 5; a += 3;
+
+    ret (a == 8) as i32;
+}

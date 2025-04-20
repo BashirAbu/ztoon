@@ -1,0 +1,12 @@
+package mainPkg
+fn main() -> i32
+{
+    a: i32 = 0;
+    for i: i32 = 0; i < 10; i++ {
+        a = a + i;
+        if a > 20 {
+            break;
+        }
+    }
+    ret (a == 21) as i32;     
+}

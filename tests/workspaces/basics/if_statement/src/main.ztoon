@@ -1,0 +1,21 @@
+
+package mainPkg;
+
+fn cond() -> i32
+{
+    if false {
+        ret 100;
+    }
+    else if  2 < 1{
+        ret 33;
+    }
+    else {
+        ret 200;
+    }
+}
+
+fn main() -> i32 {
+
+    res: i32 = cond();
+    ret (res == 200)  as i32;
+}

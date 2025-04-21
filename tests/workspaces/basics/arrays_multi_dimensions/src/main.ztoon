@@ -1,0 +1,8 @@
+
+package mainPkg;
+fn main() -> i32
+{
+    arr: i32[2][2] = {{1, 3}, {5, 9}};
+    c1: bool = arr[1][1] == 9;
+    ret (c1) as i32;
+}

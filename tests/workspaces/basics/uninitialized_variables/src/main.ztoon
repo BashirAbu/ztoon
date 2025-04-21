@@ -1,0 +1,37 @@
+
+package mainPkg;
+
+
+struct Foo
+{
+    x: i32 = 12;
+    b: i32 = 33;
+}
+
+
+struct Boo
+{
+    f: Foo ;
+    y: f32;
+    z: i32 = 1;
+}
+fn printf(msg: readonly i8*, ...) -> i32;
+fn main() -> i32
+{
+
+    a: i32;
+
+    b: Boo;
+    c1: bool = a == 0;
+
+    // printf("b.f.x: %d\n\n", b.f.x);
+    c2: bool =  b.f.x == 12;
+    c3: bool = b.f.b == 33;
+    c4: bool = b.y == 0.0;
+    c5: bool = b.z == 1;
+
+    // printf("c1: %d, c2: %d, c3: %d, c4: %d, c5: %d\n",
+    // c1 as i32, c2 as i32, c3 as i32, c4 as i32, c5 as i32);
+    
+    ret ( c1 && c2 && c3 && c4 && c5  ) as i32;
+}

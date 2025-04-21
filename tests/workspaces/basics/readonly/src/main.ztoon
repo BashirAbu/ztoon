@@ -1,0 +1,10 @@
+
+package mainPkg;
+rdOnly : readonly i32 = 1234;
+gA: i32 = rdOnly;
+fn main() -> i32
+{
+    gA = 3;
+    rdOnly = 33;
+    ret 0;
+}

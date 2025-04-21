@@ -65,3 +65,18 @@ workspace:
     - pointers:
             relative_path: pointers/
             type: exe  
+    - uninitialized_variables:
+            relative_path: uninitialized_variables/
+            type: exe  
+    - global_variables:
+            relative_path: global_variables/
+            type: exe  
+    - readonly:
+            relative_path: readonly/
+            type: exe  
+    - arrays:
+            relative_path: arrays/
+            type: exe  
+    - arrays_multi_dimensions:
+            relative_path: arrays_multi_dimensions/
+            type: exe  

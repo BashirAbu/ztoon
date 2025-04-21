@@ -10,4 +10,10 @@ fn fact(n: i32) -> i32 {
         ret n * fact(n - 1);
     }
 }
-fn main() -> i32 { ret (fact(5) == 120) as i32; }
+fn printf(msg: readonly i8*, ...) -> i32;
+fn main() -> i32
+{
+    res: i32 = fact(5);
+    printf("%d\n", res);
+    ret (res == 120) as i32;
+}

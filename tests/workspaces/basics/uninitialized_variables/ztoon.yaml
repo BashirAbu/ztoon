@@ -1,0 +1,2 @@
+uninitialized_variables:
+  type: exe

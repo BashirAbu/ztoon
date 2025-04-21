@@ -1,0 +1,25 @@
+
+package mainPkg;
+
+
+x: i32;
+y: f32 = 12.0;
+
+struct Vector3
+{
+    x: f32;
+    y: f32;
+    z: f32;
+};
+
+pos: Vector3;
+
+scale: Vector3 = {0.0, 1.0, 2.0};
+
+fn main() -> i32
+{
+    c1: bool = pos.x == 0.0 && pos.y == 0.0 && pos.z == 0.0;
+    c2: bool = x == 0 && y == 12.0;
+    c3: bool = scale.x == 0.0 && scale.y == 1.0 && scale.z == 2.0;
+    ret (c1 && c2 && c3) as i32;
+}

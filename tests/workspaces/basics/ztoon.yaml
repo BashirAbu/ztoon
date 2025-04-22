@@ -83,3 +83,15 @@ workspace:
     - strings:
             relative_path: strings/
             type: exe 
+    - function_pointers:
+            relative_path: function_pointers/
+            type: exe
+    - structs:
+            relative_path: structs/
+            type: exe
+    - unions:
+            relative_path: unions/
+            type: exe
+    - enums:
+            relative_path: enums/
+            type: exe

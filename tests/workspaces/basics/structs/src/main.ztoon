@@ -1,0 +1,46 @@
+
+package mainPkg;
+fn printf(str: readonly i8*, ...);
+
+struct Vector4
+{
+    x: f64;
+    y: f64;
+    z: f64;
+    w: f64;
+}
+struct Vector2
+{
+    x: f64 = 12.0;
+    y: f64 = 44.0;
+}
+
+
+fn print_vector2(v: Vector2, unit: readonly i8*)
+{
+    printf("v.x = %.2f%s, v.y = %.2f%s\n",v.x, unit, v.y, unit );
+}
+
+
+fn main() -> i32
+{
+    v: Vector2;
+    c1: bool = v.x == 12.0 && v.y == 44.0; 
+    v = {0.5 , 0.12};
+    c2: bool = v.x == 0.5 && v.y == 0.12;
+    v = {};
+    c3: bool = v.x == 0.0 && v.y == 0.0;
+    v.x =  -12.0;
+    c4: bool = v.x == -12.0;
+
+    castVec2ToVec4: Vector4* = (&v) as Vector4*;
+    // printf("v4.x: %f, v4.y: %f\n", castVec2ToVec4.x, castVec2ToVec4.y);
+
+    c5: bool = castVec2ToVec4.x == v.x;
+
+    print_vector2(*(castVec2ToVec4 as Vector2*), "m");
+        
+    printf("c1: %d, c2: %d, c3: %d, c4: %d, c5: %d\n",
+    c1 as i32, c2 as i32, c3 as i32, c4 as i32, c5 as i32);
+    ret (c1 && c2 && c3 && c4 && c5) as i32;
+}

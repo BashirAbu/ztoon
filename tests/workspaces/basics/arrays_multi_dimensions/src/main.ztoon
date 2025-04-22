@@ -1,8 +1,34 @@
 
 package mainPkg;
+
+fn printf(msg: readonly i8*, ...) -> i32;
+
+
 fn main() -> i32
 {
     arr: i32[2][2] = {{1, 3}, {5, 9}};
     c1: bool = arr[1][1] == 9;
-    ret (c1) as i32;
+
+    arr2: i32[][][]  =  {{{1, 3}, {5, 9}}, {{11, 22}, {33,55}}};
+
+    c2: bool = arr2[1][1][1] == 55;
+
+    
+    arr3: i32[2][2][2] = {arr, arr};
+
+    c3: bool = arr3[1][1][1] == 9;
+
+    for i: i32 = 0; i < 2; i++
+    {
+        for j: i32 = 0; j < 2; j++
+        {
+            for k: i32 = 0; k < 2; k++
+            {
+                printf("arr3[%d][%d][%d]: %d\n", i, j, k, arr3[i][j][k]);
+            }
+        }
+    }
+    printf("c1: %d, c2: %d, c3: %d", c1 as i32, c2 as i32, c3 as i32);
+    
+    ret (c1 && c2 && c3) as i32;
 }

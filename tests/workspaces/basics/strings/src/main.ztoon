@@ -1,0 +1,23 @@
+
+package mainPkg;
+
+fn printf(msg: readonly i8*, ...);
+
+fn main() -> i32
+{
+
+    str: i8[] = {'b', 'a', 's', 'h', 'i', 'r', '\0'};
+
+    raw_str: i8* = R"(
+        Hi, my name is
+        bashir
+        tawfig
+        bashir
+        abugharsa)";
+
+
+    printf("str: %s\n", str as i8*);
+    printf("raw_str: %s\n", raw_str);
+  
+    ret 1;
+}

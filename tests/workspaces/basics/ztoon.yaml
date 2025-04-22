@@ -80,3 +80,6 @@ workspace:
     - arrays_multi_dimensions:
             relative_path: arrays_multi_dimensions/
             type: exe  
+    - strings:
+            relative_path: strings/
+            type: exe 

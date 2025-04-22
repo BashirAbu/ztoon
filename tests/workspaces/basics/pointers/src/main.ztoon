@@ -4,9 +4,16 @@ fn printf(msg: readonly i8*, ...) -> i32;
 fn main() -> i32
 {
     a: i32 = 422;
-    b: i32* = &a;
+    b: i32*;
     c: i32** = &b;
-    *b = 1211;
+    b = &a;
+    *b = 2;
+    **c = 3;
+    number: i32 = 12;
+    ptr: i32* = &number;
+    ptrInt: u64 = ptr as u64;
+    *(ptrInt as i32*) = 11;
+    // printf("Value of number: %d\n", *(ptrInt as i32*));
     
     // printf("address of            a: %lld\n", &a as u64);
     // printf("value of              b: %lld\n", b as u64);
@@ -15,17 +22,17 @@ fn main() -> i32
     // printf("value of              c: %lld\n", c);
     // printf("deref value of        c: %lld\n", *c);
     // printf("double deref value of c: %d\n", *(*c));
-    // printf("%d", *b);
     c1: bool =  (b as u64) == (&a as u64);
     c2: bool = *b as u64 == a as u64;
     c3: bool = c as u64 == &b as u64;
     c4: bool = *c  as u64== b as u64;
-    c5: bool = **c as u64== a as u64; 
+    c5: bool = **c as u64== a as u64;
+    c6: bool = number == *(ptrInt as i32*);
 
-    // printf("c1: %d, c2: %d, c3: %d, c4: %d, c5: %d\n",
-    //  c1 as i32, c2 as i32, c3 as i32, c4 as i32, c5 as i32);
+    // printf("c1: %d, c2: %d, c3: %d, c4: %d, c5: %d, c6: %d\n",
+    // c1 as i32, c2 as i32, c3 as i32, c4 as i32, c5 as i32, c6 as i32);
 
-    all: bool = ( c1 && c2 && c3 && c4 && c5 );
+    all: bool = ( c1 && c2 && c3 && c4 && c5 && c6);
 
     
     ret all as i32;

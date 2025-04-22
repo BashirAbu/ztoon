@@ -1,6 +1,9 @@
 workspace:
   name: basics
   projects:
+    - integers:
+        relative_path: integers/
+        type: exe
     - basic_arithmetics:
         relative_path: basic_arithmetics/
         type: exe

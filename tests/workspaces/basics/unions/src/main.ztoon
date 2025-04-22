@@ -2,5 +2,5 @@
 package mainPkg;
 fn main() -> i32
 {
-    ret 0;
+    ret 1;
 }

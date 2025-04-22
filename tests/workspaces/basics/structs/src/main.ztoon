@@ -38,9 +38,9 @@ fn main() -> i32
 
     c5: bool = castVec2ToVec4.x == v.x;
 
-    print_vector2(*(castVec2ToVec4 as Vector2*), "m");
+    // print_vector2(*(castVec2ToVec4 as Vector2*), "m");
         
-    printf("c1: %d, c2: %d, c3: %d, c4: %d, c5: %d\n",
-    c1 as i32, c2 as i32, c3 as i32, c4 as i32, c5 as i32);
+    // printf("c1: %d, c2: %d, c3: %d, c4: %d, c5: %d\n",
+    // c1 as i32, c2 as i32, c3 as i32, c4 as i32, c5 as i32);
     ret (c1 && c2 && c3 && c4 && c5) as i32;
 }

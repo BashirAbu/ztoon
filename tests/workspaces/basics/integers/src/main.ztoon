@@ -1,0 +1,13 @@
+
+package mainPkg;
+fn printf(str: readonly i8*, ...);
+fn main() -> i32
+{
+    hx: u64 = 0xffffffffffffffff;
+    // printf("hex: %llu\n", hx);
+    binary: u64
+    = 0b1111111111111111111111111111111111111111111111111111111111111111;
+    // printf("binary: %llu\n", binary);
+    c1: bool = hx == binary;
+    ret (c1) as i32;
+}

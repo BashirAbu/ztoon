@@ -1,6 +1,52 @@
 
 package mainPkg;
+
+union Vector3
+{
+    struct
+    {
+        x: f32;
+        y: f32;
+        z: f32;
+    }
+    
+    elements: f32[6];
+}
+
+
+union Integer
+{
+    number: u64;
+    bytes: u8[8];
+} 
+
+
 fn main() -> i32
 {
-    ret 1;
+    v: Vector3;
+    v.elements[0] = 1.0;
+    v.elements[1] = 2.0;
+    v.elements[2] = 3.0;
+    v.x = 12.0;
+
+    c1: bool = v.x == 12.0 && v.y == 2.0 && v.z == 3.0;
+    num: Integer;
+    num.number = 0xAABBCCDDFF998877;
+    c2: bool = num.bytes[0] == 0x77;
+    c3: bool = num.bytes[1] == 0x88;
+    c4: bool = num.bytes[2] == 0x99;
+    c5: bool = num.bytes[3] == 0xff;
+    c6: bool = num.bytes[4] == 0xdd;
+    c7: bool = num.bytes[5] == 0xcc;
+    c8: bool = num.bytes[6] == 0xbb;
+    c9: bool = num.bytes[7] == 0xaa; 
+    // for i: i32 =0; i < 8; i++ {
+    //     printf("byte[%d] = %02X\n",i, num.bytes[i]);
+    // }
+    all: i32 = (c1 && c2 && c3 && c4 && c5 && c6 && c7 && c8 && c9) as i32;
+
+    // printf("%d", all);
+    
+    ret all;
 }
+fn printf(str: readonly i8*, ...);

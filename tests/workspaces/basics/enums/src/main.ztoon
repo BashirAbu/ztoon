@@ -1,5 +1,94 @@
 package mainPkg;
+
+
+enum Colors : i32
+{
+    GREEN = 1,
+    BLUE,
+    YELLOW,
+    BROWN,
+    PINK,
+    GRAY    
+}
+
+fn printf(str: readonly i8*, ...);
+
+fn PrintColor(color: Colors)
+{
+    switch (color)
+    {
+        case Colors::GREEN, Colors::BLUE:
+        {
+            printf("Green or Blue");
+        }
+        case Colors::YELLOW:
+        {
+            printf("Yellow");
+        }
+        case Colors::BROWN, Colors::PINK:
+        {
+            switch color
+            {
+                case Colors::BROWN:
+                {
+                    printf("Brown");
+                }
+                case Colors::PINK:
+                {
+                    printf("Pink");
+                }
+            }
+        }
+        default:
+        {
+            printf("Other");
+        }
+    }
+}
+
+
+enum Flags : u8
+{
+    blue =   0b00000001,
+    green =  0b00000010,
+    yellow = 0b00000100,
+    red =    0b00001000,
+    pink =   0b00010000,
+    purple = 0b00100000,
+    white =  0b01000000,
+    black =  0b10000000,
+}
+
 fn main() -> i32
 {
-    ret 1;
+    color: Colors = Colors::GREEN;
+    // PrintColor(Colors::BROWN);
+
+    // printf("Flags::blue | Flags::green | Flags::yellow = %d\n",
+    // Flags::blue | Flags::green | Flags::yellow);
+
+
+    c1: bool = Colors::YELLOW as i32 == 3;
+    c2: bool = (Flags::black | Flags::white) as u32 == 192 as u32;
+
+    c3: bool = false;
+    switch color
+    {
+        case Colors::GREEN:
+        {
+            c3 = true;
+        }
+        case Colors::BROWN:
+        {
+            
+        }
+        default:
+        {
+            
+        }
+    }
+
+    all: i32 = (c1 && c2 && c3) as i32;
+    // printf("all: %d", all);
+    ret all;
 }

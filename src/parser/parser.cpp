@@ -324,7 +324,7 @@ DataTypeToken *Parser::ParseDataType()
     else
     {
         CodeErrString ces = {};
-        ces.firstToken = dataType->readOnly;
+        ces.firstToken = Peek();
         ces.str = ces.firstToken->GetLexeme();
         ReportError(std::format("Expect datatype"), ces);
     }
@@ -1520,10 +1520,130 @@ Expression *Parser::BuildBinaryExpression(Token const *op, Expression *left,
     return expr;
 }
 
-Expression *Parser::ParseExpression()
+Expression *Parser::ParseExpression() { return ParseFnExpression(); }
+
+Expression *Parser::ParseFnExpression()
 {
+    if (Consume(TokenType::FN))
+    {
+        FnExpression *fnExpr = gZtoonArena.Allocate<FnExpression>();
+        fnExpr->fnToken = Prev();
+
+        if (Consume(TokenType::LEFT_PAREN))
+        {
+            while (!Consume(TokenType::RIGHT_PAREN))
+            {
+                Statement *varDeclStatement = ParseVarDeclStatement();
+                if (!dynamic_cast<VarDeclStatement *>(varDeclStatement))
+                {
+                    if (Consume(TokenType::VAR_ARGS))
+                    {
+                        fnExpr->isVarArgs = true;
+                        if (Consume(TokenType::RIGHT_PAREN))
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            CodeErrString ces;
+                            ces.firstToken = Prev();
+                            ces.str = ces.firstToken->GetLexeme();
+                            ReportError(
+                                std::format("'...' token can only be the last "
+                                            "function paramter"),
+                                ces);
+                        }
+                    }
+                    else
+                    {
+                        ReportError(
+                            std::format(
+                                "Expect function paramter but found '{}'",
+                                varDeclStatement->GetCodeErrString().str),
+                            varDeclStatement->GetCodeErrString());
+                    }
+                }
+                if (((VarDeclStatement *)varDeclStatement)->expression)
+                {
+                    ReportError("Default parameters are not supported",
+                                varDeclStatement->GetCodeErrString());
+                }
+                ((VarDeclStatement *)varDeclStatement)->isParamter = true;
+                fnExpr->parameters.push_back(
+                    (VarDeclStatement *)varDeclStatement);
+                if (Peek()->GetType() != TokenType::RIGHT_PAREN)
+                {
+                    if (!Consume(TokenType::COMMA))
+                    {
+                        ReportError(
+                            std::format(
+                                "Expect ',' after function paramter '{}'",
+                                varDeclStatement->GetCodeErrString().str),
+                            varDeclStatement->GetCodeErrString());
+                    }
+                }
+            }
+        }
+        else
+        {
+            CodeErrString ces;
+            ces.firstToken = fnExpr->fnToken;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError(std::format("Expect '(' after '{}'", ces.str), ces);
+        }
+
+        if (Consume(TokenType::ARROW))
+        {
+            DataTypeToken *retDataType = ParseDataType();
+            if (!retDataType)
+            {
+                CodeErrString ces = {};
+                ces.firstToken = Prev();
+                ces.str = ces.firstToken->GetLexeme();
+
+                ReportError(std::format("Expect datatype after '->'", ces.str),
+                            ces);
+            }
+
+            fnExpr->returnDataTypeToken = retDataType;
+        }
+        else
+        {
+            DataTypeToken *noType = gZtoonArena.Allocate<DataTypeToken>();
+            noType->dataType = gZtoonArena.Allocate<Token>(TokenType::NOTYPE);
+            fnExpr->returnDataTypeToken = noType;
+        }
+
+        if (Consume(TokenType::SEMICOLON))
+        {
+            fnExpr->isPrototype = true;
+            fnExpr->blockStatement = gZtoonArena.Allocate<BlockStatement>();
+
+            for (Statement *s : fnExpr->parameters)
+            {
+                fnExpr->blockStatement->statements.push_back(s);
+            }
+
+            return fnExpr;
+        }
+
+        Statement *blockStatement = ParseBlockStatement();
+
+        if (!dynamic_cast<BlockStatement *>(blockStatement))
+        {
+            ReportError(std::format("Expect block statement but found '{}'",
+                                    blockStatement->GetCodeErrString().str),
+                        blockStatement->GetCodeErrString());
+        }
+
+        fnExpr->blockStatement = (BlockStatement *)blockStatement;
+
+        return fnExpr;
+    }
+
     return ParseInitializerListExpression();
 }
+
 Expression *Parser::ParseInitializerListExpression()
 {
     if (Consume(TokenType::LEFT_CURLY_BRACKET))
@@ -1732,10 +1852,23 @@ Expression *Parser::ParseCastExpression()
 }
 Expression *Parser::ParseUnaryExpression()
 {
+    Expression *expr = nullptr;
+    if (TokenMatch(Peek()->GetType(), TokenType::ASTERISK,
+                   TokenType::BITWISE_AND, TokenType::EXCLAMATION,
+                   TokenType::TILDE))
+    {
+        Advance();
+        UnaryExpression *unaryExpr = gZtoonArena.Allocate<UnaryExpression>();
+        unaryExpr->op = Prev();
+        unaryExpr->right = ParseUnaryExpression();
+
+        expr = unaryExpr;
+    }
+    if (expr)
+        return expr;
+
     if (TokenMatch(Peek()->GetType(), TokenType::DASH, TokenType::DASH_DASH,
-                   TokenType::PLUS, TokenType::PLUS_PLUS,
-                   TokenType::EXCLAMATION, TokenType::TILDE, TokenType::SIZEOF,
-                   TokenType::ASTERISK, TokenType::BITWISE_AND))
+                   TokenType::PLUS, TokenType::PLUS_PLUS, TokenType::SIZEOF))
     {
         Advance();
         UnaryExpression *unaryExpr = gZtoonArena.Allocate<UnaryExpression>();
@@ -1771,7 +1904,8 @@ Expression *Parser::ParseUnaryExpression()
                 return nullptr;
             }
         }
-        unaryExpr->right = ParseExpression();
+
+        unaryExpr->right = ParsePostfixExpression();
 
         if (TokenMatch(Peek()->GetType(), TokenType::DASH_DASH,
                        TokenType::PLUS_PLUS))
@@ -1784,7 +1918,7 @@ Expression *Parser::ParseUnaryExpression()
         return unaryExpr;
     }
 
-    Expression *expr = ParsePostfixExpression();
+    expr = ParsePostfixExpression();
     if (TokenMatch(Peek()->GetType(), TokenType::DASH_DASH,
                    TokenType::PLUS_PLUS))
     {

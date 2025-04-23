@@ -13,6 +13,7 @@
 #include <vector>
 #include <yaml-cpp/yaml.h>
 std::string basicZtoonExeMainFile = R"(
+package mainPkg;
 fn main() -> i32
 {
     ret 0;
@@ -20,6 +21,7 @@ fn main() -> i32
 )";
 
 std::string basicZtoonLibraryFile = R"(
+package libPkg
 fn add(a: i32, b: i32) -> i32
 {
     ret a + b;

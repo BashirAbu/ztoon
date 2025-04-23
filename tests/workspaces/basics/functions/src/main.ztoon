@@ -1,0 +1,39 @@
+
+package mainPkg;
+
+fn add(a: i32, b: i32) -> i32
+{
+    ret a + b;
+}
+fn printf(str: readonly i8*, ...);
+
+
+fn print_function_value(f: (fn(a:i32, b: i32)->i32)) -> i32
+{
+    ret f (33, -10);
+}
+
+bbb: i32 = 12;
+
+fn main() -> i32
+{
+
+    func: (fn (a: i32, b: i32) -> i32) = fn (a: i32, b: i32) -> i32
+    {
+        ret a + b;
+    };
+
+    c1: bool = func(5, 9) == 14;
+    
+    // printf("Anonymous fn: %d\n", func(333, 77));
+
+    res: i32 = print_function_value(fn (a: i32, b: i32) -> i32
+    {
+        ret a + b + bbb;
+    });
+    
+    c2: bool = res == 35;
+
+    all: i32 = (c1 && c2) as i32;
+    ret all;
+}

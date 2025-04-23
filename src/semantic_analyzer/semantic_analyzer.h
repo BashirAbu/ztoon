@@ -196,7 +196,7 @@ class Function : public Symbol
 {
   public:
     std::string GetName() override { return name; }
-    class FnStatement *GetFnStatement() { return fnStmt; }
+    // class FnStatement *GetFnStatement() { return fnStmt; }
     void AddParamter(Variable *var, CodeErrString codeErrString);
 
     DataType *GetDataType() override { return fnPointer; }
@@ -207,7 +207,7 @@ class Function : public Symbol
 
   private:
     std::string name;
-    class FnStatement *fnStmt = nullptr;
+    // class FnStatement *fnStmt = nullptr;
     class RetStatement *retStmt = nullptr;
     PointerDataType *fnPointer = nullptr;
     friend class SemanticAnalyzer;

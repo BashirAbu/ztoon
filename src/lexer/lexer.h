@@ -36,6 +36,8 @@ enum class TokenType
     NOTYPE,
     NULL_PTR,
     INTEGER_LITERAL,
+    INTEGER_LITERAL_HEX,
+    INTEGER_LITERAL_BINARY,
     FLOAT_LITERAL,
     STRING_LITERAL,
     RAW_STRING_LITERAL,
@@ -179,6 +181,7 @@ class TokenLiteral : public Token
 
   private:
     T value = {};
+    friend class Lexer;
     friend class SemanticAnalyzer;
     friend class CodeGen;
 };

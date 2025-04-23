@@ -1,11 +1,14 @@
+#include "compiler/compiler.h"
 #include "error_report.h"
 #include "lexer.h"
 #include "parser/parser.h"
 #include "utils/memory_arean.h"
+#include <cstdint>
 #include <format>
 #include <iostream>
 #include <regex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 
@@ -81,10 +84,11 @@ std::string TokenDataTypeToString(TokenType type)
 
 bool IsLiteralToken(TokenType type)
 {
-    return TokenMatch(type, TokenType::FLOAT_LITERAL,
-                      TokenType::INTEGER_LITERAL, TokenType::STRING_LITERAL,
-                      TokenType::CHARACTER_LITERAL, TokenType::FALSE,
-                      TokenType::TRUE, TokenType::RAW_STRING_LITERAL);
+    return TokenMatch(
+        type, TokenType::FLOAT_LITERAL, TokenType::INTEGER_LITERAL,
+        TokenType::INTEGER_LITERAL_HEX, TokenType::INTEGER_LITERAL_BINARY,
+        TokenType::STRING_LITERAL, TokenType::CHARACTER_LITERAL,
+        TokenType::FALSE, TokenType::TRUE, TokenType::RAW_STRING_LITERAL);
 }
 
 bool IsNumerical(TokenType type) { return IsInteger(type) || IsFloat(type); }
@@ -213,12 +217,16 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^\?)"), TokenType::QUESTION_MARK});
 
     patterns.push_back(
+        {std::regex(R"(^0x([0-9a-fA-F]+))"), TokenType::INTEGER_LITERAL_HEX});
+    patterns.push_back(
+        {std::regex(R"(^0b([0-1]+))"), TokenType::INTEGER_LITERAL_BINARY});
+    patterns.push_back(
         {std::regex(R"(^(\d+\.\d+)|(\.\d+))"), TokenType::FLOAT_LITERAL});
     patterns.push_back({std::regex(R"(^\d+)"), TokenType::INTEGER_LITERAL});
 
     patterns.push_back(
         {std::regex("^\"(.*?)(?:^|[^\\\\])\""), TokenType::STRING_LITERAL});
-    patterns.push_back({std::regex("^R\"\\((.*?)(?:^|[^\\\\])\\)\""),
+    patterns.push_back({std::regex("^R\"\\(([\\s\\S]*?)(?:^|[^\\\\])\\)\""),
                         TokenType::RAW_STRING_LITERAL});
     patterns.push_back({std::regex("^\'\\\\?.?(?:^|[^\\\\])\'"),
                         TokenType::CHARACTER_LITERAL});
@@ -242,7 +250,6 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
         std::smatch match;
 
         std::string remaining = sourceCode.substr(pos);
-
         for (const Pattern &pattern : patterns)
         {
             if (std::regex_search(remaining, match, pattern.regex,
@@ -271,17 +278,143 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
 
                 if (IsLiteralToken(pattern.type))
                 {
-
                     switch (pattern.type)
                     {
                     case TokenType::INTEGER_LITERAL:
+                    {
+
                         token = gZtoonArena.Allocate<TokenLiteral<int32_t>>(
-                            pattern.type, std::stoull(match.str()));
-                        break;
+                            pattern.type, 0);
+                        token->filename = filename;
+                        token->lineNumber = lineNumber;
+                        token->lexeme = match.str();
+                        token->lineStr = token->lexeme;
+                        uint64_t value;
+                        try
+                        {
+                            value = std::stoull(match.str());
+                        }
+                        catch (const std::out_of_range &)
+                        {
+                            CodeErrString ces;
+                            ces.firstToken = token;
+                            ces.str = ces.firstToken->GetLexeme();
+                            ReportError("Integer literal is larger than 64bit",
+                                        ces);
+                        }
+
+                        dynamic_cast<TokenLiteral<int32_t> *>(token)->value =
+                            (int32_t)value;
+                    }
+                    break;
+                    case TokenType::INTEGER_LITERAL_HEX:
+                    {
+                        size_t numberOfDigits = match.str().length();
+                        bool error = numberOfDigits > 18;
+
+                        bool is32Bits = numberOfDigits <= 10 ? true : false;
+
+                        if (is32Bits)
+                        {
+                            token =
+                                gZtoonArena.Allocate<TokenLiteral<uint32_t>>(
+                                    TokenType::INTEGER_LITERAL, 0);
+                        }
+                        else
+                        {
+                            token =
+                                gZtoonArena.Allocate<TokenLiteral<uint64_t>>(
+                                    TokenType::INTEGER_LITERAL, 0);
+                        }
+                        token->filename = filename;
+                        token->lineNumber = lineNumber;
+                        token->lexeme = match.str();
+                        token->lineStr = token->lexeme;
+                        if (error)
+                        {
+                            CodeErrString ces;
+                            ces.firstToken = token;
+                            ces.str = ces.firstToken->GetLexeme();
+                            ReportError("Integer literal is larger than 64bit",
+                                        ces);
+                        }
+                        std::stringstream ss;
+                        ss << std::hex << match.str();
+                        uint64_t hexValue = 0;
+                        ss >> hexValue;
+
+                        reinterpret_cast<TokenLiteral<uint64_t> *>(token)
+                            ->value = hexValue;
+                    }
+                    break;
+                    case TokenType::INTEGER_LITERAL_BINARY:
+                    {
+                        std::string literalString = match.str();
+                        literalString.erase(literalString.begin());
+                        literalString.erase(literalString.begin());
+                        size_t numberOfDigits = literalString.length();
+                        bool error = numberOfDigits > 64;
+
+                        bool is32Bits = numberOfDigits <= 32 ? true : false;
+
+                        if (is32Bits)
+                        {
+                            token =
+                                gZtoonArena.Allocate<TokenLiteral<uint32_t>>(
+                                    TokenType::INTEGER_LITERAL, 0);
+                        }
+                        else
+                        {
+                            token =
+                                gZtoonArena.Allocate<TokenLiteral<uint64_t>>(
+                                    TokenType::INTEGER_LITERAL, 0);
+                        }
+                        token->filename = filename;
+                        token->lineNumber = lineNumber;
+                        token->lexeme = match.str();
+                        token->lineStr = token->lexeme;
+                        if (numberOfDigits > 64)
+                        {
+                            CodeErrString ces;
+                            ces.firstToken = token;
+                            ces.str = ces.firstToken->GetLexeme();
+                            ReportError("Integer literal is larger than 64bit",
+                                        ces);
+                        }
+                        uint64_t binaryValue =
+                            std::stoull(literalString, nullptr, 2);
+                        reinterpret_cast<TokenLiteral<uint64_t> *>(token)
+                            ->value = binaryValue;
+                    }
+                    break;
                     case TokenType::FLOAT_LITERAL:
+                    {
+
                         token = gZtoonArena.Allocate<TokenLiteral<float>>(
-                            pattern.type, std::stod(match.str()));
-                        break;
+                            pattern.type, 0);
+                        token->filename = filename;
+                        token->lineNumber = lineNumber;
+                        token->lexeme = match.str();
+                        token->lineStr = token->lexeme;
+                        double value;
+                        try
+                        {
+                            value = std::stod(match.str());
+                        }
+                        catch (const std::out_of_range &)
+                        {
+                            CodeErrString ces;
+                            ces.firstToken = token;
+                            ces.str = ces.firstToken->GetLexeme();
+                            ReportError("float literal is larger than 64bit",
+                                        ces);
+                        }
+
+                        dynamic_cast<TokenLiteral<float> *>(token)->value =
+                            (float)value;
+                    }
+
+                    break;
                     case TokenType::CHARACTER_LITERAL:
                     {
                         std::string literal = match.str();

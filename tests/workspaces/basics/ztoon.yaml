@@ -47,8 +47,8 @@ workspace:
     - ternary_expression:
             relative_path: ternary_expression/
             type: exe
-    - function_call:
-            relative_path: function_call/
+    - functions:
+            relative_path: functions/
             type: exe
     - recursion:
             relative_path: recursion/

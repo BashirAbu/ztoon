@@ -1,4 +1,4 @@
 @echo off
 pushd tests\workspaces
-..\..\build\tests\ztests.exe
+python ..\..\gtest-parallel\gtest_parallel.py  ..\..\build\tests\ztests.exe
 popd

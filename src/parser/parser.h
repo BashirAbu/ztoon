@@ -672,10 +672,10 @@ class RetStatement : public Statement
             "ret {}", expression ? expression->GetCodeErrString().str : "");
         return ces;
     }
-    class FnStatement *GetFnStatement() { return fnStmt; }
+    // class FnStatement *GetFnStatement() { return fnStmt; }
 
   private:
-    class FnStatement *fnStmt = nullptr;
+    // class FnStatement *fnStmt = nullptr;
     Token const *retToken = nullptr;
     class Expression *expression = nullptr;
     friend class Parser;
@@ -729,6 +729,52 @@ class FnStatement : public Statement
     friend class SemanticAnalyzer;
 };
 
+class FnExpression : public Expression
+{
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = fnToken;
+        es.str = std::format("fn (");
+        for (VarDeclStatement *s : parameters)
+        {
+            es.str += std::format("{}, ", s->GetCodeErrString().str);
+        }
+        if (isVarArgs)
+        {
+            es.str += "...";
+        }
+        if (es.str.ends_with(','))
+        {
+            es.str.pop_back();
+        }
+        es.str += std::format(")");
+        if (returnDataTypeToken)
+        {
+            es.str += " -> " + returnDataTypeToken->GetDataType()->GetLexeme();
+        }
+        return es;
+    }
+    DataTypeToken *GetReturnDatatype() { return returnDataTypeToken; }
+    bool IsPrototype() { return isPrototype; }
+    bool IsVarArgs() { return isVarArgs; }
+    BlockStatement *GetBlockStatement() { return blockStatement; };
+    std::vector<VarDeclStatement *> &GetParameters() { return parameters; }
+    Token const *GetFirstToken() const override { return fnToken; }
+    std::string GetName() { return name; };
+
+  private:
+    std::string name;
+    Token const *fnToken = nullptr;
+    DataTypeToken *returnDataTypeToken = nullptr;
+    std::vector<VarDeclStatement *> parameters;
+    BlockStatement *blockStatement = nullptr;
+    bool isPrototype = false;
+    bool isVarArgs = false;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
 class MemberAccessExpression : public Expression
 {
   public:
@@ -1087,7 +1133,7 @@ class Parser
     Statement *ParseImportStatement();
 
     Expression *ParseExpression();
-    Expression *ParseLambdaExpression();
+    Expression *ParseFnExpression();
     Expression *ParseTernaryExpression();
     Expression *ParseORExpression();
     Expression *ParseANDExpression();

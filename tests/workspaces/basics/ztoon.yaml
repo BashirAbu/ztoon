@@ -92,6 +92,9 @@ workspace:
     - structs:
             relative_path: structs/
             type: exe
+    - struct_methods:
+            relative_path: struct_methods/
+            type: exe
     - unions:
             relative_path: unions/
             type: exe

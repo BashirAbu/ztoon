@@ -35,6 +35,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/GenericDomTree.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Support/raw_ostream.h"
@@ -1306,6 +1307,30 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
             auto structZtoonType = dynamic_cast<StructDataType *>(
                 semanticAnalyzer.stmtToDataTypeMap[structStmt]);
             genStructIR(structZtoonType);
+            auto temp = semanticAnalyzer.currentScope;
+            semanticAnalyzer.currentScope = structZtoonType->scope;
+            for (auto method : structStmt->GetMethods())
+            {
+                FnStatement *fnStmt = method;
+                Function *fn = dynamic_cast<Function *>(
+                    semanticAnalyzer.currentScope->GetSymbol(
+                        fnStmt->GetIdentifier()->GetLexeme(),
+                        fnStmt->GetCodeErrString()));
+
+                FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
+                llvm::FunctionType *fnType = llvm::dyn_cast<llvm::FunctionType>(
+                    ZtoonTypeToLLVMType(fnDataType).type);
+                llvm::Function *function = llvm::Function::Create(
+                    fnType, llvm::GlobalValue::ExternalLinkage, fn->GetName(),
+                    *module);
+
+                IRFunction *irFunc = gZtoonArena.Allocate<IRFunction>();
+                irFunc->fn = function;
+                irFunc->fnType = fnType;
+                irFunc->ztoonFn = fn;
+                AddIRSymbol(irFunc);
+            }
+            semanticAnalyzer.currentScope = temp;
         }
         else if (dynamic_cast<UnionStatement *>(stmt))
         {
@@ -1541,6 +1566,72 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
 
                 semanticAnalyzer.currentScope = tempScope;
             }
+        }
+        else if (dynamic_cast<StructStatement *>(stmt))
+        {
+            StructStatement *structStmt = dynamic_cast<StructStatement *>(stmt);
+            auto structZtoonType = dynamic_cast<StructDataType *>(
+                semanticAnalyzer.stmtToDataTypeMap[structStmt]);
+            auto tempScope = semanticAnalyzer.currentScope;
+            semanticAnalyzer.currentScope = structZtoonType->scope;
+            for (auto method : structStmt->GetMethods())
+            {
+
+                FnStatement *fnStmt = method;
+                Function *fn = dynamic_cast<Function *>(
+                    semanticAnalyzer.currentScope->GetSymbol(
+                        fnStmt->GetIdentifier()->GetLexeme(),
+                        fnStmt->GetCodeErrString()));
+
+                FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
+
+                IRFunction *irFunc = dynamic_cast<IRFunction *>(
+                    GetIRSymbol(fnStmt->GetIdentifier()->GetLexeme()));
+
+                llvm::BasicBlock *fnBB = llvm::BasicBlock::Create(
+                    *ctx, std::format("{}FnBlock", fn->GetName()), irFunc->fn);
+                irFunc->fnBB = fnBB;
+                irBuilder->SetInsertPoint(fnBB);
+
+                size_t index = 0;
+                auto tempScope = semanticAnalyzer.currentScope;
+                semanticAnalyzer.currentScope =
+                    semanticAnalyzer
+                        .blockToScopeMap[fnStmt->GetBlockStatement()];
+                for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
+                {
+                    GenStatementIR(paramStmt);
+                    IRVariable *paramVar = dynamic_cast<IRVariable *>(
+                        GetIRSymbol(paramStmt->GetIdentifier()->GetLexeme()));
+                    llvm::Value *value = irFunc->fn->getArg(index);
+                    irBuilder->CreateStore(value, paramVar->value);
+                    index++;
+                }
+
+                GenStatementIR(fnStmt->GetBlockStatement());
+
+                llvm::Instruction *term =
+                    irBuilder->GetInsertBlock()->getTerminator();
+
+                if (!term || !llvm::isa<llvm::ReturnInst>(term))
+                {
+                    if (irFunc->ztoonFn->GetFnDataTypeFromFnPTR()
+                            ->returnDataType->type != DataType::Type::NOTYPE)
+                    {
+                        irBuilder->CreateRet(
+                            GenExpressionIR(
+                                irFunc->ztoonFn->retStmt->GetExpression())
+                                .value);
+                    }
+                    else
+                    {
+                        irBuilder->CreateRetVoid();
+                    }
+                }
+
+                semanticAnalyzer.currentScope = tempScope;
+            }
+            semanticAnalyzer.currentScope = tempScope;
         }
     }
 }
@@ -2235,6 +2326,7 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                 dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
             std::string rightName = primaryExpr->GetPrimary()->GetLexeme();
             IRType fieldIRType = {};
+            bool fieldFound = false;
             for (size_t i = 0; i < structType->structStmt->GetFields().size();
                  i++)
             {
@@ -2245,18 +2337,29 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
                     index = i;
                     fieldIRType =
                         ZtoonTypeToLLVMType(structType->fields[index]);
+                    fieldFound = true;
                     break;
                 }
             }
-            IRType structIRType = ZtoonTypeToLLVMType(structType);
-            irValue.value = irBuilder->CreateStructGEP(structIRType.type,
-                                                       leftValue.value, index);
-            irValue.type = fieldIRType;
-
-            if (!isWrite)
+            if (fieldFound)
             {
-                irValue.value =
-                    irBuilder->CreateLoad(fieldIRType.type, irValue.value);
+                IRType structIRType = ZtoonTypeToLLVMType(structType);
+                irValue.value = irBuilder->CreateStructGEP(
+                    structIRType.type, leftValue.value, index);
+                irValue.type = fieldIRType;
+
+                if (!isWrite)
+                {
+                    irValue.value =
+                        irBuilder->CreateLoad(fieldIRType.type, irValue.value);
+                }
+            }
+            else
+            {
+                auto temp = semanticAnalyzer.currentScope;
+                semanticAnalyzer.currentScope = structType->scope;
+                irValue = GenExpressionIR(maExpr->GetRightExpression());
+                semanticAnalyzer.currentScope = temp;
             }
         }
         else if (maExpr->accessType ==

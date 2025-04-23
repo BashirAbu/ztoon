@@ -1,6 +1,7 @@
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser.h"
+#include "llvm/Analysis/InlineAdvisor.h"
 #include <algorithm>
 #include <format>
 std::string DataTypeToken::ToString()
@@ -569,19 +570,70 @@ Statement *Parser::ParseStructStatement(bool anonymous)
 
         while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
         {
-            auto fieldStmt = ParseVarDeclStatement();
-            auto varDeclStmt = dynamic_cast<VarDeclStatement *>(fieldStmt);
-            if (!varDeclStmt)
+
+            Statement *fieldStmt = ParseFnStatement(true);
+            FnStatement *fnStmt = dynamic_cast<FnStatement *>(fieldStmt);
+            VarDeclStatement *varDeclStmt =
+                dynamic_cast<VarDeclStatement *>(fieldStmt);
+
+            if (!varDeclStmt && !fnStmt)
             {
+                auto fieldStmt = ParseStatement();
                 ReportError("Statement not supported in struct definition",
                             fieldStmt->GetCodeErrString());
             }
-            if (!Consume(TokenType::SEMICOLON))
+            if (varDeclStmt)
             {
-                ReportError("Expected ';' after field declaration",
+                structStmt->fields.push_back(varDeclStmt);
+            }
+            else if (fnStmt)
+            {
+                if (fnStmt->method)
+                {
+                    // add param
+                    auto selfParam = gZtoonArena.Allocate<VarDeclStatement>();
+                    selfParam->identifier = fnStmt->method->selfToken;
+                    selfParam->isParamter = true;
+                    DataTypeToken *dataTypeToken =
+                        gZtoonArena.Allocate<DataTypeToken>();
+                    dataTypeToken->dataType = structStmt->identifier;
+                    if (fnStmt->method->asterisk)
+                    {
+                        DataTypeToken *ptrDataTypeToken =
+                            gZtoonArena.Allocate<DataTypeToken>();
+                        ptrDataTypeToken->pointerDesc =
+                            gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
+                        ptrDataTypeToken->pointerDesc->dataTypeToken =
+                            dataTypeToken;
+                        ptrDataTypeToken->pointerDesc->token =
+                            structStmt->identifier;
+                        dataTypeToken = ptrDataTypeToken;
+                    }
+                    else
+                    {
+                        dataTypeToken->dataType = structStmt->identifier;
+                    }
+                    dataTypeToken->readOnly = fnStmt->method->readonly;
+                    selfParam->dataTypeToken = dataTypeToken;
+                    fnStmt->GetParameters().insert(
+                        fnStmt->GetParameters().begin(), selfParam);
+                }
+
+                fnStmt->structStmt = structStmt;
+                structStmt->methods.push_back(fnStmt);
+            }
+            if (varDeclStmt && !Consume(TokenType::SEMICOLON))
+            {
+                ReportError("Expedted ';' after field declaration",
                             varDeclStmt->GetCodeErrString());
             }
-            structStmt->fields.push_back(varDeclStmt);
+        }
+
+        if (anonymous && !structStmt->GetMethods().empty())
+        {
+            ReportError(std::format("Methods cannot be declared in an "
+                                    "anonymous struct"),
+                        structStmt->GetCodeErrString());
         }
 
         return structStmt;
@@ -764,7 +816,7 @@ Statement *Parser::ParseEnumStatement()
     }
     return ParseFnStatement();
 }
-Statement *Parser::ParseFnStatement()
+Statement *Parser::ParseFnStatement(bool isMethod)
 {
     if (Consume(TokenType::FN))
     {
@@ -797,6 +849,42 @@ Statement *Parser::ParseFnStatement()
 
         if (Consume(TokenType::LEFT_PAREN))
         {
+            if (isMethod)
+            {
+                if (Consume(TokenType::READONLY))
+                {
+                    fnStmt->method =
+                        gZtoonArena.Allocate<FnStatement::Method>();
+                    fnStmt->method->readonly = Prev();
+                }
+                if (!Consume(TokenType::IDENTIFIER))
+                {
+                    if (fnStmt->method)
+                    {
+                        CodeErrString ces;
+                        ces.firstToken = Prev();
+                        ces.str = ces.firstToken->GetLexeme();
+                        ReportError(std::format("Expected 'self' after '{}'",
+                                                Prev()->GetLexeme()),
+                                    ces);
+                    }
+                }
+                else
+                {
+                    if (!fnStmt->method)
+                    {
+                        fnStmt->method =
+                            gZtoonArena.Allocate<FnStatement::Method>();
+                    }
+                    fnStmt->method->selfToken = Prev();
+
+                    if (Consume(TokenType::ASTERISK))
+                    {
+                        fnStmt->method->asterisk = Prev();
+                    }
+                    Consume(TokenType::COMMA);
+                }
+            }
             while (!Consume(TokenType::RIGHT_PAREN))
             {
                 Statement *varDeclStatement = ParseVarDeclStatement();

@@ -1262,6 +1262,181 @@ void SemanticAnalyzer::AnalyzePackageGlobalTypeBodies(Package *pkg)
 
             exprToDataTypeMap[structType->defaultValuesList] = listType;
 
+            for (auto method : structStmt->methods)
+            {
+                FnStatement *fnStmt = method;
+                Function *fp = gZtoonArena.Allocate<Function>();
+                fp->name = fnStmt->identifier->GetLexeme();
+                FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
+                fpDataType->type = DataType::Type::FN;
+                fpDataType->returnDataType =
+                    currentScope->GetDataType(fnStmt->returnDataTypeToken);
+                fpDataType->isVarArgs = fnStmt->IsVarArgs();
+                fpDataType->isMethod = fnStmt->method;
+                // fp->fnStmt = fnStmt;
+                fp->fnPointer = fpDataType->GetFnPtrType();
+
+                currentScope->AddSymbol(fp, fnStmt->GetCodeErrString());
+                Function *temp = currentFunction;
+                currentFunction = fp;
+
+                auto tempScope = currentScope;
+
+                currentScope = gZtoonArena.Allocate<Scope>(this);
+                currentScope->parent = pkgToScopeMap[currentPackage];
+                if (fnStmt->IsPrototype())
+                {
+                    ReportError("Methods must have a definition",
+                                fnStmt->GetCodeErrString());
+                }
+                blockToScopeMap[fnStmt->blockStatement] = currentScope;
+                for (Statement *p : fnStmt->parameters)
+                {
+                    AnalyzeStatement(p);
+                    fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
+                }
+                currentScope = tempScope;
+                currentScope->datatypesMap[fp->fnPointer->ToString()] =
+                    fp->fnPointer;
+                currentFunction = temp;
+            }
+
+            for (auto method : structStmt->methods)
+            {
+                FnStatement *fnStmt = method;
+                Function *fp = dynamic_cast<Function *>(currentScope->GetSymbol(
+                    fnStmt->GetIdentifier()->GetLexeme(),
+                    fnStmt->GetCodeErrString()));
+
+                Function *temp = currentFunction;
+                currentFunction = fp;
+                AnalyzeStatement(fnStmt->blockStatement);
+                currentFunction = temp;
+
+                std::function<bool(BlockStatement * bStmt)> checkRet =
+                    [&](BlockStatement *bStmt) -> bool
+                {
+                    bool retFound = false;
+                    for (Statement *s : bStmt->statements)
+                    {
+                        BlockStatement *blockStmt =
+                            dynamic_cast<BlockStatement *>(s);
+                        if (blockStmt)
+                        {
+                            checkRet(blockStmt);
+                        }
+                        // if stmt? or loops?
+                        IfStatement *ifStmt = dynamic_cast<IfStatement *>(s);
+                        RetStatement *retStmt = dynamic_cast<RetStatement *>(s);
+
+                        if (ifStmt)
+                        {
+
+                            for (Statement *stmt :
+                                 ifStmt->GetBlockStatement()->statements)
+                            {
+                                RetStatement *retStmt =
+                                    dynamic_cast<RetStatement *>(stmt);
+                                if (retStmt)
+                                {
+                                    retFound = true;
+                                    break;
+                                }
+                            }
+
+                            if (!retFound)
+                            {
+                                retFound =
+                                    checkRet(ifStmt->GetBlockStatement());
+                            }
+                            if (retFound)
+                            {
+                                if (ifStmt->GetNextElseIforElseStatements()
+                                        .empty())
+                                {
+                                    retFound = false;
+                                }
+                                bool foundInOtherPaths = false;
+                                for (Statement *stmt :
+                                     ifStmt->GetNextElseIforElseStatements())
+                                {
+                                    auto elIfStmt =
+                                        dynamic_cast<ElseIfStatement *>(stmt);
+                                    auto elseStmt =
+                                        dynamic_cast<ElseStatement *>(stmt);
+                                    if (elIfStmt)
+                                    {
+                                        foundInOtherPaths = checkRet(
+                                            elIfStmt->GetBlockStatement());
+                                    }
+                                    else if (elseStmt)
+                                    {
+                                        foundInOtherPaths = checkRet(
+                                            elseStmt->GetBlockStatement());
+                                    }
+                                    if (!foundInOtherPaths)
+                                    {
+                                        ReportError("Not all paths return.",
+                                                    fnStmt->GetCodeErrString());
+                                    }
+                                }
+
+                                retFound = foundInOtherPaths;
+                                if (!retFound)
+                                {
+                                    ReportError("Not all paths return.",
+                                                fnStmt->GetCodeErrString());
+                                }
+                            }
+                        }
+                        else if (retStmt)
+                        {
+                            return true;
+                        }
+                    }
+                    return retFound;
+                };
+                if (fnStmt->returnDataTypeToken->GetDataType()->type !=
+                    TokenType::NOTYPE)
+                {
+                    if (fnStmt->GetBlockStatement()->statements.empty())
+                    {
+                        ReportError(
+                            std::format("Function '{}' does not return an "
+                                        "expression.",
+                                        fnStmt->GetIdentifier()->GetLexeme()),
+                            fnStmt->GetCodeErrString());
+                    }
+                    // see if function ends with return statement.
+                    RetStatement *retStmt = dynamic_cast<RetStatement *>(
+                        fnStmt->GetBlockStatement()->statements.back());
+                    if (!retStmt)
+                    {
+                        bool retFoundInMainBlock = false;
+                        for (size_t i;
+                             i < fnStmt->GetBlockStatement()->statements.size();
+                             i++)
+                        {
+                            RetStatement *ret = dynamic_cast<RetStatement *>(
+                                fnStmt->GetBlockStatement()->statements[i]);
+                            if (ret)
+                            {
+                                retFoundInMainBlock = true;
+                            }
+                        }
+                        if (!retFoundInMainBlock)
+                        {
+
+                            if (!checkRet(fnStmt->GetBlockStatement()))
+                            {
+                                ReportError("Not all paths return.",
+                                            fnStmt->GetCodeErrString());
+                            }
+                        }
+                    }
+                }
+            }
+
             structType->complete = true;
             currentScope = temp;
         }
@@ -2816,6 +2991,7 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             exprToDataTypeMap[fnCallExpr->GetGetExpression()]);
         FnDataType *fnDataType = dynamic_cast<FnDataType *>(
             fnPtrType ? fnPtrType->dataType : nullptr);
+
         if (!fnDataType)
         {
             ReportError("Expression is not of function pointer type",
@@ -2827,7 +3003,47 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
         {
             EvaluateAndAssignDataTypeToExpression(arg);
         }
+
+        if (fnDataType->IsMethod() &&
+            methodToCallerMap.contains(fnCallExpr->GetGetExpression()))
+        {
+            if (fnDataType->GetParameters()[0]->GetType() ==
+                DataType::Type::POINTER)
+            {
+                UnaryExpression *unaryExpr =
+                    gZtoonArena.Allocate<UnaryExpression>();
+                auto op = gZtoonArena.Allocate<Token>(TokenType::BITWISE_AND);
+                op->lexeme = "&";
+                unaryExpr->op = op;
+                unaryExpr->right =
+                    methodToCallerMap[fnCallExpr->GetGetExpression()];
+                PointerDataType *ptrDataType =
+                    gZtoonArena.Allocate<PointerDataType>();
+                ptrDataType->type = DataType::Type::POINTER;
+                ptrDataType->dataType = exprToDataTypeMap[unaryExpr->right];
+                exprToDataTypeMap[unaryExpr] = ptrDataType;
+                fnCallExpr->GetArgs().insert(fnCallExpr->GetArgs().begin(),
+                                             unaryExpr);
+            }
+            else
+            {
+                fnCallExpr->GetArgs().insert(
+                    fnCallExpr->GetArgs().begin(),
+                    methodToCallerMap[fnCallExpr->GetGetExpression()]);
+            }
+        }
+
+        if (fnCallExpr->GetArgs().size() != fnDataType->GetParameters().size())
+        {
+            if (!fnDataType->IsVarArgs())
+            {
+                ReportError("function call expression arguments are not "
+                            "compatible with function paramters",
+                            fnCallExpr->GetCodeErrString());
+            }
+        }
         size_t index = 0;
+
         for (DataType *argDataType : fnDataType->GetParameters())
         {
             PrimaryExpression *id = gZtoonArena.Allocate<PrimaryExpression>();
@@ -2850,15 +3066,6 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     fnCallExpr->args[index]->GetCodeErrString());
             }
             index++;
-        }
-        if (fnCallExpr->GetArgs().size() > fnDataType->GetParameters().size())
-        {
-            if (!fnDataType->IsVarArgs())
-            {
-                ReportError("function call expression arguments are not "
-                            "compatible with function paramters",
-                            fnCallExpr->GetCodeErrString());
-            }
         }
     }
     else if (dynamic_cast<MemberAccessExpression *>(expression))
@@ -3079,13 +3286,20 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
                     maExpr->GetCodeErrString());
             }
             // Check if struct has this field
-            auto itr = std::find_if(
+            auto fieldItr = std::find_if(
                 structStmt->fields.begin(), structStmt->fields.end(),
                 [field](VarDeclStatement *f) {
                     return f->GetIdentifier()->GetLexeme() ==
                            field->primary->GetLexeme();
                 });
-            if (itr == structStmt->fields.end())
+            auto methodItr = std::find_if(
+                structStmt->methods.begin(), structStmt->methods.end(),
+                [field](FnStatement *f) {
+                    return f->GetIdentifier()->GetLexeme() ==
+                           field->primary->GetLexeme();
+                });
+            if (fieldItr == structStmt->fields.end() &&
+                methodItr == structStmt->methods.end())
             {
                 ReportError(std::format("Struct type '{}' does not have "
                                         "field with name '{}'",
@@ -3099,8 +3313,11 @@ void SemanticAnalyzer::EvaluateAndAssignDataTypeToExpression(
             currentScope->lookUpParent = false;
 
             EvaluateAndAssignDataTypeToExpression(maExpr->GetRightExpression());
-
             DataType *rightDataType = exprToDataTypeMap[field];
+            if (methodItr != structStmt->methods.end())
+            {
+                methodToCallerMap[maExpr] = maExpr->GetLeftExpression();
+            }
             exprToDataTypeMap[maExpr] = rightDataType;
             currentScope = temp;
             currentScope->lookUpParent = true;

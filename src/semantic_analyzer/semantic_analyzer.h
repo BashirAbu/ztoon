@@ -164,11 +164,13 @@ class FnDataType : public DataType
         fnPtr->dataType = this;
         return fnPtr;
     }
+    bool IsMethod() { return isMethod; }
 
   private:
     DataType *returnDataType;
     std::vector<DataType *> paramters;
     bool isVarArgs = false;
+    bool isMethod = false;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -207,7 +209,6 @@ class Function : public Symbol
 
   private:
     std::string name;
-    // class FnStatement *fnStmt = nullptr;
     class RetStatement *retStmt = nullptr;
     PointerDataType *fnPointer = nullptr;
     friend class SemanticAnalyzer;
@@ -257,6 +258,7 @@ class SemanticAnalyzer
     void AnalyzePackage(Package *pkg);
     void AnalyzePackageGlobalTypes(Package *pkg);
     void AnalyzePackageGlobalFuncsAndVars(Package *pkg);
+
     void AnalyzePackageGlobalTypeBodies(Package *pkg);
     void AnalyzePackageVarAndFuncBodies(Package *pkg);
     void AnalyzeStatement(Statement *statement);
@@ -274,6 +276,7 @@ class SemanticAnalyzer
     std::unordered_map<BlockStatement *, Scope *> blockToScopeMap;
     std::unordered_map<Expression *, DataType *> exprToDataTypeMap;
     std::unordered_map<Statement *, DataType *> stmtToDataTypeMap;
+    std::unordered_map<Expression *, Expression *> methodToCallerMap;
     std::vector<Package *> packages;
     std::vector<Library *> libraries;
     Package *currentPackage = nullptr;

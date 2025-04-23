@@ -342,12 +342,13 @@ class StructStatement : public Statement
         return ces;
     }
     const std::vector<VarDeclStatement *> &GetFields() { return fields; }
+    const std::vector<FnStatement *> &GetMethods() { return methods; }
 
   private:
     Token const *token = nullptr;
     Token const *identifier = nullptr;
     std::vector<VarDeclStatement *> fields;
-
+    std::vector<FnStatement *> methods;
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -725,6 +726,17 @@ class FnStatement : public Statement
     BlockStatement *blockStatement = nullptr;
     bool isPrototype = false;
     bool isVarArgs = false;
+
+    struct Method
+    {
+        Token const *selfToken = nullptr;
+        Token const *readonly = nullptr;
+        Token const *asterisk = nullptr;
+    };
+
+    Method *method = nullptr;
+
+    class StructStatement *structStmt = nullptr;
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -1113,7 +1125,7 @@ class Parser
 
     Statement *ParseStatement();
     Statement *ParseBlockStatement();
-    Statement *ParseFnStatement();
+    Statement *ParseFnStatement(bool isMethod = false);
     Statement *ParseVarDeclStatement();
     Statement *ParseVarAssignmentStatement(Expression *lValueExpr);
     Statement *ParseVarCompundAssignmentStatement(Expression *lValueExpr);

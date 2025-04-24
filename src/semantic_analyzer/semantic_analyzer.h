@@ -219,7 +219,8 @@ class Scope
 {
   public:
     Scope(class SemanticAnalyzer *semanticAnalyzer, Scope *parent = nullptr);
-    Symbol *GetSymbol(std::string name, CodeErrString codeErrString);
+    Symbol *GetSymbol(std::string name, CodeErrString codeErrString,
+                      bool check = false);
     void AddSymbol(Symbol *symbol, CodeErrString codeErrString);
 
     Scope const *GetParent() const { return parent; }

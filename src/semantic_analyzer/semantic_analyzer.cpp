@@ -538,7 +538,8 @@ TokenType DataType::ToTokenType()
     }
 }
 
-Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString)
+Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
+                         bool check)
 {
 
     Symbol *symbol = nullptr;
@@ -572,7 +573,7 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString)
     {
         return symbol;
     }
-    else
+    else if (!check)
     {
         ReportError(std::format("'{}' is not defined in this scope.", name),
                     codeErrString);
@@ -3055,6 +3056,7 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
 
     Package *pkgFound = nullptr;
     Library *libFound = nullptr;
+    StructDataType *structTypeFound = nullptr;
     auto primaryExpression =
         dynamic_cast<PrimaryExpression *>(maExpr->GetLeftExpression());
 
@@ -3103,21 +3105,35 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
                 exprToDataTypeMap[maExpr->GetLeftExpression()] = libType;
             }
         }
+
+        if (!pkgFound && !libFound)
+        {
+            structTypeFound =
+                dynamic_cast<StructDataType *>(currentScope->GetSymbol(
+                    primaryExpression->GetPrimary()->GetLexeme(),
+                    primaryExpression->GetCodeErrString(), true));
+        }
     }
-    if (!pkgFound && !libFound)
+
+    if (!pkgFound && !libFound && !structTypeFound)
     {
         AnalyzeExpression(maExpr->GetLeftExpression());
     }
-
+    if (structTypeFound)
+    {
+        exprToDataTypeMap[primaryExpression] = structTypeFound;
+    }
     DataType *left = exprToDataTypeMap[maExpr->GetLeftExpression()];
 
     if (maExpr->token->GetType() == TokenType::DOUBLE_COLON)
     {
         if (left->GetType() != DataType::Type::ENUM &&
             left->GetType() != DataType::Type::PACKAGE &&
-            left->GetType() != DataType::Type::LIBRARY)
+            left->GetType() != DataType::Type::LIBRARY &&
+            left->GetType() != DataType::Type::STRUCT)
         {
-            ReportError("'::' operator is only used on 'enum' and 'package'",
+            ReportError("'::' operator is only used on 'enum', 'package', and "
+                        "non-methods members of a struct",
                         maExpr->GetCodeErrString());
         }
     }
@@ -3290,7 +3306,26 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
         DataType *rightDataType = exprToDataTypeMap[field];
         if (methodItr != structStmt->methods.end())
         {
-            methodToCallerMap[maExpr] = maExpr->GetLeftExpression();
+            PointerDataType *fnPtrType = dynamic_cast<PointerDataType *>(
+                exprToDataTypeMap[maExpr->GetRightExpression()]);
+            FnDataType *fnDataType = dynamic_cast<FnDataType *>(
+                fnPtrType ? fnPtrType->dataType : nullptr);
+            if (fnDataType->IsMethod())
+            {
+                methodToCallerMap[maExpr] = maExpr->GetLeftExpression();
+            }
+            else
+            {
+                if (maExpr->token->GetType() != TokenType::DOUBLE_COLON)
+                {
+                    ReportError(std::format("Function '{}' is not a method. To "
+                                            "invoke it use '{}::{}' instead",
+                                            field->GetPrimary()->GetLexeme(),
+                                            structType->GetName(),
+                                            field->GetPrimary()->GetLexeme()),
+                                field->GetCodeErrString());
+                }
+            }
         }
         exprToDataTypeMap[maExpr] = rightDataType;
         currentScope = temp;

@@ -857,7 +857,8 @@ Statement *Parser::ParseFnStatement(bool isMethod)
                         gZtoonArena.Allocate<FnStatement::Method>();
                     fnStmt->method->readonly = Prev();
                 }
-                if (!Consume(TokenType::IDENTIFIER))
+                if (Peek()->GetType() == TokenType::IDENTIFIER &&
+                    Peek()->GetLexeme() != "self")
                 {
                     if (fnStmt->method)
                     {
@@ -871,6 +872,7 @@ Statement *Parser::ParseFnStatement(bool isMethod)
                 }
                 else
                 {
+                    Consume(TokenType::IDENTIFIER);
                     if (!fnStmt->method)
                     {
                         fnStmt->method =

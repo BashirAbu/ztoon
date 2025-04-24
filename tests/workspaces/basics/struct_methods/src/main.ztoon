@@ -10,29 +10,44 @@ fn test()
     
 }
 
-struct Vector3
+struct Person
 {
-    x: f64;
-    y: f64;
-    z: f64;
-    fn reference(self*)
+    name: i8*;
+    age: i32;
+
+    fn PrintDetails(self)
     {
-        self.x = 6.0;
+        printf("Name: %s\nAge: %d years\n", self.name, self.age);
     }
-    fn copy(self)
+
+    fn Create(name: i8*, age: i32) -> Person
     {
-        self.x = 3.0;    
-    }
-    
-    fn GetLen(self*) -> f64
-    {
-        ret sqrt(pow(self.x, 2.0) + pow(self.y, 2.0) + pow(self.z, 2.0));
+        p: Person = {name, age};
+        ret p;
     }
 }
 
-
 fn main() -> i32
 {
+    struct Vector3
+    {
+        x: f64;
+        y: f64;
+        z: f64;
+        fn reference(self*)
+        {
+            self.x = 6.0;
+        }
+        fn copy(self)
+        {
+            self.x = 3.0;    
+        }
+    
+        fn GetLen(self*) -> f64
+        {
+            ret sqrt(pow(self.x, 2.0) + pow(self.y, 2.0) + pow(self.z, 2.0));
+        } 
+    }
     test();
     position: Vector3 = {4.0, 3.0, 5.0};
     len: f64 = position.GetLen();
@@ -42,6 +57,13 @@ fn main() -> i32
     position.copy();
     c3: bool = position.x == 6.0;
 
+
+    joe : Person;
+    mike: Person = Person::Create("mike", 22);
+    mike.PrintDetails();
+
     all : i32 = (c1 && c2 && c3) as i32;
+    printf("all: %d\n", all);
     ret all;
+    ret 1;
 }

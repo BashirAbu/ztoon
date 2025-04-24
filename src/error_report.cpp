@@ -18,9 +18,9 @@ void ReportError(std::string errorMsg, CodeErrString errStr)
 
     std::cerr << std::format("{}\n{}.", errorPointer, errorMsg);
 
-    // #ifdef _DEBUG
-    //     assert(0);
-    // #else
+#ifdef _DEBUG
+    assert(0);
+#else
     exit(-1);
-    // #endif
+#endif
 }

@@ -4,6 +4,12 @@ package mainPkg;
 fn sqrt(value: f64) -> f64;
 fn pow(value: f64, power: f64) -> f64;
 fn printf(str: readonly i8*, ...);
+
+fn test()
+{
+    printf("hi there");
+}
+
 struct Vector3
 {
     x: f64;
@@ -22,6 +28,7 @@ struct Vector3
 
 fn main() -> i32
 {
+    test();
     position: Vector3 = {12.0, 1.0, 99.0};
     len: f64 = position.GetLen();
     position.test();

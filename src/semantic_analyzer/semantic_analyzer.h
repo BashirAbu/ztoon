@@ -267,8 +267,49 @@ class SemanticAnalyzer
     void ValidateAssignValueToVarStruct(Expression *expr,
                                         StructDataType *arrType);
     void PreAnalyzeStatement(Statement *statement, size_t index);
+
+    void AnalyzeBlockStatement(BlockStatement *blockStmt);
+    void AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
+                            bool analyzeSymbol, bool analyzeBody);
+    void AnalyzeVarDeclStatement(VarDeclStatement *varDeclStmt, bool isGlobal,
+                                 bool analyzeSymbol, bool analyzeBody);
+    void
+    AnalyzeVarAssignmentStatement(VarAssignmentStatement *varAssignmentStmt);
+    void AnalyzeVarCompundAssignmentStatement(
+        VarCompoundAssignmentStatement *varComStmt);
+    void AnalyzeExpressionStatement(ExpressionStatement *exprStmt);
+    void AnalyzeIfStatement(IfStatement *ifStmt);
+    void AnalyzeElseIfStatement(ElseIfStatement *elifStmt);
+    void AnalyzeElseStatement(ElseStatement *elseStmt);
+    void AnalyzeSwitchStatement(SwitchStatement *switchStmt);
+    void AnalyzeWhileLoopStatement(WhileLoopStatement *whileLoopStmt);
+    void AnalyzeForLoopStatement(ForLoopStatement *forLoopStmt);
+    void AnalyzeBreakStatement(BreakStatement *breakStmt);
+    void AnalyzeContinueStatement(ContinueStatement *continueStmt);
+    void AnalyzeStructStatement(StructStatement *structStmt, bool isGlobal,
+                                bool analyzeSymbol, bool analyzeBody);
+    void AnalyzeUnionStatement(UnionStatement *unionStmt, bool isGlobal,
+                               bool analyzeSymbol, bool analyzeBody);
+    void AnalyzeEnumStatement(EnumStatement *enumStmt, bool isGlobal,
+                              bool analyzeSymbol, bool analyzeBody);
+    void AnalyzeRetStatement(RetStatement *retStmt);
+    void AnalyzeImportStatement(ImportStatement *importStmt);
+
+    void AnalyzeFnExpression(FnExpression *fnExpression);
+    void AnalyzeTernaryExpression(TernaryExpression *ternaryExpr);
+    void AnalyzeBinaryExpression(BinaryExpression *binaryExpr);
+    void AnalyzeCastExpression(CastExpression *castExpr);
+    void AnalyzeGroupingExpression(GroupingExpression *groupingEpxr);
+    void AnalyzeSubScriptExpression(SubscriptExpression *subExpr);
+    void AnalyzeUnaryExpression(UnaryExpression *unaryExpr);
+    void AnalyzeFnCallExpression(FnCallExpression *fnCallExpr);
+    void
+    AnalyzeInitializerListExpression(InitializerListExpression *initListEpxr);
+    void AnalyzeMemberAccessExpression(MemberAccessExpression *maExpr);
+    void AnalyzePrimaryExpression(PrimaryExpression *primaryExpr);
+
     DataType::Type DecideDataType(Expression **left, Expression **right);
-    void EvaluateAndAssignDataTypeToExpression(Expression *expression);
+    void AnalyzeExpression(Expression *expression);
     Scope *currentScope = nullptr;
     std::unordered_map<Library *, LibraryDataType *> libToDataTypeMap;
     std::unordered_map<Package *, PackageDataType *> pkgToDataTypeMap;

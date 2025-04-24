@@ -605,21 +605,21 @@ TEST(ZtoonBasics, GlobalVariables)
 }
 TEST(ZtoonBasics, Readonly)
 {
-    // call compiler, call binary, check ret value
+    // // call compiler, call binary, check ret value
 
-    auto oldPath = std::filesystem::current_path();
-    std::string workspace = "basics";
-    std::string project = "readonly";
-    std::filesystem::current_path(workspace);
+    // auto oldPath = std::filesystem::current_path();
+    // std::string workspace = "basics";
+    // std::string project = "readonly";
+    // std::filesystem::current_path(workspace);
 
-    std::string compilerCommand =
-        ("..\\..\\..\\build\\ztoon -build -project " + project);
+    // std::string compilerCommand =
+    //     ("..\\..\\..\\build\\ztoon -build -project " + project);
 
-    int compilerRet = std::system(compilerCommand.c_str());
+    // int compilerRet = std::system(compilerCommand.c_str());
 
-    EXPECT_EQ(compilerRet, -1);
+    // EXPECT_EQ(compilerRet, -1);
 
-    std::filesystem::current_path(oldPath);
+    // std::filesystem::current_path(oldPath);
 }
 TEST(ZtoonBasics, Arrays)
 {

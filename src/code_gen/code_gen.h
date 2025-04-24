@@ -107,6 +107,47 @@ class CodeGen
     void GenGlobalVariableIR(VarDeclStatement *varDeclStatement);
     void GenPackageGlobalVarAndFuncBodiesIR(Package *pkg);
     void GenStatementIR(Statement *statement);
+
+    void GenBlockStatementIR(BlockStatement *blockStmt);
+    void GenFnStatementIR(FnStatement *fnStmt);
+    void GenVarDeclStatementIR(VarDeclStatement *varDeclStmt);
+    void GenVarAssignmentStatementIR(VarAssignmentStatement *varAssignmentStmt);
+    void GenVarCompundAssignmentStatementIR(
+        VarCompoundAssignmentStatement *varComStmt);
+    void GenExpressionStatementIR(ExpressionStatement *exprStmt);
+    void GenIfStatementIR(IfStatement *ifStmt);
+    void GenElseIfStatementIR(ElseIfStatement *elifStmt);
+    void GenElseStatementIR(ElseStatement *elseStmt);
+    void GenSwitchStatementIR(SwitchStatement *switchStmt);
+    void GenWhileLoopStatementIR(WhileLoopStatement *whileLoopStmt);
+    void GenForLoopStatementIR(ForLoopStatement *forLoopStmt);
+    void GenBreakStatementIR(BreakStatement *breakStmt);
+    void GenContinueStatementIR(ContinueStatement *continueStmt);
+    void GenStructStatementIR(StructStatement *structStmt);
+    void GenUnionStatementIR(UnionStatement *unionStmt);
+    void GenEnumStatementIR(EnumStatement *enumStmt);
+    void GenRetStatementIR(RetStatement *retStmt);
+    void GenImportStatementIR(ImportStatement *importStmt);
+
+    IRValue GenFnExpressionIR(FnExpression *fnExpression, bool isWrite);
+    IRValue GenTernaryExpressionIR(TernaryExpression *ternaryExpr,
+                                   bool isWrite);
+    IRValue GenBinaryExpressionIR(BinaryExpression *binaryExpr, bool isWrite);
+    IRValue GenCastExpressionIR(CastExpression *castExpr, bool isWrite);
+    IRValue GenGroupingExpressionIR(GroupingExpression *groupingEpxr,
+                                    bool isWrite);
+    IRValue GenSubScriptExpressionIR(SubscriptExpression *subExpr,
+                                     bool isWrite);
+    IRValue GenUnaryExpressionIR(UnaryExpression *unaryExpr, bool isWrite);
+    IRValue GenFnCallExpressionIR(FnCallExpression *fnCallExpr, bool isWrite);
+    IRValue
+    GenInitializerListExpressionIR(InitializerListExpression *initListEpxr,
+                                   bool isWrite);
+    IRValue GenMemberAccessExpressionIR(MemberAccessExpression *maExpr,
+                                        bool isWrite);
+    IRValue GenPrimaryExpressionIR(PrimaryExpression *primaryExpr,
+                                   bool isWrite);
+
     void GenIfStatementIR(Statement *statement, IfStatementData *ifData);
     IRValue GenExpressionIR(Expression *expression, bool isWrite = false);
     IRValue CastIRValue(IRValue value, IRType castType);

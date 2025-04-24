@@ -1028,9 +1028,9 @@ void SemanticAnalyzer::AnalyzeBlockStatement(BlockStatement *blockStmt)
 }
 
 void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
-                                          bool analyzeSymbol, bool analyzeBody)
+                                          bool analyzeSymbol, bool analyzeBody,
+                                          bool isMethod)
 {
-
     if (analyzeSymbol)
     {
         Function *fp = gZtoonArena.Allocate<Function>();
@@ -1040,6 +1040,7 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
         fpDataType->returnDataType =
             currentScope->GetDataType(fnStmt->returnDataTypeToken);
         fpDataType->isVarArgs = fnStmt->IsVarArgs();
+        fpDataType->isMethod = fnStmt->method;
         // fp->fnStmt = fnStmt;
         fp->fnPointer = fpDataType->GetFnPtrType();
 
@@ -1051,10 +1052,16 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
 
         currentScope = gZtoonArena.Allocate<Scope>(this);
         currentScope->parent = tempScope;
+        if (isMethod && fnStmt->IsPrototype())
+        {
+            ReportError("Methods must have a definition",
+                        fnStmt->GetCodeErrString());
+        }
         if (!fnStmt->IsPrototype())
         {
             blockToScopeMap[fnStmt->blockStatement] = currentScope;
         }
+
         for (Statement *p : fnStmt->parameters)
         {
             AnalyzeStatement(p);
@@ -1073,7 +1080,9 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
         currentFunction = fp;
         AnalyzeStatement(fnStmt->blockStatement);
         currentFunction = temp;
-
+        if (isGlobal)
+        {
+        }
         if (!fnStmt->IsPrototype())
         {
             std::function<bool(BlockStatement * bStmt)> checkRet =
@@ -1674,7 +1683,6 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
 {
     if (analyzeSymbol)
     {
-
         StructDataType *structType = gZtoonArena.Allocate<StructDataType>();
         structType->structStmt = structStmt;
         structType->type = DataType::Type::STRUCT;
@@ -1739,7 +1747,6 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
             }
             if (isGlobal)
             {
-
                 std::function<bool(std::string, StructStatement *,
                                    UnionStatement *)>
                     checkCycleType = nullptr;
@@ -1875,175 +1882,13 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
 
         for (auto method : structStmt->methods)
         {
-            FnStatement *fnStmt = method;
-            Function *fp = gZtoonArena.Allocate<Function>();
-            fp->name = fnStmt->identifier->GetLexeme();
-            FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
-            fpDataType->type = DataType::Type::FN;
-            fpDataType->returnDataType =
-                currentScope->GetDataType(fnStmt->returnDataTypeToken);
-            fpDataType->isVarArgs = fnStmt->IsVarArgs();
-            fpDataType->isMethod = fnStmt->method;
-            // fp->fnStmt = fnStmt;
-            fp->fnPointer = fpDataType->GetFnPtrType();
-
-            currentScope->AddSymbol(fp, fnStmt->GetCodeErrString());
-            Function *temp = currentFunction;
-            currentFunction = fp;
-
-            auto tempScope = currentScope;
-
-            currentScope = gZtoonArena.Allocate<Scope>(this);
-            currentScope->parent = pkgToScopeMap[currentPackage];
-            if (fnStmt->IsPrototype())
-            {
-                ReportError("Methods must have a definition",
-                            fnStmt->GetCodeErrString());
-            }
-            blockToScopeMap[fnStmt->blockStatement] = currentScope;
-            for (Statement *p : fnStmt->parameters)
-            {
-                AnalyzeStatement(p);
-                fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
-            }
-            currentScope = tempScope;
-            currentScope->datatypesMap[fp->fnPointer->ToString()] =
-                fp->fnPointer;
-            currentFunction = temp;
+            AnalyzeFnStatement(method, false, true, false, true);
         }
 
         for (auto method : structStmt->methods)
         {
             FnStatement *fnStmt = method;
-            Function *fp = dynamic_cast<Function *>(
-                currentScope->GetSymbol(fnStmt->GetIdentifier()->GetLexeme(),
-                                        fnStmt->GetCodeErrString()));
-
-            Function *temp = currentFunction;
-            currentFunction = fp;
-            AnalyzeStatement(fnStmt->blockStatement);
-            currentFunction = temp;
-
-            std::function<bool(BlockStatement * bStmt)> checkRet =
-                [&](BlockStatement *bStmt) -> bool
-            {
-                bool retFound = false;
-                for (Statement *s : bStmt->statements)
-                {
-                    BlockStatement *blockStmt =
-                        dynamic_cast<BlockStatement *>(s);
-                    if (blockStmt)
-                    {
-                        checkRet(blockStmt);
-                    }
-                    // if stmt? or loops?
-                    IfStatement *ifStmt = dynamic_cast<IfStatement *>(s);
-                    RetStatement *retStmt = dynamic_cast<RetStatement *>(s);
-
-                    if (ifStmt)
-                    {
-
-                        for (Statement *stmt :
-                             ifStmt->GetBlockStatement()->statements)
-                        {
-                            RetStatement *retStmt =
-                                dynamic_cast<RetStatement *>(stmt);
-                            if (retStmt)
-                            {
-                                retFound = true;
-                                break;
-                            }
-                        }
-
-                        if (!retFound)
-                        {
-                            retFound = checkRet(ifStmt->GetBlockStatement());
-                        }
-                        if (retFound)
-                        {
-                            if (ifStmt->GetNextElseIforElseStatements().empty())
-                            {
-                                retFound = false;
-                            }
-                            bool foundInOtherPaths = false;
-                            for (Statement *stmt :
-                                 ifStmt->GetNextElseIforElseStatements())
-                            {
-                                auto elIfStmt =
-                                    dynamic_cast<ElseIfStatement *>(stmt);
-                                auto elseStmt =
-                                    dynamic_cast<ElseStatement *>(stmt);
-                                if (elIfStmt)
-                                {
-                                    foundInOtherPaths =
-                                        checkRet(elIfStmt->GetBlockStatement());
-                                }
-                                else if (elseStmt)
-                                {
-                                    foundInOtherPaths =
-                                        checkRet(elseStmt->GetBlockStatement());
-                                }
-                                if (!foundInOtherPaths)
-                                {
-                                    ReportError("Not all paths return.",
-                                                fnStmt->GetCodeErrString());
-                                }
-                            }
-
-                            retFound = foundInOtherPaths;
-                            if (!retFound)
-                            {
-                                ReportError("Not all paths return.",
-                                            fnStmt->GetCodeErrString());
-                            }
-                        }
-                    }
-                    else if (retStmt)
-                    {
-                        return true;
-                    }
-                }
-                return retFound;
-            };
-            if (fnStmt->returnDataTypeToken->GetDataType()->type !=
-                TokenType::NOTYPE)
-            {
-                if (fnStmt->GetBlockStatement()->statements.empty())
-                {
-                    ReportError(
-                        std::format("Function '{}' does not return an "
-                                    "expression.",
-                                    fnStmt->GetIdentifier()->GetLexeme()),
-                        fnStmt->GetCodeErrString());
-                }
-                // see if function ends with return statement.
-                RetStatement *retStmt = dynamic_cast<RetStatement *>(
-                    fnStmt->GetBlockStatement()->statements.back());
-                if (!retStmt)
-                {
-                    bool retFoundInMainBlock = false;
-                    for (size_t i;
-                         i < fnStmt->GetBlockStatement()->statements.size();
-                         i++)
-                    {
-                        RetStatement *ret = dynamic_cast<RetStatement *>(
-                            fnStmt->GetBlockStatement()->statements[i]);
-                        if (ret)
-                        {
-                            retFoundInMainBlock = true;
-                        }
-                    }
-                    if (!retFoundInMainBlock)
-                    {
-
-                        if (!checkRet(fnStmt->GetBlockStatement()))
-                        {
-                            ReportError("Not all paths return.",
-                                        fnStmt->GetCodeErrString());
-                        }
-                    }
-                }
-            }
+            AnalyzeFnStatement(method, false, false, true, true);
         }
 
         structType->complete = true;

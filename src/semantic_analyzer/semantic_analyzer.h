@@ -270,7 +270,8 @@ class SemanticAnalyzer
 
     void AnalyzeBlockStatement(BlockStatement *blockStmt);
     void AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
-                            bool analyzeSymbol, bool analyzeBody);
+                            bool analyzeSymbol, bool analyzeBody,
+                            bool isMethod = false);
     void AnalyzeVarDeclStatement(VarDeclStatement *varDeclStmt, bool isGlobal,
                                  bool analyzeSymbol, bool analyzeBody);
     void

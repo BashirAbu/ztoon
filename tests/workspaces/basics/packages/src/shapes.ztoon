@@ -1,0 +1,60 @@
+package Shapes;
+
+enum ShapeType : i32
+{
+    UNKNOWN = 0,
+    Circle,
+    Triangle,
+    Rectangle,
+}
+
+
+
+
+struct triangle
+{
+    B: f64;
+    H: f64;
+}
+
+struct rectangle
+{
+    L: f64;
+    H: f64;
+}
+
+
+union shapeUnion
+{
+    Circle : circle;
+    Rectangle: rectangle;
+    Triangle: triangle;
+}
+struct Shape
+{
+    type : ShapeType;
+    ShapeUnion: shapeUnion;
+
+    fn Arean(self) -> f64
+    {
+        switch (self.type)
+        {
+            case ShapeType::Circle:
+            {
+                ret self.ShapeUnion.Circle.R * self.ShapeUnion.Circle.R * 3.142;
+            }
+            case ShapeType::Triangle:
+            {
+                ret self.ShapeUnion.Triangle.B * self.ShapeUnion.Triangle.H * 0.5;
+            }
+            case ShapeType::Rectangle:
+            {
+                ret self.ShapeUnion.Rectangle.L * self.ShapeUnion.Rectangle.H;
+            }
+            default:
+            {
+                ret 0.0;
+            }
+        }
+    }
+}

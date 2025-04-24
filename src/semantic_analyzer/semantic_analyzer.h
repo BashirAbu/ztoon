@@ -229,7 +229,7 @@ class Scope
 
   private:
     std::vector<Scope *> importedPackages;
-
+    std::vector<Scope *> horizotnalScopes;
     Scope *parent = nullptr;
     bool lookUpParent = true;
     std::unordered_map<std::string, Symbol *> symbolsMap;
@@ -289,7 +289,8 @@ class SemanticAnalyzer
     void AnalyzeBreakStatement(BreakStatement *breakStmt);
     void AnalyzeContinueStatement(ContinueStatement *continueStmt);
     void AnalyzeStructStatement(StructStatement *structStmt, bool isGlobal,
-                                bool analyzeSymbol, bool analyzeBody);
+                                bool analyzeSymbol, bool analyzeBody,
+                                bool analyzeMethodsBody);
     void AnalyzeUnionStatement(UnionStatement *unionStmt, bool isGlobal,
                                bool analyzeSymbol, bool analyzeBody);
     void AnalyzeEnumStatement(EnumStatement *enumStmt, bool isGlobal,

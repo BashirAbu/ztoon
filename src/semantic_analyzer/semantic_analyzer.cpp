@@ -551,6 +551,17 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
         {
             symbol = current->symbolsMap.at(name);
         }
+        else
+        {
+            for (auto s : current->horizotnalScopes)
+            {
+                if (s->symbolsMap.contains(name))
+                {
+                    symbol = s->symbolsMap.at(name);
+                    break;
+                }
+            }
+        }
 
         for (auto pkgScope : current->importedPackages)
         {
@@ -808,7 +819,7 @@ void SemanticAnalyzer::AnalyzePackageGlobalTypes(Package *pkg)
         if (dynamic_cast<StructStatement *>(stmt))
         {
             auto structStmt = dynamic_cast<StructStatement *>(stmt);
-            AnalyzeStructStatement(structStmt, true, true, false);
+            AnalyzeStructStatement(structStmt, true, true, false, false);
         }
         else if (dynamic_cast<EnumStatement *>(stmt))
         {
@@ -852,7 +863,7 @@ void SemanticAnalyzer::AnalyzePackageGlobalTypeBodies(Package *pkg)
         if (dynamic_cast<StructStatement *>(stmt))
         {
             auto structStmt = dynamic_cast<StructStatement *>(stmt);
-            AnalyzeStructStatement(structStmt, true, false, true);
+            AnalyzeStructStatement(structStmt, true, false, true, false);
         }
         else if (dynamic_cast<EnumStatement *>(stmt))
         {
@@ -863,6 +874,14 @@ void SemanticAnalyzer::AnalyzePackageGlobalTypeBodies(Package *pkg)
         {
             auto unionStmt = dynamic_cast<UnionStatement *>(stmt);
             AnalyzeUnionStatement(unionStmt, true, false, true);
+        }
+    }
+    for (auto stmt : pkg->statements)
+    {
+        if (dynamic_cast<StructStatement *>(stmt))
+        {
+            auto structStmt = dynamic_cast<StructStatement *>(stmt);
+            AnalyzeStructStatement(structStmt, true, false, false, true);
         }
     }
 }
@@ -905,7 +924,7 @@ void SemanticAnalyzer::AnalyzeStatement(Statement *statement)
     else if (dynamic_cast<StructStatement *>(statement))
     {
         auto structStmt = dynamic_cast<StructStatement *>(statement);
-        AnalyzeStructStatement(structStmt, false, true, true);
+        AnalyzeStructStatement(structStmt, false, true, true, true);
     }
     else if (dynamic_cast<UnionStatement *>(statement))
     {
@@ -1051,7 +1070,7 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
 
         auto tempScope = currentScope;
 
-        currentScope = gZtoonArena.Allocate<Scope>(this);
+        currentScope = gZtoonArena.Allocate<Scope>(this, tempScope);
         currentScope->parent = tempScope;
         if (isMethod && fnStmt->IsPrototype())
         {
@@ -1680,7 +1699,8 @@ void SemanticAnalyzer::AnalyzeContinueStatement(ContinueStatement *continueStmt)
 }
 void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
                                               bool isGlobal, bool analyzeSymbol,
-                                              bool analyzeBody)
+                                              bool analyzeBody,
+                                              bool analyzeMethodsBody)
 {
     if (analyzeSymbol)
     {
@@ -1707,16 +1727,15 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
                               currentPackage->GetIdentifier()->GetLexeme())
                 : currentPackage->GetIdentifier()->GetLexeme(),
             structType->name);
+        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
+        structType->scope = scope;
     }
     if (analyzeBody)
     {
         auto structType =
             dynamic_cast<StructDataType *>(stmtToDataTypeMap[structStmt]);
-        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
         Scope *temp = currentScope;
-
-        currentScope = scope;
-        structType->scope = currentScope;
+        currentScope = structType->scope;
         structType->defaultValuesList =
             gZtoonArena.Allocate<InitializerListExpression>();
         size_t index = 0;
@@ -1885,14 +1904,21 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         {
             AnalyzeFnStatement(method, false, true, false, true);
         }
+        structType->complete = true;
+        currentScope = temp;
+    }
+    if (analyzeMethodsBody)
+    {
+        auto structType =
+            dynamic_cast<StructDataType *>(stmtToDataTypeMap[structStmt]);
+        Scope *temp = currentScope;
+        currentScope = structType->scope;
 
         for (auto method : structStmt->methods)
         {
             FnStatement *fnStmt = method;
             AnalyzeFnStatement(method, false, false, true, true);
         }
-
-        structType->complete = true;
         currentScope = temp;
     }
 }
@@ -1944,10 +1970,8 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
                 dynamic_cast<StructDataType *>(fieldDataType);
             if (fieldStructType)
             {
-                for (auto symbol : fieldStructType->scope->symbolsMap)
-                {
-                    currentScope->symbolsMap[symbol.first] = symbol.second;
-                }
+                currentScope->horizotnalScopes.push_back(
+                    fieldStructType->scope);
             }
 
             if (isGlobal)
@@ -2301,9 +2325,11 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
             // check if package is analyzed
             if (!pkgToScopeMap.contains(importedPkg))
             {
+                auto tempPkg = currentPackage;
+                auto tempScope = currentScope;
                 AnalyzePackage(importedPkg);
-                // currentPackage = currentPackage;
-                currentScope = pkgToScopeMap[currentPackage];
+                currentScope = tempScope;
+                currentPackage = tempPkg;
             }
             auto importedPkgScope = pkgToScopeMap[importedPkg];
             pkgToScopeMap[currentPackage]->importedPackages.push_back(

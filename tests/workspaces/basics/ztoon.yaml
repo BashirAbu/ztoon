@@ -101,3 +101,6 @@ workspace:
     - enums:
             relative_path: enums/
             type: exe
+    - packages:
+            relative_path: packages/
+            type: exe

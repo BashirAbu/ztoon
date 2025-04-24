@@ -1,4 +1,3 @@
-#include "compiler/compiler.h"
 #include "error_report.h"
 #include "lexer.h"
 #include "parser/parser.h"

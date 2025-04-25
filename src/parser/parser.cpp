@@ -1,7 +1,6 @@
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser.h"
-#include "llvm/Analysis/InlineAdvisor.h"
 #include <algorithm>
 #include <format>
 std::string DataTypeToken::ToString()
@@ -434,7 +433,6 @@ std::vector<Package *> &Parser::Parse()
 
 Statement *Parser::ParseDeclaration()
 {
-    // Parse VarDecl, FnStatment, later do struct, enum, union, ...
     Statement *declStmt = ParseStatement();
 
     if (dynamic_cast<VarDeclStatement *>(declStmt) ||
@@ -455,7 +453,8 @@ Statement *Parser::ParseDeclaration()
     {
         ReportError(
             std::format("Only function definition, variable declaration, "
-                        "struct, enum, or union definition are allowed in "
+                        "struct, enum, union definition and import statements "
+                        "are allowed in "
                         "global scope"),
             declStmt->GetCodeErrString());
     }
@@ -544,9 +543,18 @@ Statement *Parser::ParseImportStatement()
 }
 Statement *Parser::ParseStructStatement(bool anonymous)
 {
+
+    Token const *pubToken = nullptr;
+    if (Peek()->GetType() == TokenType::PUB &&
+        PeekAhead(1)->GetType() == TokenType::STRUCT)
+    {
+        Advance();
+        pubToken = Prev();
+    }
     if (Consume(TokenType::STRUCT))
     {
         StructStatement *structStmt = gZtoonArena.Allocate<StructStatement>();
+        structStmt->pub = pubToken;
         structStmt->token = Prev();
         if (!anonymous && !Consume(TokenType::IDENTIFIER))
         {
@@ -570,7 +578,6 @@ Statement *Parser::ParseStructStatement(bool anonymous)
 
         while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
         {
-
             Statement *fieldStmt = ParseFnStatement(true);
             FnStatement *fnStmt = dynamic_cast<FnStatement *>(fieldStmt);
             VarDeclStatement *varDeclStmt =
@@ -643,9 +650,18 @@ Statement *Parser::ParseStructStatement(bool anonymous)
 
 Statement *Parser::ParseUnionStatement()
 {
+
+    Token const *pubToken = nullptr;
+    if (Peek()->GetType() == TokenType::PUB &&
+        PeekAhead(1)->GetType() == TokenType::UNION)
+    {
+        Advance();
+        pubToken = Prev();
+    }
     if (Consume(TokenType::UNION))
     {
         UnionStatement *unionStmt = gZtoonArena.Allocate<UnionStatement>();
+        unionStmt->pub = pubToken;
         unionStmt->token = Prev();
         if (!Consume(TokenType::IDENTIFIER))
         {
@@ -714,9 +730,18 @@ Statement *Parser::ParseUnionStatement()
 
 Statement *Parser::ParseEnumStatement()
 {
+
+    Token const *pubToken = nullptr;
+    if (Peek()->GetType() == TokenType::PUB &&
+        PeekAhead(1)->GetType() == TokenType::ENUM)
+    {
+        Advance();
+        pubToken = Prev();
+    }
     if (Consume(TokenType::ENUM))
     {
         EnumStatement *enumStmt = gZtoonArena.Allocate<EnumStatement>();
+        enumStmt->pub = pubToken;
         enumStmt->token = Prev();
 
         if (!Consume(TokenType::IDENTIFIER))
@@ -818,9 +843,18 @@ Statement *Parser::ParseEnumStatement()
 }
 Statement *Parser::ParseFnStatement(bool isMethod)
 {
+
+    Token const *pubToken = nullptr;
+    if (Peek()->GetType() == TokenType::PUB &&
+        PeekAhead(1)->GetType() == TokenType::FN)
+    {
+        Advance();
+        pubToken = Prev();
+    }
     if (Consume(TokenType::FN))
     {
         FnStatement *fnStmt = gZtoonArena.Allocate<FnStatement>();
+        fnStmt->pub = pubToken;
         fnStmt->fnToken = Prev();
         PrimaryExpression *primaryExpr =
             dynamic_cast<PrimaryExpression *>(ParsePrimaryExpression());
@@ -999,12 +1033,22 @@ Statement *Parser::ParseFnStatement(bool isMethod)
 }
 Statement *Parser::ParseVarDeclStatement()
 {
+    Token const *pubToken = nullptr;
+    if (Peek()->GetType() == TokenType::PUB &&
+        PeekAhead(1)->GetType() == TokenType::IDENTIFIER &&
+        PeekAhead(2)->GetType() == TokenType::COLON)
+    {
+        Advance();
+        pubToken = Prev();
+    }
+
     if (Peek()->GetType() == TokenType::IDENTIFIER &&
         PeekAhead(1)->GetType() == TokenType::COLON)
     {
         Advance();
         VarDeclStatement *varDeclStatement =
             gZtoonArena.Allocate<VarDeclStatement>();
+        varDeclStatement->pub = pubToken;
         varDeclStatement->identifier = Prev();
         if (Consume(TokenType::COLON))
         {

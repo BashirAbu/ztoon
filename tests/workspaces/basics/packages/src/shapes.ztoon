@@ -1,16 +1,12 @@
 package Shapes;
 
-enum ShapeType : i32
+pub enum ShapeType : i32
 {
     UNKNOWN = 0,
     Circle,
     Triangle,
     Rectangle,
 }
-
-
-
-
 struct triangle
 {
     B: f64;

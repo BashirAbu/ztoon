@@ -12,16 +12,16 @@
 #include <sstream>
 #include <vector>
 #include <yaml-cpp/yaml.h>
-std::string basicZtoonExeMainFile = R"(
-package mainPkg;
+std::string basicZtoonExeMainFile =
+    R"(package mainPkg;
 fn main() -> i32
 {
     ret 0;
 }
 )";
 
-std::string basicZtoonLibraryFile = R"(
-package libPkg
+std::string basicZtoonLibraryFile =
+    R"(package libPkg
 fn add(a: i32, b: i32) -> i32
 {
     ret a + b;
@@ -450,8 +450,7 @@ void Compiler::BuildProject(Project &project)
         if (std::filesystem::exists(srcPath) &&
             std::filesystem::is_directory(srcPath))
         {
-
-            Lexer lexer;
+            std::vector<Package *> projectPackages;
             for (auto sourceFile :
                  std::filesystem::recursive_directory_iterator(srcPath))
             {
@@ -470,24 +469,28 @@ void Compiler::BuildProject(Project &project)
                     std::string content = ss.str();
                     std::string filename =
                         sourceFile.path().filename().generic_string();
+                    Lexer lexer;
                     lexer.Tokenize(content, filename);
+                    lexer.EndProgram();
+                    Parser parser(lexer.GetTokens());
+                    auto packages = parser.Parse();
+                    projectPackages.insert(projectPackages.end(),
+                                           packages.begin(), packages.end());
                 }
             }
-            lexer.EndProgram();
-            Parser parser(lexer.GetTokens());
-            auto packages = parser.Parse();
+
             std::unordered_map<std::string, bool> done;
-            auto pkgItr = packages.begin();
-            while (pkgItr != packages.end())
+            auto pkgItr = projectPackages.begin();
+            while (pkgItr != projectPackages.end())
             {
                 std::string pkgName = (*pkgItr)->GetIdentifier()->GetLexeme();
                 if (done.contains(pkgName))
                 {
-                    pkgItr = packages.erase(pkgItr);
+                    pkgItr = projectPackages.erase(pkgItr);
                     continue;
                 }
 
-                for (auto innerPkg : packages)
+                for (auto innerPkg : projectPackages)
                 {
                     if (innerPkg->GetIdentifier()->GetLexeme() == pkgName)
                     {
@@ -506,7 +509,7 @@ void Compiler::BuildProject(Project &project)
                 ++pkgItr;
             }
 
-            return packages;
+            return projectPackages;
         }
         else
         {
@@ -533,6 +536,15 @@ void Compiler::BuildProject(Project &project)
 
     auto packages = lexerAndParseProject(project);
     auto libs = goOverDeps(project);
+
+    for (auto p : packages)
+    {
+        printf("Package %s:\n", p->GetIdentifier()->GetLexeme().c_str());
+        for (auto s : p->GetStatements())
+        {
+            printf("%s\n", s->GetCodeErrString().str.c_str());
+        }
+    }
 
     for (auto lib : libs)
     {

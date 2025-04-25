@@ -118,6 +118,7 @@ enum class TokenType
     DEFAULT,
     PACKAGE,
     IMPORT,
+    PUB,
 };
 
 std::string TokenDataTypeToString(TokenType type);

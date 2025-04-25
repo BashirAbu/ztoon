@@ -208,6 +208,16 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                                     dataTypeToken->pkgToken->GetLexeme()),
                         ces);
         }
+
+        if (!semanticAnalyzer->pkgToScopeMap.contains(pkgFound))
+        {
+            auto tempPkg = semanticAnalyzer->currentPackage;
+            auto tempScope = semanticAnalyzer->currentScope;
+            semanticAnalyzer->AnalyzePackage(pkgFound);
+            semanticAnalyzer->currentPackage = tempPkg;
+            semanticAnalyzer->currentScope = tempScope;
+        }
+
         currentScope = semanticAnalyzer->pkgToScopeMap[pkgFound];
     }
     if (!dataTypeToken->arrayDesc)
@@ -223,7 +233,21 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
             {
                 if (pkg->datatypesMap.contains(typeStr))
                 {
+
                     DataType *type = pkg->datatypesMap[typeStr];
+
+                    auto symbolType = dynamic_cast<Symbol *>(type);
+
+                    if (symbolType)
+                    {
+                        if (!symbolType->IsPublic())
+                        {
+                            ReportError(std::format("'{}' is private",
+                                                    symbolType->GetName()),
+                                        dataTypeToken->GetCodeErrString());
+                        }
+                    }
+
                     return type;
                 }
             }
@@ -568,6 +592,11 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
             if (pkgScope->symbolsMap.contains(name))
             {
                 symbol = pkgScope->symbolsMap.at(name);
+                if (!symbol->IsPublic())
+                {
+                    ReportError(std::format("'{}' is private member.", name),
+                                codeErrString);
+                }
                 break;
             }
         }
@@ -787,6 +816,7 @@ void SemanticAnalyzer::AnalyzePackage(Package *pkg)
     CodeErrString ces;
     ces.firstToken = pkg->identifier;
     ces.str = ces.firstToken->GetLexeme();
+    pkgType->isPublic = true;
     currentScope->AddSymbol(pkgType, ces);
     currentPackage = pkg;
 
@@ -1063,7 +1093,7 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
         fpDataType->isMethod = fnStmt->method;
         // fp->fnStmt = fnStmt;
         fp->fnPointer = fpDataType->GetFnPtrType();
-
+        fp->isPublic = fnStmt->IsPublic();
         currentScope->AddSymbol(fp, fnStmt->GetCodeErrString());
         Function *temp = currentFunction;
         currentFunction = fp;
@@ -1244,6 +1274,7 @@ void SemanticAnalyzer::AnalyzeVarDeclStatement(VarDeclStatement *varDeclStmt,
         var->token = varDeclStmt->GetIdentifier();
         var->dataType = stmtToDataTypeMap[varDeclStmt];
         var->varDeclStmt = varDeclStmt;
+        var->isPublic = varDeclStmt->IsPublic();
         currentScope->AddSymbol(var, varDeclStmt->GetCodeErrString());
     }
     if (analyzeBody)
@@ -1718,6 +1749,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
                                            (size_t)(structStmt));
         }
         currentScope->datatypesMap[structType->name] = structType;
+        structType->isPublic = structStmt->IsPublic();
         currentScope->AddSymbol(structType, structStmt->GetCodeErrString());
         stmtToDataTypeMap[structStmt] = structType;
         structType->fullName = std::format(
@@ -1935,6 +1967,7 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
         unionType->name = unionStmt->identifier->GetLexeme();
 
         currentScope->datatypesMap[unionType->name] = unionType;
+        unionType->isPublic = unionStmt->IsPublic();
         currentScope->AddSymbol(unionType, unionStmt->GetCodeErrString());
         stmtToDataTypeMap[unionStmt] = unionType;
     }
@@ -2125,7 +2158,7 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
         enumType->name = enumStmt->identifier->GetLexeme();
         enumType->enumStmt = enumStmt;
         enumType->datatype = currentScope->GetDataType(enumStmt->datatype);
-
+        enumType->isPublic = enumStmt->IsPublic();
         if (!enumType->datatype->IsInteger())
         {
             ReportError("Enum type must be interger",
@@ -3103,7 +3136,11 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
             // See if pkg is analyzed
             if (!pkgToScopeMap.contains(pkgFound))
             {
+                auto tempPkg = currentPackage;
+                auto tempScope = currentScope;
                 AnalyzePackage(pkgFound);
+                currentPackage = tempPkg;
+                currentScope = tempScope;
             }
             CodeErrString ces;
             ces.firstToken = pkgFound->GetIdentifier();
@@ -3184,6 +3221,15 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
             dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
 
         AnalyzeExpression(packageMember);
+
+        auto symbol = dynamic_cast<Symbol *>(exprToDataTypeMap[packageMember]);
+        if (!symbol->IsPublic())
+        {
+            ReportError(std::format("type '{}' is private",
+                                    packageMember->GetPrimary()->GetLexeme()),
+                        packageMember->GetCodeErrString());
+        }
+
         currentScope = temp;
         exprToDataTypeMap[maExpr] = exprToDataTypeMap[packageMember];
     }

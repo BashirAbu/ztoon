@@ -71,8 +71,11 @@ class Symbol
     virtual ~Symbol() {}
     virtual std::string GetName() = 0;
     virtual DataType *GetDataType() = 0;
+    bool IsPublic() { return isPublic; }
 
-  private:
+  protected:
+    bool isPublic = false;
+    friend class SemanticAnalyzer;
 };
 
 class PackageDataType : public DataType, public Symbol
@@ -82,6 +85,7 @@ class PackageDataType : public DataType, public Symbol
     virtual DataType *GetDataType() override { return this; }
     Package *pkg = nullptr;
     std::string name;
+    friend class SemanticAnalyzer;
 };
 
 class LibraryDataType : public DataType, public Symbol
@@ -91,6 +95,7 @@ class LibraryDataType : public DataType, public Symbol
     virtual DataType *GetDataType() override { return this; }
     class Library *lib = nullptr;
     std::string name;
+    friend class SemanticAnalyzer;
 };
 class StructDataType : public DataType, public Symbol
 {
@@ -104,6 +109,7 @@ class StructDataType : public DataType, public Symbol
     StructStatement *structStmt;
     InitializerListExpression *defaultValuesList = nullptr;
     std::vector<DataType *> fields;
+    friend class SemanticAnalyzer;
 };
 class UnionDataType : public DataType, public Symbol
 {
@@ -115,6 +121,7 @@ class UnionDataType : public DataType, public Symbol
     Scope *scope = nullptr;
     UnionStatement *unionStmt;
     std::vector<DataType *> fields;
+    friend class SemanticAnalyzer;
 };
 
 class EnumDataType : public DataType, public Symbol
@@ -128,6 +135,7 @@ class EnumDataType : public DataType, public Symbol
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
+    friend class SemanticAnalyzer;
 };
 
 class ArrayDataType : public DataType

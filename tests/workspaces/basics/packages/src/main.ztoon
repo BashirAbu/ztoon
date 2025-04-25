@@ -1,15 +1,14 @@
 package mainPkg
-// import Shapes; 
+import Shapes; 
 
 fn printf(str: readonly i8*, ...);
 
 fn main() -> i32
 {
-    import Shapes;
     c: Shape;
     c.type = ShapeType::Circle;
     c.ShapeUnion.Circle.R = 7.0;
-
+    d: Shapes::circle* = nullptr;
     printf("Area: %f", c.Arean());
     ret 0;
 }

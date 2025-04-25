@@ -4,75 +4,6 @@
 #include <format>
 #include <string>
 #include <vector>
-/*
-  program -> declaration* "EOF" ;
-  declaration -> var_decl_statement* | fn_statement* | struct_decl_statement* |
-  enum_decl_statement* | union_decl_statement* ;
-    statement -> var_decl_statement ";" ;
-    var_decl_statement -> ( IDENTIFIER ":" DATATYPE ("="
-  expression)?) | var_assignment_statement ;
-  var_assignment_statement ->
-  lvalue_expression "=" expression | statement_expr;
-
-  var_compound_assignment_statement -> lvalue_expression ( ("=" | "+=" | "-=" |
-  "*=" |
-  "/=", "%=", "&=", "^=", "|=", "<<=", ">>=") expression ;
-
-
-  struct_decl_statementi -> struct IDENTIFIER "{" ( var_decl_statement ";" )*?
-  "}"
-
-
-  while_loop_statement -> "while" expression block ;
-
-  for_loop_statement -> "for" ( var_decl_statement | var_assignment_statment |
-  statement_expr )* ";" expression* ";" (var_assignment_statment |
-  statement_expr )* block
-
-  if_statement -> "if" expression (block | statement) (("else" "if"
-  expression
-  block * | "else" block ) ? ;
-
-  block -> "{" statement* "}" ;
-
-  fn_statement -> "fn" IDENTIFIER "("  (var_decl_statement ","?)*  ")" ("->"
-  DATATYPE)? block? ;
-
-  statement_expr -> expression ;
-
-  expression -> lambda_expression ;
-  lambda->expression -> (fn "(" (var_decl_statement ","?)* ")" block) |
-  ternary_expression ;
-  ternary_expression -> (expression ? expression :
-  expression) | or ; or -> and ("||" and)* ;
-
-  and -> bitwise_or ("&&" bitwise_or)* ;
-
-  bitwise_or -> bitwise_xor ("|" bitwise_xor)* ;
-  bitwise_xor -> bitwise_and ("^" bitwise_and)* ;
-  bitwise_and -> ==__!= ("&" ==__!=)* ;
-  ==__!= -> <__<=__>__>= (("==" | "!=")  <__<=__>__>=)* ;
-  <__<=__>__>= -> shift (("<" | "<=" | ">" | ">=") sift)* ;
-  shift -> term (("<<" | ">>") term)* ;
-  term -> factor (("+" | "-") factor)* ;
-  factor -> unary (("*" | "/" | "%") unary)* ;
-  cast -> primary ("as" DATATYPE)*;
-  unary -> ("-" | "--" | "+" | "++" | "!" | "~" | ( "sizeof" "(" expression ")"
-  ) ) expression | cast ;
-
-   fn_call_expression -> IDENTIFIER "("  expression*  ")" ;
-
-   primary -> INTEGER_LITERAL
-  | FLOAT_LITERAL | STRING_LITERAL
-  | CHARACTER_LITERAL | IDENTIFIER | "(" expression ")" | fn_call_expression |
-  lvalue_expression | ref_expression | deref_expression;
-    ref_expression -> "&" ( IDENTIFIER | deref_expression );
-    deref_expression -> "*" expression ;
-    lvalue_expression -> IDENTIFIER | deref_expression; //only ptr type can be
-  derefrenced.
-
-    DATA_TYPE -> ( "readonly"? 'DATATYPE' ) | fn args* ("->" DATATYPE)? ;
-*/
 
 struct CodeErrString
 {
@@ -153,7 +84,6 @@ class Statement
 {
   public:
     virtual ~Statement() {}
-    //// virtual //std::string PrettyString(std::string &prefix) = 0;
     virtual CodeErrString GetCodeErrString() = 0;
 };
 class Package
@@ -194,7 +124,6 @@ class EmptyStatement : public Statement
 
   public:
     ~EmptyStatement() {}
-    // std::string PrettyString(std::string &prefix) { return ""; }
     CodeErrString GetCodeErrString()
     {
         CodeErrString err = {};
@@ -240,7 +169,6 @@ class ContinueStatement : public Statement
 class VarDeclStatement : public Statement
 {
   public:
-    //// virtual //std::string PrettyString(std::string &prefix) override;
     Token const *GetIdentifier() const { return identifier; }
     DataTypeToken *GetDataType() { return dataTypeToken; }
     Expression *GetExpression() const { return expression; }
@@ -257,11 +185,13 @@ class VarDeclStatement : public Statement
                                     dataTypeToken->ToString());
         return ces;
     }
-
     bool IsParamter() { return isParamter; }
     bool IsGlobal() { return isGlobal; }
 
+    bool IsPublic() { return (bool)pub; };
+
   private:
+    Token const *pub = nullptr;
     Token const *identifier = nullptr;
     DataTypeToken *dataTypeToken = nullptr;
     // datatype
@@ -276,7 +206,6 @@ class VarDeclStatement : public Statement
 class VarCompoundAssignmentStatement : public Statement
 {
   public:
-    //// virtual //std::string PrettyString(std::string &prefix) override;
     Expression *GetLValue() { return lValue; }
     Expression *GetRValue() const { return rValue; }
     Token const *GetCompoundAssignment() const { return compoundAssignment; }
@@ -301,7 +230,6 @@ class VarCompoundAssignmentStatement : public Statement
 class VarAssignmentStatement : public Statement
 {
   public:
-    //// virtual //std::string PrettyString(std::string &prefix) override;
     Expression *GetLValue() { return lValue; }
     Expression *GetRValue() const { return rValue; }
 
@@ -344,7 +272,11 @@ class StructStatement : public Statement
     const std::vector<VarDeclStatement *> &GetFields() { return fields; }
     const std::vector<FnStatement *> &GetMethods() { return methods; }
 
+    bool IsPublic() { return (bool)pub; };
+
   private:
+    Token const *pub = nullptr;
+
     Token const *token = nullptr;
     Token const *identifier = nullptr;
     std::vector<VarDeclStatement *> fields;
@@ -373,7 +305,11 @@ class UnionStatement : public Statement
     }
     const std::vector<Statement *> &GetFields() { return fields; }
 
+    bool IsPublic() { return (bool)pub; };
+
   private:
+    Token const *pub = nullptr;
+
     Token const *token = nullptr;
     Token const *identifier = nullptr;
     std::vector<Statement *> fields;
@@ -414,7 +350,10 @@ class EnumStatement : public Statement
         bool useSigned = false;
     };
 
+    bool IsPublic() { return (bool)pub; };
+
   private:
+    Token const *pub = nullptr;
     Token const *token = nullptr;
     Token const *identifier = nullptr;
     DataTypeToken *datatype = nullptr;
@@ -429,7 +368,6 @@ class ExpressionStatement : public Statement
 {
 
   public:
-    // virtual //std::string PrettyString(std::string &prefix) override;
     class Expression *GetExpression() const { return expression; }
 
     CodeErrString GetCodeErrString() override
@@ -446,7 +384,6 @@ class ExpressionStatement : public Statement
 class BlockStatement : public Statement
 {
   public:
-    // virtual //std::string PrettyString(std::string &prefix) override;
     std::vector<Statement *> &GetStatements() { return statements; }
 
     CodeErrString GetCodeErrString() override
@@ -527,7 +464,6 @@ class SwitchStatement : public Statement
 class IfStatement : public Statement
 {
   public:
-    // virtual //std::string PrettyString(std::string &prefix) override;
     class Expression *GetExpression() const { return expression; }
     BlockStatement *GetBlockStatement() { return blockStatement; }
     const std::vector<Statement *> &GetNextElseIforElseStatements()
@@ -558,7 +494,6 @@ class IfStatement : public Statement
 class ElseIfStatement : public Statement
 {
   public:
-    // virtual //std::string PrettyString(std::string &prefix) override;
     class Expression *GetExpression() const { return expression; }
     BlockStatement *GetBlockStatement() { return blockStatement; }
 
@@ -584,7 +519,6 @@ class ElseIfStatement : public Statement
 class ElseStatement : public Statement
 {
   public:
-    // virtual //std::string PrettyString(std::string &prefix) override;
     BlockStatement *GetBlockStatement() { return blockStatement; }
 
     CodeErrString GetCodeErrString() override
@@ -608,7 +542,6 @@ class ElseStatement : public Statement
 class WhileLoopStatement : public Statement
 {
   public:
-    // virtual //std::string PrettyString(std::string &prefix) override;
     BlockStatement *GetBlockStatement() { return blockStatement; }
     Expression *GetCondition() { return condition; }
     CodeErrString GetCodeErrString() override
@@ -631,7 +564,6 @@ class WhileLoopStatement : public Statement
 class ForLoopStatement : public Statement
 {
   public:
-    // virtual //std::string PrettyString(std::string &prefix) override;
     BlockStatement *GetBlockStatement() { return blockStatement; }
     Expression *GetCondition() { return condition; }
     CodeErrString GetCodeErrString() override
@@ -662,7 +594,6 @@ class RetStatement : public Statement
 {
 
   public:
-    // virtual //std::string PrettyString(std::string &prefix) override;
     class Expression *GetExpression() const { return expression; }
     CodeErrString GetCodeErrString() override
     {
@@ -673,10 +604,8 @@ class RetStatement : public Statement
             "ret {}", expression ? expression->GetCodeErrString().str : "");
         return ces;
     }
-    // class FnStatement *GetFnStatement() { return fnStmt; }
 
   private:
-    // class FnStatement *fnStmt = nullptr;
     Token const *retToken = nullptr;
     class Expression *expression = nullptr;
     friend class Parser;
@@ -686,7 +615,6 @@ class RetStatement : public Statement
 class FnStatement : public Statement
 {
   public:
-    // std::string PrettyString(std::string &prefix) override;
     CodeErrString GetCodeErrString() override
     {
         CodeErrString es = {};
@@ -718,7 +646,11 @@ class FnStatement : public Statement
     BlockStatement *GetBlockStatement() { return blockStatement; };
     std::vector<VarDeclStatement *> &GetParameters() { return parameters; }
 
+    bool IsPublic() { return (bool)pub; };
+
   private:
+    Token const *pub = nullptr;
+
     Token const *fnToken = nullptr;
     Token const *identifier = nullptr;
     DataTypeToken *returnDataTypeToken = nullptr;
@@ -831,7 +763,6 @@ class MemberAccessExpression : public Expression
 class FnCallExpression : public Expression
 {
   public:
-    // std::string PrettyString(std::string &prefix, bool isLeft) override;
     CodeErrString GetCodeErrString() override
     {
         CodeErrString es = {};
@@ -869,7 +800,6 @@ class FnCallExpression : public Expression
 class TernaryExpression : public Expression
 {
   public:
-    // std::string PrettyString(std::string &prefix, bool isLeft) override;
     Expression *GetTrueExpression() const { return trueExpr; }
     Expression *GetFalseExpression() const { return falseExpr; }
     Expression *GetCondition() const { return condition; }
@@ -899,7 +829,6 @@ class TernaryExpression : public Expression
 class BinaryExpression : public Expression
 {
   public:
-    // std::string PrettyString(std::string &prefix, bool isLeft) override;
     Expression *GetLeftExpression() const { return left; }
     Expression *GetRightExpression() const { return right; }
     Token const *GetOperator() const { return op; }
@@ -929,7 +858,6 @@ class BinaryExpression : public Expression
 class UnaryExpression : public Expression
 {
   public:
-    // std::string PrettyString(std::string &prefix, bool isLeft) override;
     Expression *GetRightExpression() const { return right; }
     Token const *GetOperator() const { return op; }
 
@@ -1002,7 +930,6 @@ class InitializerListExpression : public Expression
 class SubscriptExpression : public Expression
 {
   public:
-    // std::string PrettyString(std::string &prefix, bool isLeft) override;
     Expression *GetExpression() const { return expression; }
     Expression *GetIndexExpression() const { return index; }
     Token const *GetOperator() const { return token; }
@@ -1030,8 +957,6 @@ class SubscriptExpression : public Expression
 class GroupingExpression : public Expression
 {
   public:
-    // std::string PrettyString(std::string &prefix, bool isLeft) override;
-
     class Expression *GetExpression() const { return expression; }
 
     CodeErrString GetCodeErrString() override
@@ -1053,8 +978,6 @@ class GroupingExpression : public Expression
 class CastExpression : public Expression
 {
   public:
-    // std::string PrettyString(std::string &prefix, bool isLeft) override;
-
     class Expression *GetExpression() const { return expression; }
     DataTypeToken *GetCastToType() { return castToTypeToken; }
 
@@ -1085,7 +1008,6 @@ class CastExpression : public Expression
 class PrimaryExpression : public Expression
 {
   public:
-    // std::string PrettyString(std::string &prefix, bool isLeft) override;
     Token const *GetPrimary() const { return primary; }
 
     CodeErrString GetCodeErrString() override

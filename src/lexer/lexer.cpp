@@ -162,6 +162,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^nullptr\b)"), TokenType::NULL_PTR});
     patterns.push_back({std::regex(R"(^package\b)"), TokenType::PACKAGE});
     patterns.push_back({std::regex(R"(^import\b)"), TokenType::IMPORT});
+    patterns.push_back({std::regex(R"(^pub\b)"), TokenType::PUB});
 
     patterns.push_back({std::regex(R"(^struct\b)"), TokenType::STRUCT});
     patterns.push_back({std::regex(R"(^union\b)"), TokenType::UNION});

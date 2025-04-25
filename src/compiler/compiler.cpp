@@ -537,14 +537,14 @@ void Compiler::BuildProject(Project &project)
     auto packages = lexerAndParseProject(project);
     auto libs = goOverDeps(project);
 
-    for (auto p : packages)
-    {
-        printf("Package %s:\n", p->GetIdentifier()->GetLexeme().c_str());
-        for (auto s : p->GetStatements())
-        {
-            printf("%s\n", s->GetCodeErrString().str.c_str());
-        }
-    }
+    // for (auto p : packages)
+    // {
+    //     printf("Package %s:\n", p->GetIdentifier()->GetLexeme().c_str());
+    //     for (auto s : p->GetStatements())
+    //     {
+    //         printf("%s\n", s->GetCodeErrString().str.c_str());
+    //     }
+    // }
 
     for (auto lib : libs)
     {

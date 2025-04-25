@@ -102,9 +102,9 @@ class StructDataType : public DataType, public Symbol
   public:
     virtual std::string GetName() override { return name; }
     std::string GetFullName() { return fullName; }
+    std::string fullName = "";
     virtual DataType *GetDataType() override { return this; }
     std::string name = "";
-    std::string fullName = "";
     Scope *scope = nullptr;
     StructStatement *structStmt;
     InitializerListExpression *defaultValuesList = nullptr;
@@ -115,6 +115,8 @@ class UnionDataType : public DataType, public Symbol
 {
   public:
     virtual std::string GetName() override { return name; }
+    std::string GetFullName() { return fullName; }
+    std::string fullName = "";
     virtual DataType *GetDataType() override { return this; }
     DataType *largestDatatype = nullptr;
     std::string name = "";
@@ -128,6 +130,8 @@ class EnumDataType : public DataType, public Symbol
 {
   public:
     virtual std::string GetName() override { return name; }
+    std::string GetFullName() { return fullName; }
+    std::string fullName = "";
     virtual DataType *GetDataType() override { return this; }
     std::string name;
     EnumStatement *enumStmt = nullptr;
@@ -226,7 +230,8 @@ class Function : public Symbol
 class Scope
 {
   public:
-    Scope(class SemanticAnalyzer *semanticAnalyzer, Scope *parent = nullptr);
+    Scope(class SemanticAnalyzer *semanticAnalyzer, std::string name,
+          Scope *parent = nullptr);
     Symbol *GetSymbol(std::string name, CodeErrString codeErrString,
                       bool check = false);
     void AddSymbol(Symbol *symbol, CodeErrString codeErrString);
@@ -236,6 +241,7 @@ class Scope
     DataType *GetDataType(DataTypeToken *dataTypeToken);
 
   private:
+    std::string name;
     std::vector<Scope *> importedPackages;
     std::vector<Scope *> horizotnalScopes;
     Scope *parent = nullptr;

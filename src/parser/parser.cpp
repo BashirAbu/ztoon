@@ -539,306 +539,6 @@ Statement *Parser::ParseImportStatement()
         return importStmt;
     }
 
-    return ParseStructStatement();
-}
-Statement *Parser::ParseStructStatement(bool anonymous)
-{
-
-    Token const *pubToken = nullptr;
-    if (Peek()->GetType() == TokenType::PUB &&
-        PeekAhead(1)->GetType() == TokenType::STRUCT)
-    {
-        Advance();
-        pubToken = Prev();
-    }
-    if (Consume(TokenType::STRUCT))
-    {
-        StructStatement *structStmt = gZtoonArena.Allocate<StructStatement>();
-        structStmt->pub = pubToken;
-        structStmt->token = Prev();
-        if (!anonymous && !Consume(TokenType::IDENTIFIER))
-        {
-            CodeErrString ces;
-            ces.firstToken = Peek();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected identifier after 'struct'", ces);
-        }
-        if (!anonymous)
-        {
-            structStmt->identifier = Prev();
-        }
-
-        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
-        {
-            CodeErrString ces;
-            ces.firstToken = Peek();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected '{' after 'struct' identifier", ces);
-        }
-
-        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
-        {
-            Statement *fieldStmt = ParseFnStatement(true);
-            FnStatement *fnStmt = dynamic_cast<FnStatement *>(fieldStmt);
-            VarDeclStatement *varDeclStmt =
-                dynamic_cast<VarDeclStatement *>(fieldStmt);
-
-            if (!varDeclStmt && !fnStmt)
-            {
-                auto fieldStmt = ParseStatement();
-                ReportError("Statement not supported in struct definition",
-                            fieldStmt->GetCodeErrString());
-            }
-            if (varDeclStmt)
-            {
-                structStmt->fields.push_back(varDeclStmt);
-            }
-            else if (fnStmt)
-            {
-                if (fnStmt->method)
-                {
-                    // add param
-                    auto selfParam = gZtoonArena.Allocate<VarDeclStatement>();
-                    selfParam->identifier = fnStmt->method->selfToken;
-                    selfParam->isParamter = true;
-                    DataTypeToken *dataTypeToken =
-                        gZtoonArena.Allocate<DataTypeToken>();
-                    dataTypeToken->dataType = structStmt->identifier;
-                    if (fnStmt->method->asterisk)
-                    {
-                        DataTypeToken *ptrDataTypeToken =
-                            gZtoonArena.Allocate<DataTypeToken>();
-                        ptrDataTypeToken->pointerDesc =
-                            gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
-                        ptrDataTypeToken->pointerDesc->dataTypeToken =
-                            dataTypeToken;
-                        ptrDataTypeToken->pointerDesc->token =
-                            structStmt->identifier;
-                        dataTypeToken = ptrDataTypeToken;
-                    }
-                    else
-                    {
-                        dataTypeToken->dataType = structStmt->identifier;
-                    }
-                    dataTypeToken->readOnly = fnStmt->method->readonly;
-                    selfParam->dataTypeToken = dataTypeToken;
-                    fnStmt->GetParameters().insert(
-                        fnStmt->GetParameters().begin(), selfParam);
-                }
-
-                fnStmt->structStmt = structStmt;
-                structStmt->methods.push_back(fnStmt);
-            }
-            if (varDeclStmt && !Consume(TokenType::SEMICOLON))
-            {
-                ReportError("Expedted ';' after field declaration",
-                            varDeclStmt->GetCodeErrString());
-            }
-        }
-
-        if (anonymous && !structStmt->GetMethods().empty())
-        {
-            ReportError(std::format("Methods cannot be declared in an "
-                                    "anonymous struct"),
-                        structStmt->GetCodeErrString());
-        }
-
-        return structStmt;
-    }
-    return ParseUnionStatement();
-}
-
-Statement *Parser::ParseUnionStatement()
-{
-
-    Token const *pubToken = nullptr;
-    if (Peek()->GetType() == TokenType::PUB &&
-        PeekAhead(1)->GetType() == TokenType::UNION)
-    {
-        Advance();
-        pubToken = Prev();
-    }
-    if (Consume(TokenType::UNION))
-    {
-        UnionStatement *unionStmt = gZtoonArena.Allocate<UnionStatement>();
-        unionStmt->pub = pubToken;
-        unionStmt->token = Prev();
-        if (!Consume(TokenType::IDENTIFIER))
-        {
-            CodeErrString ces;
-            ces.firstToken = Peek();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected identifier after 'Union'", ces);
-        }
-
-        unionStmt->identifier = Prev();
-
-        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
-        {
-            CodeErrString ces;
-            ces.firstToken = Peek();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected '{' after 'union' identifier", ces);
-        }
-
-        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
-        {
-
-            VarDeclStatement *varDeclStmt =
-                dynamic_cast<VarDeclStatement *>(ParseVarDeclStatement());
-            StructStatement *structStmt;
-            if (!varDeclStmt)
-            {
-                structStmt =
-                    dynamic_cast<StructStatement *>(ParseStructStatement(true));
-            }
-            if (varDeclStmt)
-            {
-
-                unionStmt->fields.push_back(varDeclStmt);
-            }
-            else if (structStmt)
-            {
-
-                unionStmt->fields.push_back(structStmt);
-            }
-            else
-            {
-                CodeErrString ces = {};
-                ces.firstToken = Peek();
-                ces.str = ces.firstToken->GetLexeme();
-                ReportError("Statement not supported in union definition", ces);
-            }
-
-            if (varDeclStmt && varDeclStmt->GetExpression())
-            {
-                ReportError("Union fileds cannot have default values",
-                            varDeclStmt->GetCodeErrString());
-            }
-
-            if (!Consume(TokenType::SEMICOLON) && varDeclStmt)
-            {
-                ReportError("Expected ';' after field declaration",
-                            varDeclStmt->GetCodeErrString());
-            }
-        }
-
-        return unionStmt;
-    }
-    return ParseEnumStatement();
-}
-
-Statement *Parser::ParseEnumStatement()
-{
-
-    Token const *pubToken = nullptr;
-    if (Peek()->GetType() == TokenType::PUB &&
-        PeekAhead(1)->GetType() == TokenType::ENUM)
-    {
-        Advance();
-        pubToken = Prev();
-    }
-    if (Consume(TokenType::ENUM))
-    {
-        EnumStatement *enumStmt = gZtoonArena.Allocate<EnumStatement>();
-        enumStmt->pub = pubToken;
-        enumStmt->token = Prev();
-
-        if (!Consume(TokenType::IDENTIFIER))
-        {
-            CodeErrString ces;
-            ces.firstToken = Peek();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected identifier after 'enum'", ces);
-        }
-
-        enumStmt->identifier = Prev();
-
-        if (!Consume(TokenType::COLON))
-        {
-            CodeErrString ces;
-            ces.firstToken = Peek();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected ':' after 'enum' identifier", ces);
-        }
-
-        enumStmt->datatype = ParseDataType();
-
-        if (!enumStmt->datatype)
-        {
-            CodeErrString ces;
-            ces.firstToken = Peek();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected 'datatype' after ':'", ces);
-        }
-        enumStmt->datatype->readOnly =
-            gZtoonArena.Allocate<Token>(TokenType::READONLY);
-
-        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
-        {
-            CodeErrString ces;
-            ces.firstToken = Peek();
-            ces.str = ces.firstToken->GetLexeme();
-            ReportError("Expected '{' after 'enum' identifier", ces);
-        }
-
-        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
-        {
-
-            EnumStatement::Field *field =
-                gZtoonArena.Allocate<EnumStatement::Field>();
-            if (!Consume(TokenType::IDENTIFIER))
-            {
-                CodeErrString ces;
-                ces.firstToken = Peek();
-                ces.str = ces.firstToken->GetLexeme();
-                ReportError("Expected identifier after 'enum'", ces);
-            }
-            field->identifier = Prev();
-            if (Consume(TokenType::EQUAL))
-            {
-                field->expr = ParseExpression();
-                if (!field->expr)
-                {
-                    CodeErrString ces;
-                    ces.firstToken = Peek();
-                    ces.str = ces.firstToken->GetLexeme();
-                    ReportError("Expected expression after '='", ces);
-                }
-            }
-
-            auto itr =
-                std::find_if(enumStmt->fields.begin(), enumStmt->fields.end(),
-                             [field](EnumStatement::Field *other) {
-                                 return field->identifier->GetLexeme() ==
-                                        other->identifier->GetLexeme();
-                             });
-            if (itr != enumStmt->fields.end())
-            {
-                CodeErrString ces;
-                ces.firstToken = field->identifier;
-                ces.str = ces.firstToken->GetLexeme();
-                ReportError("Field already defined", ces);
-            }
-            enumStmt->fields.push_back(field);
-            if (!Consume(TokenType::COMMA))
-            {
-                if (!Consume(TokenType::RIGHT_CURLY_BRACKET))
-                {
-                    CodeErrString ces;
-                    ces.firstToken = Peek();
-                    ces.str = ces.firstToken->GetLexeme();
-                    ReportError("Expected ',' after field declaration", ces);
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-
-        return enumStmt;
-    }
     return ParseFnStatement();
 }
 Statement *Parser::ParseFnStatement(bool isMethod)
@@ -1028,6 +728,325 @@ Statement *Parser::ParseFnStatement(bool isMethod)
         fnStmt->blockStatement = (BlockStatement *)blockStatement;
 
         return fnStmt;
+    }
+    return ParseStructStatement();
+}
+Statement *Parser::ParseStructStatement(bool anonymous)
+{
+
+    Token const *pubToken = nullptr;
+    if (Peek()->GetType() == TokenType::PUB &&
+        PeekAhead(1)->GetType() == TokenType::STRUCT)
+    {
+        Advance();
+        pubToken = Prev();
+    }
+    if (Consume(TokenType::STRUCT))
+    {
+        StructStatement *structStmt = gZtoonArena.Allocate<StructStatement>();
+        structStmt->pub = pubToken;
+        structStmt->token = Prev();
+        if (!anonymous && !Consume(TokenType::IDENTIFIER))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected identifier after 'struct'", ces);
+        }
+        if (!anonymous)
+        {
+            structStmt->identifier = Prev();
+        }
+
+        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected '{' after 'struct' identifier", ces);
+        }
+
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+            isAnonymous = true;
+            Statement *fieldStmt = ParseFnStatement(true);
+            isAnonymous = false;
+            FnStatement *fnStmt = dynamic_cast<FnStatement *>(fieldStmt);
+            VarDeclStatement *varDeclStmt =
+                dynamic_cast<VarDeclStatement *>(fieldStmt);
+            UnionStatement *unionStmt =
+                dynamic_cast<UnionStatement *>(fieldStmt);
+            if (!varDeclStmt && !fnStmt && !unionStmt)
+            {
+                auto fieldStmt = ParseStatement();
+                ReportError("Statement not supported in struct definition",
+                            fieldStmt->GetCodeErrString());
+            }
+            if (varDeclStmt)
+            {
+                structStmt->fields.push_back(varDeclStmt);
+            }
+            else if (unionStmt)
+            {
+                if (unionStmt->identifier)
+                {
+                    ReportError("Only anonymous unions are allowd to be "
+                                "decalred in struct definition",
+                                unionStmt->GetCodeErrString());
+                }
+                structStmt->unions.push_back(unionStmt);
+            }
+            else if (fnStmt)
+            {
+                if (fnStmt->method)
+                {
+                    // add param
+                    auto selfParam = gZtoonArena.Allocate<VarDeclStatement>();
+                    selfParam->identifier = fnStmt->method->selfToken;
+                    selfParam->isParamter = true;
+                    DataTypeToken *dataTypeToken =
+                        gZtoonArena.Allocate<DataTypeToken>();
+                    dataTypeToken->dataType = structStmt->identifier;
+                    if (fnStmt->method->asterisk)
+                    {
+                        DataTypeToken *ptrDataTypeToken =
+                            gZtoonArena.Allocate<DataTypeToken>();
+                        ptrDataTypeToken->pointerDesc =
+                            gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
+                        ptrDataTypeToken->pointerDesc->dataTypeToken =
+                            dataTypeToken;
+                        ptrDataTypeToken->pointerDesc->token =
+                            structStmt->identifier;
+                        dataTypeToken = ptrDataTypeToken;
+                    }
+                    else
+                    {
+                        dataTypeToken->dataType = structStmt->identifier;
+                    }
+                    dataTypeToken->readOnly = fnStmt->method->readonly;
+                    selfParam->dataTypeToken = dataTypeToken;
+                    fnStmt->GetParameters().insert(
+                        fnStmt->GetParameters().begin(), selfParam);
+                }
+
+                fnStmt->structStmt = structStmt;
+                structStmt->methods.push_back(fnStmt);
+            }
+            if (varDeclStmt && !Consume(TokenType::SEMICOLON))
+            {
+                ReportError("Expedted ';' after field declaration",
+                            varDeclStmt->GetCodeErrString());
+            }
+        }
+
+        if (anonymous && !structStmt->GetMethods().empty())
+        {
+            ReportError(std::format("Methods cannot be declared in an "
+                                    "anonymous struct"),
+                        structStmt->GetCodeErrString());
+        }
+
+        return structStmt;
+    }
+    return ParseUnionStatement();
+}
+
+Statement *Parser::ParseUnionStatement()
+{
+
+    Token const *pubToken = nullptr;
+    if (Peek()->GetType() == TokenType::PUB &&
+        PeekAhead(1)->GetType() == TokenType::UNION)
+    {
+        Advance();
+        pubToken = Prev();
+    }
+    if (Consume(TokenType::UNION))
+    {
+        UnionStatement *unionStmt = gZtoonArena.Allocate<UnionStatement>();
+        unionStmt->pub = pubToken;
+        unionStmt->token = Prev();
+        if (!Consume(TokenType::IDENTIFIER) && !isAnonymous)
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected identifier after 'Union'", ces);
+        }
+        if (isAnonymous)
+        {
+            isAnonymous = false;
+        }
+        else
+        {
+            unionStmt->identifier = Prev();
+        }
+
+        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected '{' after 'union' identifier", ces);
+        }
+
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+
+            VarDeclStatement *varDeclStmt =
+                dynamic_cast<VarDeclStatement *>(ParseVarDeclStatement());
+            StructStatement *structStmt;
+            if (!varDeclStmt)
+            {
+                structStmt =
+                    dynamic_cast<StructStatement *>(ParseStructStatement(true));
+            }
+            if (varDeclStmt)
+            {
+
+                unionStmt->fields.push_back(varDeclStmt);
+            }
+            else if (structStmt)
+            {
+
+                unionStmt->fields.push_back(structStmt);
+            }
+            else
+            {
+                CodeErrString ces = {};
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Statement not supported in union definition", ces);
+            }
+
+            if (varDeclStmt && varDeclStmt->GetExpression())
+            {
+                ReportError("Union fileds cannot have default values",
+                            varDeclStmt->GetCodeErrString());
+            }
+
+            if (!Consume(TokenType::SEMICOLON) && varDeclStmt)
+            {
+                ReportError("Expected ';' after field declaration",
+                            varDeclStmt->GetCodeErrString());
+            }
+        }
+
+        return unionStmt;
+    }
+    return ParseEnumStatement();
+}
+
+Statement *Parser::ParseEnumStatement()
+{
+
+    Token const *pubToken = nullptr;
+    if (Peek()->GetType() == TokenType::PUB &&
+        PeekAhead(1)->GetType() == TokenType::ENUM)
+    {
+        Advance();
+        pubToken = Prev();
+    }
+    if (Consume(TokenType::ENUM))
+    {
+        EnumStatement *enumStmt = gZtoonArena.Allocate<EnumStatement>();
+        enumStmt->pub = pubToken;
+        enumStmt->token = Prev();
+
+        if (!Consume(TokenType::IDENTIFIER))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected identifier after 'enum'", ces);
+        }
+
+        enumStmt->identifier = Prev();
+
+        if (!Consume(TokenType::COLON))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected ':' after 'enum' identifier", ces);
+        }
+
+        enumStmt->datatype = ParseDataType();
+
+        if (!enumStmt->datatype)
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected 'datatype' after ':'", ces);
+        }
+        enumStmt->datatype->readOnly =
+            gZtoonArena.Allocate<Token>(TokenType::READONLY);
+
+        if (!Consume(TokenType::LEFT_CURLY_BRACKET))
+        {
+            CodeErrString ces;
+            ces.firstToken = Peek();
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected '{' after 'enum' identifier", ces);
+        }
+
+        while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+        {
+
+            EnumStatement::Field *field =
+                gZtoonArena.Allocate<EnumStatement::Field>();
+            if (!Consume(TokenType::IDENTIFIER))
+            {
+                CodeErrString ces;
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Expected identifier after 'enum'", ces);
+            }
+            field->identifier = Prev();
+            if (Consume(TokenType::EQUAL))
+            {
+                field->expr = ParseExpression();
+                if (!field->expr)
+                {
+                    CodeErrString ces;
+                    ces.firstToken = Peek();
+                    ces.str = ces.firstToken->GetLexeme();
+                    ReportError("Expected expression after '='", ces);
+                }
+            }
+
+            auto itr =
+                std::find_if(enumStmt->fields.begin(), enumStmt->fields.end(),
+                             [field](EnumStatement::Field *other) {
+                                 return field->identifier->GetLexeme() ==
+                                        other->identifier->GetLexeme();
+                             });
+            if (itr != enumStmt->fields.end())
+            {
+                CodeErrString ces;
+                ces.firstToken = field->identifier;
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("Field already defined", ces);
+            }
+            enumStmt->fields.push_back(field);
+            if (!Consume(TokenType::COMMA))
+            {
+                if (!Consume(TokenType::RIGHT_CURLY_BRACKET))
+                {
+                    CodeErrString ces;
+                    ces.firstToken = Peek();
+                    ces.str = ces.firstToken->GetLexeme();
+                    ReportError("Expected ',' after field declaration", ces);
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        return enumStmt;
     }
     return ParseVarDeclStatement();
 }

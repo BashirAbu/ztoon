@@ -361,8 +361,10 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
     return result;
 }
 
-Scope::Scope(SemanticAnalyzer *semanticAnalyzer, Scope *parent)
+Scope::Scope(SemanticAnalyzer *semanticAnalyzer, std::string name,
+             Scope *parent)
 {
+    this->name = name;
     this->parent = parent;
     this->semanticAnalyzer = semanticAnalyzer;
     datatypesMap["i8"] = gZtoonArena.Allocate<DataType>();
@@ -565,23 +567,25 @@ TokenType DataType::ToTokenType()
 Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
                          bool check)
 {
-
     Symbol *symbol = nullptr;
 
     Scope const *current = this;
     while (!symbol)
     {
-        if (current->symbolsMap.contains(name))
+        std::string _name = std::format("{}::{}", current->name, name);
+
+        if (current->symbolsMap.contains(_name))
         {
-            symbol = current->symbolsMap.at(name);
+            symbol = current->symbolsMap.at(_name);
         }
         else
         {
             for (auto s : current->horizotnalScopes)
             {
-                if (s->symbolsMap.contains(name))
+                _name = std::format("{}::{}", s->name, name);
+                if (s->symbolsMap.contains(_name))
                 {
-                    symbol = s->symbolsMap.at(name);
+                    symbol = s->symbolsMap.at(_name);
                     break;
                 }
             }
@@ -589,9 +593,10 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
 
         for (auto pkgScope : current->importedPackages)
         {
-            if (pkgScope->symbolsMap.contains(name))
+            _name = std::format("{}::{}", pkgScope->name, name);
+            if (pkgScope->symbolsMap.contains(_name))
             {
-                symbol = pkgScope->symbolsMap.at(name);
+                symbol = pkgScope->symbolsMap.at(_name);
                 if (!symbol->IsPublic())
                 {
                     ReportError(std::format("'{}' is private member.", name),
@@ -622,15 +627,16 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
 }
 void Scope::AddSymbol(Symbol *symbol, CodeErrString codeErrString)
 {
+    std::string symbolName = std::format("{}::{}", name, symbol->GetName());
     if (symbolsMap.contains(symbol->GetName()))
     {
-        Symbol *alreadyDefined = symbolsMap[symbol->GetName()];
+        Symbol *alreadyDefined = symbolsMap[symbolName];
         ReportError(std::format("'{}' already defined", symbol->GetName()),
                     codeErrString);
     }
     else
     {
-        symbolsMap[symbol->GetName()] = symbol;
+        symbolsMap[symbolName] = symbol;
     }
 }
 
@@ -810,7 +816,9 @@ void SemanticAnalyzer::AnalyzePackage(Package *pkg)
     pkgType->name = pkg->identifier->GetLexeme();
     pkgType->pkg = pkg;
 
-    currentScope = gZtoonArena.Allocate<Scope>(this);
+    currentScope = gZtoonArena.Allocate<Scope>(
+        this,
+        std::format("{}_{}", pkg->GetIdentifier()->GetLexeme(), (size_t)pkg));
     pkgToScopeMap[pkg] = currentScope;
 
     CodeErrString ces;
@@ -1053,7 +1061,9 @@ void SemanticAnalyzer::AnalyzeBlockStatement(BlockStatement *blockStmt)
     Scope *scope = nullptr;
     if (!blockToScopeMap.contains(blockStmt))
     {
-        scope = gZtoonArena.Allocate<Scope>(this, currentScope);
+        scope = gZtoonArena.Allocate<Scope>(
+            this, std::format("block_statement_{}", (size_t)blockStmt),
+            currentScope);
         blockToScopeMap[blockStmt] = scope;
     }
     else
@@ -1100,7 +1110,13 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
 
         auto tempScope = currentScope;
 
-        currentScope = gZtoonArena.Allocate<Scope>(this, tempScope);
+        currentScope = gZtoonArena.Allocate<Scope>(
+            this,
+            fnStmt->IsPrototype()
+                ? ""
+                : std::format("{}_{}", fnStmt->GetIdentifier()->GetLexeme(),
+                              (size_t)fnStmt),
+            tempScope);
         currentScope->parent = tempScope;
         if (isMethod && fnStmt->IsPrototype())
         {
@@ -1752,14 +1768,12 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         structType->isPublic = structStmt->IsPublic();
         currentScope->AddSymbol(structType, structStmt->GetCodeErrString());
         stmtToDataTypeMap[structStmt] = structType;
-        structType->fullName = std::format(
-            "{}::{}",
-            currentLibrary
-                ? std::format("{}::{}", currentLibrary->name,
-                              currentPackage->GetIdentifier()->GetLexeme())
-                : currentPackage->GetIdentifier()->GetLexeme(),
-            structType->name);
-        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
+        structType->fullName =
+            std::format("{}::{}", currentScope->name, structType->name);
+        Scope *scope = gZtoonArena.Allocate<Scope>(
+            this,
+            std::format("{}_{}", structType->GetName(), (size_t)structType),
+            currentScope);
         structType->scope = scope;
     }
     if (analyzeBody)
@@ -1770,6 +1784,10 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         currentScope = structType->scope;
         structType->defaultValuesList =
             gZtoonArena.Allocate<InitializerListExpression>();
+        for (auto uField : structStmt->unions)
+        {
+            AnalyzeUnionStatement(uField, false, true, true);
+        }
         size_t index = 0;
         for (auto field : structStmt->fields)
         {
@@ -1936,6 +1954,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         {
             AnalyzeFnStatement(method, false, true, false, true);
         }
+
         structType->complete = true;
         currentScope = temp;
     }
@@ -1958,14 +1977,23 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
                                              bool isGlobal, bool analyzeSymbol,
                                              bool analyzeBody)
 {
-
     if (analyzeSymbol)
     {
         UnionDataType *unionType = gZtoonArena.Allocate<UnionDataType>();
         unionType->unionStmt = unionStmt;
         unionType->type = DataType::Type::UNION;
-        unionType->name = unionStmt->identifier->GetLexeme();
+        if (unionStmt->identifier)
+        {
+            unionType->name = unionStmt->identifier->GetLexeme();
+        }
+        else
+        {
+            unionType->name = std::format("__anonymous_union__number__{}",
+                                          (size_t)(unionStmt));
+        }
 
+        unionType->fullName =
+            std::format("{}::{}", currentScope->name, unionType->name);
         currentScope->datatypesMap[unionType->name] = unionType;
         unionType->isPublic = unionStmt->IsPublic();
         currentScope->AddSymbol(unionType, unionStmt->GetCodeErrString());
@@ -1976,7 +2004,9 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
         auto unionType =
             dynamic_cast<UnionDataType *>(stmtToDataTypeMap[unionStmt]);
 
-        Scope *scope = gZtoonArena.Allocate<Scope>(this, currentScope);
+        Scope *scope = gZtoonArena.Allocate<Scope>(
+            this, std::format("{}_{}", unionType->GetName(), (size_t)unionType),
+            currentScope);
         Scope *temp = currentScope;
 
         currentScope = scope;
@@ -2165,6 +2195,8 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
                         enumStmt->GetCodeErrString());
         }
 
+        enumType->fullName =
+            std::format("{}::{}", currentScope->name, enumType->name);
         stmtToDataTypeMap[enumStmt] = enumType;
 
         currentScope->datatypesMap[enumType->name] = enumType;
@@ -2411,7 +2443,8 @@ void SemanticAnalyzer::AnalyzeFnExpression(FnExpression *fnExpr)
 
     auto tempScope = currentScope;
 
-    currentScope = gZtoonArena.Allocate<Scope>(this);
+    currentScope = gZtoonArena.Allocate<Scope>(
+        this, std::format("{}_{}", fnExpr->GetName(), (size_t)fnExpr));
     currentScope->parent = pkgToScopeMap[currentPackage];
 
     blockToScopeMap[fnExpr->GetBlockStatement()] = currentScope;
@@ -3348,20 +3381,55 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
                 maExpr->GetCodeErrString());
         }
         // Check if struct has this field
-        auto fieldItr =
-            std::find_if(structStmt->fields.begin(), structStmt->fields.end(),
-                         [field](VarDeclStatement *f) {
-                             return f->GetIdentifier()->GetLexeme() ==
-                                    field->primary->GetLexeme();
-                         });
-        auto methodItr =
-            std::find_if(structStmt->methods.begin(), structStmt->methods.end(),
-                         [field](FnStatement *f) {
-                             return f->GetIdentifier()->GetLexeme() ==
-                                    field->primary->GetLexeme();
-                         });
-        if (fieldItr == structStmt->fields.end() &&
-            methodItr == structStmt->methods.end())
+
+        VarDeclStatement *varField = nullptr;
+
+        for (auto v : structStmt->GetFields())
+        {
+            if (v->GetIdentifier()->GetLexeme() ==
+                field->GetPrimary()->GetLexeme())
+            {
+                varField = v;
+                break;
+            }
+        }
+
+        UnionStatement *anonymousUnionStmt = nullptr;
+
+        bool uFound = false;
+        for (auto u : structStmt->unions)
+        {
+            for (auto v : u->GetFields())
+            {
+
+                auto var = dynamic_cast<VarDeclStatement *>(v);
+                if (var && var->GetIdentifier()->GetLexeme() ==
+                               field->GetPrimary()->GetLexeme())
+                {
+                    anonymousUnionStmt = u;
+                    uFound = true;
+                    break;
+                }
+            }
+            if (uFound)
+            {
+                break;
+            }
+        }
+
+        FnStatement *methodField = nullptr;
+
+        for (auto m : structStmt->methods)
+        {
+            if (m->GetIdentifier()->GetLexeme() ==
+                field->GetPrimary()->GetLexeme())
+            {
+                methodField = m;
+                break;
+            }
+        }
+
+        if (!varField && !methodField)
         {
             ReportError(std::format("Struct type '{}' does not have "
                                     "field with name '{}'",
@@ -3370,13 +3438,25 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
                         field->GetCodeErrString());
         }
 
+        if (anonymousUnionStmt)
+        {
+            maExpr->accessType = MemberAccessExpression::AccessType::UNION;
+            MemberAccessExpression *expr =
+                gZtoonArena.Allocate<MemberAccessExpression>();
+            expr->accessType = MemberAccessExpression::AccessType::STRUCT;
+            expr->leftExpr = maExpr->GetLeftExpression();
+            expr->rightExpr = maExpr->GetRightExpression();
+            exprToDataTypeMap[expr] = stmtToDataTypeMap[anonymousUnionStmt];
+            maExpr->leftExpr = expr;
+        }
+
         Scope *temp = currentScope;
         currentScope = structType->scope;
         currentScope->lookUpParent = false;
 
         AnalyzeExpression(maExpr->GetRightExpression());
         DataType *rightDataType = exprToDataTypeMap[field];
-        if (methodItr != structStmt->methods.end())
+        if (methodField)
         {
             PointerDataType *fnPtrType = dynamic_cast<PointerDataType *>(
                 exprToDataTypeMap[maExpr->GetRightExpression()]);

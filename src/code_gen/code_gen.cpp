@@ -250,13 +250,14 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
 void CodeGen::AddIRSymbol(IRSymbol *irSymbol)
 {
     assert(irSymbol);
+    std::string name = std::format(
+        "{}::{}", semanticAnalyzer.currentScope->name, irSymbol->GetName());
     if (!scopeToIRSymbolsMap.contains(semanticAnalyzer.currentScope))
     {
         scopeToIRSymbolsMap[semanticAnalyzer.currentScope] = {};
     }
 
-    (scopeToIRSymbolsMap[semanticAnalyzer.currentScope])[irSymbol->GetName()] =
-        irSymbol;
+    (scopeToIRSymbolsMap[semanticAnalyzer.currentScope])[name] = irSymbol;
 }
 
 IRSymbol *CodeGen::GetIRSymbol(std::string name)
@@ -265,16 +266,19 @@ IRSymbol *CodeGen::GetIRSymbol(std::string name)
     Scope const *scope = semanticAnalyzer.currentScope;
     while (!ret)
     {
-        if ((scopeToIRSymbolsMap[scope]).contains(name))
+
+        std::string _name = std::format("{}::{}", scope->name, name);
+        if ((scopeToIRSymbolsMap[scope]).contains(_name))
         {
-            IRSymbol *ret = (scopeToIRSymbolsMap[scope])[name];
+            IRSymbol *ret = (scopeToIRSymbolsMap[scope])[_name];
             return ret;
         }
         for (auto pkgScope : scope->importedPackages)
         {
-            if ((scopeToIRSymbolsMap[pkgScope]).contains(name))
+            std::string _name = std::format("{}::{}", pkgScope->name, name);
+            if ((scopeToIRSymbolsMap[pkgScope]).contains(_name))
             {
-                IRSymbol *ret = (scopeToIRSymbolsMap[pkgScope])[name];
+                IRSymbol *ret = (scopeToIRSymbolsMap[pkgScope])[_name];
                 return ret;
             }
         }

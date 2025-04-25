@@ -281,6 +281,7 @@ class StructStatement : public Statement
     Token const *identifier = nullptr;
     std::vector<VarDeclStatement *> fields;
     std::vector<FnStatement *> methods;
+    std::vector<class UnionStatement *> unions;
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -1100,6 +1101,7 @@ class Parser
     Token const *Prev();
     void Advance();
     size_t currentIndex = 0;
+    bool isAnonymous = false;
     const std::vector<Token *> tokens;
     std::vector<Package *> packages;
 };

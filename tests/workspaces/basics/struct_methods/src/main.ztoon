@@ -27,6 +27,12 @@ struct Person
     }
 }
 
+
+struct Vector3
+{
+    x: f32;
+}
+
 fn main() -> i32
 {
     struct Vector3

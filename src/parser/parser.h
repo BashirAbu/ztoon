@@ -282,8 +282,10 @@ class StructStatement : public Statement
     std::vector<VarDeclStatement *> fields;
     std::vector<FnStatement *> methods;
     std::vector<class UnionStatement *> unions;
+    std::vector<Statement *> fieldsInOrder;
     friend class Parser;
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 class UnionStatement : public Statement
 {
@@ -292,7 +294,8 @@ class UnionStatement : public Statement
     {
         CodeErrString ces = {};
         ces.firstToken = token;
-        ces.str = std::format(" {}\n", identifier->GetLexeme());
+        ces.str =
+            std::format(" {}\n", identifier ? identifier->GetLexeme() : "");
         ces.str += "{\n";
         for (auto field : fields)
         {
@@ -304,7 +307,7 @@ class UnionStatement : public Statement
 
         return ces;
     }
-    const std::vector<Statement *> &GetFields() { return fields; }
+    const std::vector<VarDeclStatement *> &GetFields() { return fields; }
 
     bool IsPublic() { return (bool)pub; };
 
@@ -313,8 +316,9 @@ class UnionStatement : public Statement
 
     Token const *token = nullptr;
     Token const *identifier = nullptr;
-    std::vector<Statement *> fields;
-
+    std::vector<class VarDeclStatement *> fields;
+    std::vector<class StructStatement *> structs;
+    std::vector<class Statement *> fieldsInOrder;
     friend class Parser;
     friend class SemanticAnalyzer;
 };

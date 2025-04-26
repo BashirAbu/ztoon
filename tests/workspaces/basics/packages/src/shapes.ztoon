@@ -31,7 +31,7 @@ pub struct Shape
     type : ShapeType;
     ShapeUnion: shapeUnion;
 
-    fn Arean(self) -> f64
+    fn Area(self) -> f64
     {
         switch (self.type)
         {

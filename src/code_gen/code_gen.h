@@ -162,12 +162,13 @@ class CodeGen
     IRValue CastPtrToPtr(IRValue value, IRType castType);
     IRValue CastIntToPtr(IRValue value, IRType castType);
     IRValue CastPtrToInt(IRValue value, IRType castType);
-    std::unordered_map<Scope const *,
-                       std::unordered_map<std::string, IRSymbol *>>
-        scopeToIRSymbolsMap;
+    // std::unordered_map<Scope const *,
+    //                    std::unordered_map<std::string, IRSymbol *>>
+    //     scopeToIRSymbolsMap;
     std::unordered_map<std::string, IRSymbol *> irSymbolsMap;
     IRLoop *currentLoop = nullptr;
     SemanticAnalyzer &semanticAnalyzer;
     std::unordered_map<Statement *, bool> globalStatementIRDoneMap;
     std::unordered_map<VarDeclStatement *, IRValue> globalConstsMap;
+    std::unordered_map<Symbol *, IRSymbol *> symbolToIRSymobMap;
 };

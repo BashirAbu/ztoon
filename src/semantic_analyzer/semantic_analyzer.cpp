@@ -6,6 +6,7 @@
 #include <cstring>
 #include <format>
 #include <functional>
+#include <utility>
 
 std::string DataType::ToString()
 {
@@ -568,7 +569,6 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
                          bool check)
 {
     Symbol *symbol = nullptr;
-
     Scope const *current = this;
     while (!symbol)
     {
@@ -577,18 +577,6 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
         if (current->symbolsMap.contains(_name))
         {
             symbol = current->symbolsMap.at(_name);
-        }
-        else
-        {
-            for (auto s : current->horizotnalScopes)
-            {
-                _name = std::format("{}::{}", s->name, name);
-                if (s->symbolsMap.contains(_name))
-                {
-                    symbol = s->symbolsMap.at(_name);
-                    break;
-                }
-            }
         }
 
         for (auto pkgScope : current->importedPackages)
@@ -636,6 +624,7 @@ void Scope::AddSymbol(Symbol *symbol, CodeErrString codeErrString)
     }
     else
     {
+
         symbolsMap[symbolName] = symbol;
     }
 }
@@ -1761,6 +1750,11 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         }
         else
         {
+            if (!structStmt->unions.empty() || !structStmt->methods.empty())
+            {
+                ReportError("Anonymous structs can only have variable fields.",
+                            structStmt->GetCodeErrString());
+            }
             structType->name = std::format("__anonymous_struct__number__{}",
                                            (size_t)(structStmt));
         }
@@ -1786,7 +1780,39 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
             gZtoonArena.Allocate<InitializerListExpression>();
         for (auto uField : structStmt->unions)
         {
+            auto tempSScope = currentScope;
             AnalyzeUnionStatement(uField, false, true, true);
+            currentScope = tempSScope;
+            auto uType =
+                dynamic_cast<UnionDataType *>(stmtToDataTypeMap[uField]);
+            for (auto s : uType->scope->symbolsMap)
+            {
+                currentScope->AddSymbol(s.second,
+                                        structStmt->GetCodeErrString());
+            }
+            VarDeclStatement *var = gZtoonArena.Allocate<VarDeclStatement>();
+            DataTypeToken *dataToken = gZtoonArena.Allocate<DataTypeToken>();
+            auto dataTypeToken =
+                gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            dataTypeToken->lexeme = uType->GetName();
+            dataToken->dataType = dataTypeToken;
+            var->dataTypeToken = dataToken;
+            auto idToken = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            idToken->lexeme = uType->GetName() + "_field";
+            var->identifier = idToken;
+
+            // AnalyzeVarDeclStatement(var, true, true, false);
+            long long loc = 0;
+            for (long long i = 0; i < structStmt->fieldsInOrder.size(); i++)
+            {
+                if (structStmt->fieldsInOrder[i] == uField)
+                {
+                    loc = i;
+                    break;
+                }
+            }
+
+            structStmt->fields.insert(structStmt->fields.begin() + loc, var);
         }
         size_t index = 0;
         for (auto field : structStmt->fields)
@@ -1797,24 +1823,6 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
                 dynamic_cast<StructDataType *>(fieldDataType);
             auto fieldUnionType = dynamic_cast<UnionDataType *>(fieldDataType);
 
-            if (fieldStructType && !field->GetExpression())
-            {
-                if (!field->GetExpression())
-                {
-                    structType->defaultValuesList->expressions.push_back(
-                        fieldStructType->defaultValuesList);
-                }
-                else
-                {
-                    structType->defaultValuesList->expressions.push_back(
-                        field->GetExpression());
-                }
-            }
-            else
-            {
-                structType->defaultValuesList->expressions.push_back(
-                    field->GetExpression());
-            }
             if (isGlobal)
             {
                 std::function<bool(std::string, StructStatement *,
@@ -1939,17 +1947,44 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
                 }
             }
 
-            structType->fields.push_back(fieldDataType);
             index++;
         }
+        for (auto f : structStmt->fieldsInOrder)
+        {
+            auto fieldStructType =
+                dynamic_cast<StructDataType *>(stmtToDataTypeMap[f]);
+            auto field = dynamic_cast<VarDeclStatement *>(f);
+            if (fieldStructType && field && !field->GetExpression())
+            {
+                if (!field->GetExpression())
+                {
+                    structType->defaultValuesList->expressions.push_back(
+                        fieldStructType->defaultValuesList);
+                }
+                else
+                {
+                    structType->defaultValuesList->expressions.push_back(
+                        field->GetExpression());
+                }
+            }
+            else if (field)
+            {
+                structType->defaultValuesList->expressions.push_back(
+                    field->GetExpression());
+            }
+            else
+            {
 
+                structType->defaultValuesList->expressions.push_back(nullptr);
+            }
+            structType->fields.push_back(stmtToDataTypeMap[f]);
+        }
         InitListType *listType = gZtoonArena.Allocate<InitListType>();
         listType->type = DataType::Type::InitList;
 
         listType->dataTypes = structType->fields;
 
         exprToDataTypeMap[structType->defaultValuesList] = listType;
-
         for (auto method : structStmt->methods)
         {
             AnalyzeFnStatement(method, false, true, false, true);
@@ -1979,6 +2014,12 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
 {
     if (analyzeSymbol)
     {
+        if (unionStmt->GetFields().empty())
+        {
+            ReportError("Union type cannot be empty",
+                        unionStmt->GetCodeErrString());
+        }
+
         UnionDataType *unionType = gZtoonArena.Allocate<UnionDataType>();
         unionType->unionStmt = unionStmt;
         unionType->type = DataType::Type::UNION;
@@ -1991,7 +2032,6 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
             unionType->name = std::format("__anonymous_union__number__{}",
                                           (size_t)(unionStmt));
         }
-
         unionType->fullName =
             std::format("{}::{}", currentScope->name, unionType->name);
         currentScope->datatypesMap[unionType->name] = unionType;
@@ -2008,38 +2048,58 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
             this, std::format("{}_{}", unionType->GetName(), (size_t)unionType),
             currentScope);
         Scope *temp = currentScope;
-
         currentScope = scope;
         unionType->scope = currentScope;
-        std::vector<VarDeclStatement *> toAddFields;
-        for (auto field : unionStmt->fields)
+
+        for (auto sField : unionStmt->structs)
         {
+            auto tempUScope = currentScope;
+            AnalyzeStructStatement(sField, false, true, true, false);
+            currentScope = tempUScope;
+            auto sType =
+                dynamic_cast<StructDataType *>(stmtToDataTypeMap[sField]);
+            for (auto s : sType->scope->symbolsMap)
+            {
+                currentScope->AddSymbol(s.second, sField->GetCodeErrString());
+            }
+            VarDeclStatement *var = gZtoonArena.Allocate<VarDeclStatement>();
+            DataTypeToken *dataToken = gZtoonArena.Allocate<DataTypeToken>();
+            auto dataTypeToken =
+                gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            dataTypeToken->lexeme = sType->GetName();
+            dataToken->dataType = dataTypeToken;
+            var->dataTypeToken = dataToken;
+            auto idToken = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            idToken->lexeme = sType->GetName() + "_field";
+            var->identifier = idToken;
+            // AnalyzeVarDeclStatement(var, true, true, false);
+            long long loc = 0;
+            for (long long i = 0; i < unionStmt->fieldsInOrder.size(); i++)
+            {
+                if (unionStmt->fieldsInOrder[i] == sField)
+                {
+                    loc = i;
+                    break;
+                }
+            }
+
+            unionStmt->fields.insert(unionStmt->fields.begin() + loc, var);
+        }
+
+        for (auto itr = unionStmt->GetFields().begin();
+             itr != unionStmt->GetFields().end(); itr++)
+        {
+            auto field = *itr;
             AnalyzeStatement(field);
             StructStatement *fieldStructStmt =
                 dynamic_cast<StructStatement *>(field);
 
-            if (fieldStructStmt)
-            {
-                for (auto f : fieldStructStmt->fields)
-                {
-                    toAddFields.push_back(f);
-                }
-            }
-
             auto fieldDataType = stmtToDataTypeMap[field];
             auto fieldUnionType = dynamic_cast<UnionDataType *>(fieldDataType);
-
             auto fieldStructType =
                 dynamic_cast<StructDataType *>(fieldDataType);
-            if (fieldStructType)
-            {
-                currentScope->horizotnalScopes.push_back(
-                    fieldStructType->scope);
-            }
-
             if (isGlobal)
             {
-
                 std::function<bool(std::string, StructStatement *,
                                    UnionStatement *)>
                     checkCycleType = nullptr;
@@ -2170,10 +2230,7 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
 
             unionType->fields.push_back(fieldDataType);
         }
-        for (auto f : toAddFields)
-        {
-            unionStmt->fields.push_back(f);
-        }
+        currentScope = temp;
     }
 }
 void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
@@ -2897,7 +2954,7 @@ void SemanticAnalyzer::AnalyzeUnaryExpression(UnaryExpression *unaryExpr)
                 size_t s = currentBlockStatement->statements.size();
                 currentBlockStatement->statements.insert(
                     currentBlockStatement->statements.begin() +
-                        currentBlockStatement->index + 1,
+                        (long long)currentBlockStatement->index + 1,
                     varAssignStatement);
             }
             // disable this expression.
@@ -3350,7 +3407,6 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
             left = exprToDataTypeMap[derefPtr];
         }
     }
-
     if (left->type == DataType::Type::STRUCT)
     {
         maExpr->accessType = MemberAccessExpression::AccessType::STRUCT;
@@ -3399,20 +3455,16 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
         bool uFound = false;
         for (auto u : structStmt->unions)
         {
-            for (auto v : u->GetFields())
+            auto uType = dynamic_cast<UnionDataType *>(stmtToDataTypeMap[u]);
+            uType->scope->lookUpParent = false;
+            auto symbol =
+                uType->scope->GetSymbol(field->GetPrimary()->GetLexeme(),
+                                        field->GetCodeErrString(), true);
+            uType->scope->lookUpParent = true;
+            if (symbol)
             {
-
-                auto var = dynamic_cast<VarDeclStatement *>(v);
-                if (var && var->GetIdentifier()->GetLexeme() ==
-                               field->GetPrimary()->GetLexeme())
-                {
-                    anonymousUnionStmt = u;
-                    uFound = true;
-                    break;
-                }
-            }
-            if (uFound)
-            {
+                anonymousUnionStmt = u;
+                varField = dynamic_cast<Variable *>(symbol)->varDeclStmt;
                 break;
             }
         }
@@ -3440,48 +3492,65 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
 
         if (anonymousUnionStmt)
         {
-            maExpr->accessType = MemberAccessExpression::AccessType::UNION;
             MemberAccessExpression *expr =
                 gZtoonArena.Allocate<MemberAccessExpression>();
+            expr->token = maExpr->token;
             expr->accessType = MemberAccessExpression::AccessType::STRUCT;
-            expr->leftExpr = maExpr->GetLeftExpression();
-            expr->rightExpr = maExpr->GetRightExpression();
-            exprToDataTypeMap[expr] = stmtToDataTypeMap[anonymousUnionStmt];
-            maExpr->leftExpr = expr;
-        }
-
-        Scope *temp = currentScope;
-        currentScope = structType->scope;
-        currentScope->lookUpParent = false;
-
-        AnalyzeExpression(maExpr->GetRightExpression());
-        DataType *rightDataType = exprToDataTypeMap[field];
-        if (methodField)
-        {
-            PointerDataType *fnPtrType = dynamic_cast<PointerDataType *>(
-                exprToDataTypeMap[maExpr->GetRightExpression()]);
-            FnDataType *fnDataType = dynamic_cast<FnDataType *>(
-                fnPtrType ? fnPtrType->dataType : nullptr);
-            if (fnDataType->IsMethod())
+            auto uType = dynamic_cast<UnionDataType *>(
+                stmtToDataTypeMap[anonymousUnionStmt]);
+            VarDeclStatement *variable = nullptr;
+            for (auto f : structStmt->fields)
             {
-                methodToCallerMap[maExpr] = maExpr->GetLeftExpression();
-            }
-            else
-            {
-                if (maExpr->token->GetType() != TokenType::DOUBLE_COLON)
+                if (f->GetIdentifier()->GetLexeme() ==
+                    uType->GetName() + "_field")
                 {
-                    ReportError(std::format("Function '{}' is not a method. To "
-                                            "invoke it use '{}::{}' instead",
-                                            field->GetPrimary()->GetLexeme(),
-                                            structType->GetName(),
-                                            field->GetPrimary()->GetLexeme()),
-                                field->GetCodeErrString());
+                    variable = f;
+                    break;
                 }
             }
+            auto rightPE = gZtoonArena.Allocate<PrimaryExpression>();
+            rightPE->primary = variable->GetIdentifier();
+            expr->leftExpr = maExpr->leftExpr;
+            expr->rightExpr = rightPE;
+            maExpr->leftExpr = expr;
+            maExpr->accessType = MemberAccessExpression::AccessType::UNION;
+            AnalyzeMemberAccessExpression(maExpr);
         }
-        exprToDataTypeMap[maExpr] = rightDataType;
-        currentScope = temp;
-        currentScope->lookUpParent = true;
+        else
+        {
+            Scope *temp = currentScope;
+            currentScope = structType->scope;
+            currentScope->lookUpParent = false;
+            AnalyzeExpression(maExpr->GetRightExpression());
+            DataType *rightDataType = exprToDataTypeMap[field];
+            if (methodField)
+            {
+                PointerDataType *fnPtrType = dynamic_cast<PointerDataType *>(
+                    exprToDataTypeMap[maExpr->GetRightExpression()]);
+                FnDataType *fnDataType = dynamic_cast<FnDataType *>(
+                    fnPtrType ? fnPtrType->dataType : nullptr);
+                if (fnDataType->IsMethod())
+                {
+                    methodToCallerMap[maExpr] = maExpr->GetLeftExpression();
+                }
+                else
+                {
+                    if (maExpr->token->GetType() != TokenType::DOUBLE_COLON)
+                    {
+                        ReportError(
+                            std::format("Function '{}' is not a method. To "
+                                        "invoke it use '{}::{}' instead",
+                                        field->GetPrimary()->GetLexeme(),
+                                        structType->GetName(),
+                                        field->GetPrimary()->GetLexeme()),
+                            field->GetCodeErrString());
+                    }
+                }
+            }
+            exprToDataTypeMap[maExpr] = rightDataType;
+            currentScope = temp;
+            currentScope->lookUpParent = true;
+        }
     }
     else if (left->type == DataType::Type::UNION)
     {
@@ -3512,42 +3581,43 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
                 std::format("Right expression of '.' must be an identifier"),
                 maExpr->GetCodeErrString());
         }
+
         // Check if union has this field
-        bool found = false;
-        StructStatement *anonymousStruct = nullptr;
-        for (auto f : unionStmt->fields)
+
+        VarDeclStatement *varField = nullptr;
+
+        for (auto v : unionStmt->GetFields())
         {
-            auto varField = dynamic_cast<VarDeclStatement *>(f);
-            auto structField = dynamic_cast<StructStatement *>(f);
-            if (varField)
+            auto var = dynamic_cast<VarDeclStatement *>(v);
+            if (var && var->GetIdentifier()->GetLexeme() ==
+                           field->GetPrimary()->GetLexeme())
             {
-                if (varField->identifier->GetLexeme() ==
-                    field->primary->GetLexeme())
-                {
-                    found = true;
-                }
-            }
-            else if (structField)
-            {
-                for (VarDeclStatement *structF : structField->fields)
-                {
-                    if (structF->identifier->GetLexeme() ==
-                        field->GetPrimary()->GetLexeme())
-                    {
-                        found = true;
-                        anonymousStruct = structField;
-                        break;
-                    }
-                }
-            }
-            if (found)
-            {
+                varField = var;
                 break;
             }
         }
-        if (!found)
+
+        StructStatement *anonymousStruct = nullptr;
+
+        for (auto s : unionStmt->structs)
         {
-            ReportError(std::format("union type '{}' does not have "
+            auto sType = dynamic_cast<StructDataType *>(stmtToDataTypeMap[s]);
+            sType->scope->lookUpParent = false;
+            auto symbol =
+                sType->scope->GetSymbol(field->GetPrimary()->GetLexeme(),
+                                        field->GetCodeErrString(), true);
+            sType->scope->lookUpParent = true;
+            if (symbol)
+            {
+                anonymousStruct = dynamic_cast<StructStatement *>(s);
+                varField = dynamic_cast<Variable *>(symbol)->varDeclStmt;
+                break;
+            }
+        }
+
+        if (!varField)
+        {
+            ReportError(std::format("Union type '{}' does not have "
                                     "field with name '{}'",
                                     unionType->name,
                                     field->GetPrimary()->GetLexeme()),
@@ -3556,26 +3626,46 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
 
         if (anonymousStruct)
         {
-            maExpr->accessType = MemberAccessExpression::AccessType::STRUCT;
             MemberAccessExpression *expr =
                 gZtoonArena.Allocate<MemberAccessExpression>();
+            expr->token = maExpr->token;
             expr->accessType = MemberAccessExpression::AccessType::UNION;
-            expr->leftExpr = maExpr->GetLeftExpression();
-            expr->rightExpr = maExpr->GetRightExpression();
-            exprToDataTypeMap[expr] = stmtToDataTypeMap[anonymousStruct];
+            auto sType = dynamic_cast<StructDataType *>(
+                stmtToDataTypeMap[anonymousStruct]);
+            VarDeclStatement *variable = nullptr;
+            for (auto f : unionStmt->fields)
+            {
+                auto varDeclField = dynamic_cast<VarDeclStatement *>(f);
+                if (varDeclField &&
+                    varDeclField->GetIdentifier()->GetLexeme() ==
+                        sType->GetName() + "_field")
+                {
+                    variable = varDeclField;
+                    break;
+                }
+            }
+            auto rightPE = gZtoonArena.Allocate<PrimaryExpression>();
+            rightPE->primary = variable->GetIdentifier();
+            expr->leftExpr = maExpr->leftExpr;
+            expr->rightExpr = rightPE;
             maExpr->leftExpr = expr;
+            maExpr->accessType = MemberAccessExpression::AccessType::STRUCT;
+            AnalyzeMemberAccessExpression(maExpr);
         }
+        else
+        {
 
-        Scope *temp = currentScope;
-        currentScope = unionType->scope;
-        currentScope->lookUpParent = false;
+            Scope *temp = currentScope;
+            currentScope = unionType->scope;
+            currentScope->lookUpParent = false;
 
-        AnalyzeExpression(maExpr->GetRightExpression());
+            AnalyzeExpression(maExpr->GetRightExpression());
 
-        DataType *rightDataType = exprToDataTypeMap[field];
-        exprToDataTypeMap[maExpr] = rightDataType;
-        currentScope = temp;
-        currentScope->lookUpParent = true;
+            DataType *rightDataType = exprToDataTypeMap[field];
+            exprToDataTypeMap[maExpr] = rightDataType;
+            currentScope = temp;
+            currentScope->lookUpParent = true;
+        }
     }
 }
 void SemanticAnalyzer::AnalyzePrimaryExpression(PrimaryExpression *primaryExpr)

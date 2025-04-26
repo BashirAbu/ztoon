@@ -784,6 +784,7 @@ Statement *Parser::ParseStructStatement(bool anonymous)
             }
             if (varDeclStmt)
             {
+                structStmt->fieldsInOrder.push_back(varDeclStmt);
                 structStmt->fields.push_back(varDeclStmt);
             }
             else if (unionStmt)
@@ -794,6 +795,7 @@ Statement *Parser::ParseStructStatement(bool anonymous)
                                 "decalred in struct definition",
                                 unionStmt->GetCodeErrString());
                 }
+                structStmt->fieldsInOrder.push_back(unionStmt);
                 structStmt->unions.push_back(unionStmt);
             }
             else if (fnStmt)
@@ -903,13 +905,14 @@ Statement *Parser::ParseUnionStatement()
             }
             if (varDeclStmt)
             {
-
+                unionStmt->fieldsInOrder.push_back(varDeclStmt);
                 unionStmt->fields.push_back(varDeclStmt);
             }
             else if (structStmt)
             {
 
-                unionStmt->fields.push_back(structStmt);
+                unionStmt->fieldsInOrder.push_back(structStmt);
+                unionStmt->structs.push_back(structStmt);
             }
             else
             {

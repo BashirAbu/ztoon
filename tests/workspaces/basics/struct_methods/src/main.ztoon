@@ -4,7 +4,7 @@ package mainPkg;
 fn sqrt(value: f64) -> f64;
 fn pow(value: f64, power: f64) -> f64;
 fn printf(str: readonly i8*, ...);
-
+fn strcmp(s1: readonly i8*, s2: readonly i8*) -> i32;
 fn test()
 {
     
@@ -28,18 +28,35 @@ struct Person
 }
 
 
-struct Vector3
-{
-    x: f32;
-}
 
 fn main() -> i32
 {
     struct Vector3
     {
-        x: f64;
-        y: f64;
-        z: f64;
+        union
+        {
+            elements: f64[3];
+            struct
+            {
+                x: f64;
+                y: f64;
+                z: f64;
+            }
+            struct
+            {
+                r: f64;
+                g: f64;
+                b: f64;
+            }
+        }
+        fn Create(x: f64, y: f64, z: f64) -> Vector3
+        {
+            res: Vector3;
+            res.x = x;
+            res.y = y;
+            res.z = z;
+            ret res;
+        }
         fn reference(self*)
         {
             self.x = 6.0;
@@ -47,29 +64,36 @@ fn main() -> i32
         fn copy(self)
         {
             self.x = 3.0;    
-        }
+         }
     
         fn GetLen(self*) -> f64
-        {
+        { 
             ret sqrt(pow(self.x, 2.0) + pow(self.y, 2.0) + pow(self.z, 2.0));
         } 
     }
+
     test();
-    position: Vector3 = {4.0, 3.0, 5.0};
+    position: Vector3 = Vector3::Create(1.0, 2.0, 3.0);
     len: f64 = position.GetLen();
-    c1: bool = len as i32 == 7; 
+    // printf("len: %f\n", len);
+    c1: bool = len as i32 == 3; 
     position.reference();
     c2: bool = position.x == 6.0;
     position.copy();
     c3: bool = position.x == 6.0;
 
-
-    joe : Person;
+    joe : Person = {"Joe", 33};
+    // joe.PrintDetails();
     mike: Person = Person::Create("mike", 22);
-    mike.PrintDetails();
+    // mike.PrintDetails();
 
-    all : i32 = (c1 && c2 && c3) as i32;
+    c4: bool = joe.age == 33;
+    c5: bool = strcmp(joe.name, "Joe") == 0;
+
+    c6: bool = mike.age == 22;
+    c7: bool = strcmp(mike.name, "mike") == 0;
+
+    all : i32 = (c1 && c2 && c3 && c4 && c5 && c6 && c7) as i32;
     printf("all: %d\n", all);
     ret all;
-    ret 1;
 }

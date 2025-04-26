@@ -9,6 +9,10 @@ fn main() -> i32
     c.type = ShapeType::Circle;
     c.ShapeUnion.Circle.R = 7.0;
     d: Shapes::circle* = nullptr;
-    printf("Area: %f", c.Arean());
-    ret 0;
+
+
+    c1: bool = (c.Area() as i32) == 153;
+
+ // printf("Area: %f", c.Area());
+    ret c1 as i32;
 }

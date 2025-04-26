@@ -243,7 +243,6 @@ class Scope
   private:
     std::string name;
     std::vector<Scope *> importedPackages;
-    std::vector<Scope *> horizotnalScopes;
     Scope *parent = nullptr;
     bool lookUpParent = true;
     std::unordered_map<std::string, Symbol *> symbolsMap;

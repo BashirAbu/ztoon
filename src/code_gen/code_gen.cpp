@@ -250,45 +250,68 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
 void CodeGen::AddIRSymbol(IRSymbol *irSymbol)
 {
     assert(irSymbol);
-    std::string name = std::format(
-        "{}::{}", semanticAnalyzer.currentScope->name, irSymbol->GetName());
-    if (!scopeToIRSymbolsMap.contains(semanticAnalyzer.currentScope))
-    {
-        scopeToIRSymbolsMap[semanticAnalyzer.currentScope] = {};
-    }
 
-    (scopeToIRSymbolsMap[semanticAnalyzer.currentScope])[name] = irSymbol;
+    CodeErrString ces;
+    if (auto symbol =
+            semanticAnalyzer.currentScope->GetSymbol(irSymbol->GetName(), ces))
+    {
+        symbolToIRSymobMap[symbol] = irSymbol;
+    }
+    // if (!scopeToIRSymbolsMap.contains(semanticAnalyzer.currentScope))
+    // {
+    //     scopeToIRSymbolsMap[semanticAnalyzer.currentScope] = {};
+    // }
+
+    // (scopeToIRSymbolsMap[semanticAnalyzer.currentScope])[name] = irSymbol;
 }
 
 IRSymbol *CodeGen::GetIRSymbol(std::string name)
 {
     IRSymbol *ret = nullptr;
-    Scope const *scope = semanticAnalyzer.currentScope;
-    while (!ret)
-    {
+    CodeErrString ces;
+    auto symbol = semanticAnalyzer.currentScope->GetSymbol(name, ces);
 
-        std::string _name = std::format("{}::{}", scope->name, name);
-        if ((scopeToIRSymbolsMap[scope]).contains(_name))
-        {
-            IRSymbol *ret = (scopeToIRSymbolsMap[scope])[_name];
-            return ret;
-        }
-        for (auto pkgScope : scope->importedPackages)
-        {
-            std::string _name = std::format("{}::{}", pkgScope->name, name);
-            if ((scopeToIRSymbolsMap[pkgScope]).contains(_name))
-            {
-                IRSymbol *ret = (scopeToIRSymbolsMap[pkgScope])[_name];
-                return ret;
-            }
-        }
-        scope = scope->GetParent();
-        if (!scope)
-        {
-            break;
-        }
-    }
-    return nullptr;
+    ret = symbolToIRSymobMap[symbol];
+    return ret;
+    // Scope const *scope = semanticAnalyzer.currentScope;
+    // while (!ret)
+    // {
+    //     std::string _name = std::format("{}::{}", scope->name, name);
+    //     if ((scopeToIRSymbolsMap[scope]).contains(_name))
+    //     {
+    //         IRSymbol *ret = (scopeToIRSymbolsMap[scope])[_name];
+    //         return ret;
+    //     }
+    //     else
+    //     {
+    //         for (auto s : scope->horizotnalScopes)
+    //         {
+    //             auto temp = semanticAnalyzer.currentScope;
+    //             semanticAnalyzer.currentScope = s;
+
+    //             ret = GetIRSymbol(name);
+
+    //             semanticAnalyzer.currentScope = temp;
+    //             if (ret)
+    //                 return ret;
+    //         }
+    //     }
+    //     for (auto pkgScope : scope->importedPackages)
+    //     {
+    //         std::string _name = std::format("{}::{}", pkgScope->name, name);
+    //         if ((scopeToIRSymbolsMap[pkgScope]).contains(_name))
+    //         {
+    //             IRSymbol *ret = (scopeToIRSymbolsMap[pkgScope])[_name];
+    //             return ret;
+    //         }
+    //     }
+    //     scope = scope->GetParent();
+    //     if (!scope)
+    //     {
+    //         break;
+    //     }
+    // }
+    // return nullptr;
 }
 
 IRValue CodeGen::CastIntToInt(IRValue value, IRType castType)
@@ -1097,8 +1120,9 @@ void CodeGen::AssignValueToVarStruct(IRValue ptr, Expression *expr,
     if (exprListType)
     {
         auto listExpr = dynamic_cast<InitializerListExpression *>(expr);
-
-        if (listExpr->GetExpressions().size() != structType->fields.size())
+        size_t listSize = listExpr->GetExpressions().size();
+        size_t structSize = structType->fields.size();
+        if (listSize != structSize)
         {
             ReportError(
                 std::format("List expression does not match struct '{}' size",
@@ -3044,6 +3068,15 @@ IRValue CodeGen::GenMemberAccessExpressionIR(MemberAccessExpression *maExpr,
         size_t index = 0;
         PrimaryExpression *primaryExpr =
             dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+        MemberAccessExpression *ma = dynamic_cast<MemberAccessExpression *>(
+            maExpr->GetRightExpression());
+
+        if (primaryExpr)
+        {
+        }
+        else if (ma)
+        {
+        }
         std::string rightName = primaryExpr->GetPrimary()->GetLexeme();
         IRType fieldIRType = {};
         bool fieldFound = false;
@@ -3082,19 +3115,46 @@ IRValue CodeGen::GenMemberAccessExpressionIR(MemberAccessExpression *maExpr,
     }
     else if (maExpr->accessType == MemberAccessExpression::AccessType::UNION)
     {
-        IRValue leftValue = GenExpressionIR(maExpr->GetLeftExpression(), true);
+        IRValue value = GenExpressionIR(maExpr->GetLeftExpression(), true);
         // casting
         auto castToType = semanticAnalyzer.exprToDataTypeMap[maExpr];
         auto castToPtrType = gZtoonArena.Allocate<PointerDataType>();
         castToPtrType->type = DataType::Type::POINTER;
         castToPtrType->dataType = castToType;
 
-        leftValue = CastPtrToPtr(leftValue, ZtoonTypeToLLVMType(castToPtrType));
+        // if (maExpr->GetRightExpression())
+        // {
+        //     auto temp = semanticAnalyzer.currentScope;
+        //     StructDataType *sType = nullptr;
+        //     UnionDataType *uType = nullptr;
+        //     auto leftType =
+        //         semanticAnalyzer.exprToDataTypeMap[maExpr->GetLeftExpression()];
+        //     if (leftType->GetType() == DataType::Type::POINTER)
+        //     {
+        //         auto ptrType = dynamic_cast<PointerDataType *>(leftType);
+        //         leftType = ptrType->PointedToDatatype();
+        //     }
+        //     if (leftType->GetType() == DataType::Type::UNION)
+        //     {
+        //         uType = dynamic_cast<UnionDataType *>(leftType);
+        //         semanticAnalyzer.currentScope = uType->scope;
+        //     }
+        //     else if (leftType->GetType() == DataType::Type::STRUCT)
+        //     {
+        //         sType = dynamic_cast<StructDataType *>(leftType);
+        //         semanticAnalyzer.currentScope = sType->scope;
+        //     }
+
+        //     value = GenExpressionIR(maExpr->GetRightExpression());
+        //     semanticAnalyzer.currentScope = temp;
+        // }
+
+        value = CastPtrToPtr(value, ZtoonTypeToLLVMType(castToPtrType));
 
         IRType type = ZtoonTypeToLLVMType(castToType);
-        leftValue.type = type;
+        value.type = type;
 
-        irValue = leftValue;
+        irValue = value;
     }
     else if (maExpr->accessType == MemberAccessExpression::AccessType::ENUM)
     {

@@ -1,9 +1,11 @@
 #pragma once
+#include "parser/parser.h"
 #include <cstdio>
 #include <filesystem>
 #include <vector>
 #include <yaml-cpp/yaml.h>
 void PrintError(std::string err);
+void PrintMSG(std::string msg);
 class ArgTokenizer
 {
   public:
@@ -15,6 +17,9 @@ class ArgTokenizer
         PROJECT,
         DEBUG,
         RELEASE,
+        IR, // for intermediate representation
+        V,  // for verbose
+        Q,  // quiet
         IDENTIFIER,
         EOA,
     };
@@ -44,6 +49,9 @@ class ArgParser
     ArgTokenizer::TokenType buildType = ArgTokenizer::TokenType::INVALID;
 
     std::string buildThisProject = "";
+    bool verbose = false;
+    bool printIR = false;
+    bool quiet = false;
 
   private:
     size_t currentIndex = 0;
@@ -83,6 +91,37 @@ struct Project
         }
         return (Type)0;
     }
+    static std::string PrjectTypeToStr(Type type)
+    {
+
+        switch (type)
+        {
+        case Type::EXE:
+        {
+            return "Executable";
+        }
+        break;
+        case Type::STATIC_LIB:
+        {
+            return "Static Library";
+        }
+        break;
+        case Type::SHARED_LIB:
+        {
+            return "Shared Library";
+        }
+        break;
+        case Type::ZLIB:
+        {
+            return "Ztoon Library";
+        }
+        break;
+        default:
+        {
+            return "Unknown";
+        }
+        }
+    }
     std::string name;
     Type type = Type::EXE;
     bool debugBuild = true;
@@ -115,6 +154,42 @@ struct Project
             PrintError(std::format("Unknown optimzation level '{}'", level));
 
         return (OptLevel)0;
+    }
+    std::string OptLevelToStr(OptLevel level)
+    {
+        switch (level)
+        {
+        case OptLevel::O0:
+        {
+            return "o0";
+        }
+        break;
+        case OptLevel::O1:
+        {
+            return "o1";
+        }
+        break;
+        case OptLevel::O2:
+        {
+            return "o2";
+        }
+        break;
+        case OptLevel::O3:
+        {
+            return "o3";
+        }
+        break;
+        case OptLevel::OZ:
+        {
+            return "oz";
+        }
+        break;
+        case OptLevel::OS:
+        {
+            return "os";
+        }
+        break;
+        }
     }
 
     struct CommonFlags
@@ -225,6 +300,10 @@ class Compiler
     std::vector<std::string> args;
     ArgParser *argParser = nullptr;
     WorkSpace workSpace;
+
+    bool printIRcode = false;
+    bool verbose = false;
+    bool quiet = false;
     void BuildProject(Project &project);
     void BuildWorkSpace();
     Project ParseProject(std::string projectName,

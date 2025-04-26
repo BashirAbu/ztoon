@@ -1,0 +1,7 @@
+sdl3:
+  type: zlib
+  linker_flags:
+    native_libs:
+      - sdl3:
+          type: static-lib
+          relative_path: deps/SDL3.lib

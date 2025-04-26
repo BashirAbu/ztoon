@@ -6,8 +6,8 @@
 #include <cstring>
 #include <format>
 #include <functional>
+#include <stack>
 #include <utility>
-
 std::string DataType::ToString()
 {
     std::string str;
@@ -188,18 +188,48 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
     }
 
     Scope *currentScope = this;
-    if (dataTypeToken->pkgToken)
+
+    if (dataTypeToken->libToken && dataTypeToken->pkgToken)
     {
-        Package *pkgFound = nullptr;
-        for (auto pkg : semanticAnalyzer->packages)
+        Library *libFound = nullptr;
+        for (auto lib : semanticAnalyzer->libraries)
         {
-            if (pkg->GetIdentifier()->GetLexeme() ==
-                dataTypeToken->pkgToken->GetLexeme())
+            if (lib->name == dataTypeToken->libToken->GetLexeme())
+            {
+                libFound = lib;
+                break;
+            }
+        }
+
+        if (!libFound)
+        {
+            CodeErrString ces;
+            ces.firstToken = dataTypeToken->libToken;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError(std::format("Library '{}' not found.",
+                                    dataTypeToken->libToken->GetLexeme()),
+                        ces);
+        }
+
+        Package *pkgFound = nullptr;
+        std::stack<Library *> libStack;
+        libStack.push(libFound);
+        while (!libStack.empty())
+        {
+            auto topLib = libStack.top();
+            libStack.pop();
+            for (auto l : topLib->libs)
+            {
+                libStack.push(l);
+            }
+
+            for (auto pkg : topLib->packages)
             {
                 pkgFound = pkg;
                 break;
             }
         }
+
         if (!pkgFound)
         {
             CodeErrString ces;
@@ -221,6 +251,73 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 
         currentScope = semanticAnalyzer->pkgToScopeMap[pkgFound];
     }
+    else if (dataTypeToken->pkgToken)
+    {
+        Package *pkgFound = nullptr;
+        for (auto pkg : semanticAnalyzer->packages)
+        {
+            if (pkg->GetIdentifier()->GetLexeme() ==
+                dataTypeToken->pkgToken->GetLexeme())
+            {
+                pkgFound = pkg;
+                break;
+            }
+        }
+        if (!pkgFound)
+        {
+            Scope *scope = semanticAnalyzer->currentScope;
+            while (scope)
+            {
+                for (auto lib : scope->importedLibs)
+                {
+                    std::stack<Library *> libStack;
+                    libStack.push(lib);
+                    while (!libStack.empty())
+                    {
+                        auto topLib = libStack.top();
+                        libStack.pop();
+                        for (auto l : topLib->libs)
+                        {
+                            libStack.push(l);
+                        }
+
+                        for (auto pkg : topLib->packages)
+                        {
+                            if (pkg->GetIdentifier()->GetLexeme() ==
+                                dataTypeToken->pkgToken->GetLexeme())
+                            {
+                                pkgFound = pkg;
+                                break;
+                            }
+                        }
+                    }
+                }
+                scope = scope->parent;
+            }
+
+            if (!pkgFound)
+            {
+                CodeErrString ces;
+                ces.firstToken = dataTypeToken->pkgToken;
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError(std::format("Package '{}' is not found",
+                                        dataTypeToken->pkgToken->GetLexeme()),
+                            ces);
+            }
+        }
+
+        if (!semanticAnalyzer->pkgToScopeMap.contains(pkgFound))
+        {
+            auto tempPkg = semanticAnalyzer->currentPackage;
+            auto tempScope = semanticAnalyzer->currentScope;
+            semanticAnalyzer->AnalyzePackage(pkgFound);
+            semanticAnalyzer->currentPackage = tempPkg;
+            semanticAnalyzer->currentScope = tempScope;
+        }
+
+        currentScope = semanticAnalyzer->pkgToScopeMap[pkgFound];
+    }
+
     if (!dataTypeToken->arrayDesc)
     {
         while (currentScope)
@@ -228,6 +325,18 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
             if (currentScope->datatypesMap.contains(typeStr))
             {
                 DataType *type = currentScope->datatypesMap[typeStr];
+
+                auto symbolType = dynamic_cast<Symbol *>(type);
+
+                if (symbolType)
+                {
+                    if (!symbolType->IsPublic())
+                    {
+                        ReportError(std::format("'{}' is private",
+                                                symbolType->GetName()),
+                                    dataTypeToken->GetCodeErrString());
+                    }
+                }
                 return type;
             }
             for (auto pkg : currentScope->importedPackages)
@@ -593,6 +702,38 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
                 break;
             }
         }
+        for (auto lib : importedLibs)
+        {
+            std::stack<Library *> libStack;
+            libStack.push(lib);
+            while (!libStack.empty())
+            {
+                auto topLib = libStack.top();
+                libStack.pop();
+                for (auto l : topLib->libs)
+                {
+                    libStack.push(l);
+                }
+
+                for (auto pkg : topLib->packages)
+                {
+                    auto pkgScope = semanticAnalyzer->pkgToScopeMap[pkg];
+                    _name = std::format("{}::{}", pkgScope->name, name);
+                    if (pkgScope->symbolsMap.contains(_name))
+                    {
+                        symbol = pkgScope->symbolsMap.at(_name);
+                        if (!symbol->IsPublic())
+                        {
+                            ReportError(
+                                std::format("'{}' is private member.", name),
+                                codeErrString);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         // go up one level;
         if (!current->parent || !lookUpParent)
         {
@@ -2479,6 +2620,7 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
                 pkgToScopeMap[currentPackage]->importedPackages.push_back(
                     importedPkgScope);
             }
+            currentScope->importedLibs.push_back(importedLibrary);
         }
     }
 }
@@ -3312,7 +3454,9 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
 
         AnalyzeExpression(packageMember);
 
-        auto symbol = dynamic_cast<Symbol *>(exprToDataTypeMap[packageMember]);
+        auto symbol =
+            currentScope->GetSymbol(packageMember->GetPrimary()->GetLexeme(),
+                                    packageMember->GetCodeErrString());
         if (!symbol->IsPublic())
         {
             ReportError(std::format("type '{}' is private",

@@ -74,10 +74,10 @@ struct IRLoop
 class CodeGen
 {
   public:
-    CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch);
+    CodeGen(SemanticAnalyzer &semanticAnalyzer);
     ~CodeGen();
     void GenIR(std::vector<Package *> &packages);
-    void Compile(Project &project);
+    void Compile(Project &project, bool printIR = false);
     static void Link(Project &project);
     void AddIRSymbol(IRSymbol *irSymbol);
     IRSymbol *GetIRSymbol(std::string name);

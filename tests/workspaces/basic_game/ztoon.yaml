@@ -1,0 +1,12 @@
+workspace:
+  name: basic_game
+  projects:
+    - sdl3:
+        relative_path: sdl3/
+        type: zlib
+    - core:
+        relative_path: core/
+        type: zlib
+    - game:
+        relative_path: game/
+        type: exe

@@ -1,0 +1,35 @@
+package mainPkg;
+import core::core;
+
+import sdl3;
+
+fn main() -> i32
+{
+    result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);
+
+    if !result {
+        printf("Failed to initialize SDL: %s", SDL3::get_error());
+        ret 1;
+    }
+
+    window: u8* = SDL3::create_window("Ztoon", 1280, 720,
+     window_flags::SDL_WINDOW_OPENGL);
+
+    if window as bool {
+        printf("Failed to create window. Err: %s", SDL3::get_error());
+        ret 1;
+    }
+    done: bool = false;
+    while !done {
+        printf("hi\n");
+        //gg stack
+        event: SDL3::event;
+        // while SDL3::poll_event(&event) {
+        //     if event.type as i32 == SDL3::event_type::SDL_EVENT_QUIT as i32 {
+        //         done = true;
+        //     }
+        // }
+    }
+
+    ret 0;
+}

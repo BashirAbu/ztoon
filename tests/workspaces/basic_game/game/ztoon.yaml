@@ -1,0 +1,11 @@
+game:
+  type: exe
+  debug_flags:
+    opt_level: o0
+  release_flags:
+    opt_level: o3 
+  deps:
+    - sdl3:
+        relative_path: ../sdl3
+    - core:
+        relative_path: ../core

@@ -37,7 +37,9 @@ Compiler::Compiler(int argv, char **argc)
     args.push_back("--eoa");
     argParser = gZtoonArena.Allocate<ArgParser>(args);
     argParser->Parse();
-
+    printIRcode = argParser->printIR;
+    verbose = argParser->verbose;
+    quiet = argParser->quiet;
     if (!argParser->workSpaceName.empty())
     {
         if (std::filesystem::exists(argParser->workSpaceName) &&
@@ -387,11 +389,11 @@ Compiler::ParseProject(std::string projectName,
     {
         project.targetArch = projectRoot[projectName]["arch"].as<std::string>();
     }
-    else
-    {
-        // TODO remove
-        project.targetArch = "x86_64-pc-windows-msvc";
-    }
+    // else
+    // {
+    //     // TODO remove
+    //     project.targetArch = "x86_64-pc-windows-msvc";
+    // }
 
     std::function<void(Project & project)> parseDeps = nullptr;
     parseDeps = [&](Project &_project)
@@ -440,6 +442,79 @@ Compiler::ParseProject(std::string projectName,
 
 void Compiler::BuildProject(Project &project)
 {
+    if (!quiet)
+    {
+        PrintMSG(std::format("Building project '{}' ...", project.name));
+
+        if (verbose)
+        {
+            // Arch
+            // PrintMSG(std::format("Target architecture: {}", ));
+            // build type
+            PrintMSG(std::format("Type: {}",
+                                 Project::PrjectTypeToStr(project.type)));
+            if (project.debugBuild)
+            {
+                PrintMSG("Build type: Debug");
+                // Compiler Flags
+                PrintMSG("Compiler Flags:");
+                PrintMSG(std::format(
+                    "Optimizatoin Level: {}",
+                    project.OptLevelToStr(project.debugFlags.optLevel)));
+            }
+            else
+            {
+                PrintMSG("Build type: Release");
+                PrintMSG("Compiler Flags:");
+                PrintMSG(std::format(
+                    "Optimizatoin Level: {}",
+                    project.OptLevelToStr(project.releaseFlags.optLevel)));
+            }
+
+            // linker flags
+            PrintMSG("Linker Flags:");
+
+            if (project.type == Project::Type::EXE)
+            {
+                PrintMSG(std::format("Executable Type: '{}'",
+                                     project.linkerFlags.type ==
+                                             Project::LinkerFlags::Type::CONSOLE
+                                         ? "console"
+                                         : "window"));
+            }
+            PrintMSG(std::format("Linking against CRT: '{}'",
+                                 project.linkerFlags.noCRT ? "Off" : "On"));
+            if (!project.linkerFlags.noCRT)
+            {
+                PrintMSG(std::format(
+                    "CRT link type: {}",
+                    project.linkerFlags.crtLinkType ==
+                            Project::LinkerFlags::CRT_LinkType::STATIC
+                        ? "static"
+                        : "dynamic"));
+            }
+            if (!project.linkerFlags.nativeLibs.empty())
+            {
+                PrintMSG("Liking against native libs:");
+                for (auto nativeLib : project.linkerFlags.nativeLibs)
+                {
+                    PrintMSG(std::format("Name: {}", nativeLib.name));
+                    PrintMSG(std::format(
+                        "Type: {}", Project::PrjectTypeToStr(nativeLib.type)));
+                }
+                PrintMSG("");
+            }
+
+            if (!project.deps.empty())
+            {
+                PrintMSG("Ztoon libs depedencies:");
+                for (auto dep : project.deps)
+                {
+                    PrintMSG(dep.name);
+                }
+            }
+        }
+    }
 
     std::function<std::vector<Package *>(Project & project)>
         lexerAndParseProject = nullptr;
@@ -576,8 +651,9 @@ void Compiler::BuildProject(Project &project)
         }
     }
     SemanticAnalyzer semanticAnalyzer(packages, libs);
-    CodeGen codeGen(semanticAnalyzer, project.targetArch);
-    codeGen.Compile(project);
+    CodeGen codeGen(semanticAnalyzer);
+    PrintMSG("Compiling...");
+    codeGen.Compile(project, printIRcode);
 }
 
 void Compiler::BuildWorkSpace()
@@ -608,7 +684,9 @@ void Compiler::BuildWorkSpace()
 
         if (buildProj.type != Project::Type::ZLIB)
         {
+            PrintMSG(std::format("Linking {}...", buildProj.name));
             CodeGen::Link(buildProj);
+            PrintMSG("Finished.");
         }
 
         return;
@@ -643,6 +721,9 @@ void ArgTokenizer::Tokenize(std::vector<std::string> args)
     patterns.push_back({std::regex(R"(debug)"), TokenType::DEBUG});
     patterns.push_back({std::regex(R"(-build)"), TokenType::BUILD});
     patterns.push_back({std::regex(R"(-project)"), TokenType::PROJECT});
+    patterns.push_back({std::regex(R"(-ir)"), TokenType::IR});
+    patterns.push_back({std::regex(R"(-v)"), TokenType::V});
+    patterns.push_back({std::regex(R"(-q)"), TokenType::Q});
     patterns.push_back({std::regex(R"(--eoa)"), TokenType::EOA});
     patterns.push_back(
         {std::regex(R"([a-zA-Z][a-zA-Z0-9_]*)"), TokenType::IDENTIFIER});
@@ -743,6 +824,18 @@ void ArgParser::Parse()
             }
             buildThisProject = Prev()->arg;
         }
+        else if (Consume(ArgTokenizer::TokenType::V))
+        {
+            verbose = true;
+        }
+        else if (Consume(ArgTokenizer::TokenType::IR))
+        {
+            printIR = true;
+        }
+        else if (Consume(ArgTokenizer::TokenType::Q))
+        {
+            quiet = true;
+        }
         else
         {
             PrintError(std::format("Invalid argument '{}'", Peek()->arg));
@@ -756,3 +849,4 @@ void PrintError(std::string err)
     exit(-1);
     // assert(0);
 }
+void PrintMSG(std::string msg) { printf("%s\n", msg.c_str()); }

@@ -243,6 +243,7 @@ class Scope
   private:
     std::string name;
     std::vector<Scope *> importedPackages;
+    std::vector<Library *> importedLibs;
     Scope *parent = nullptr;
     bool lookUpParent = true;
     std::unordered_map<std::string, Symbol *> symbolsMap;

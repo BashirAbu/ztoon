@@ -476,10 +476,20 @@ IRValue CodeGen::CastIRValue(IRValue value, IRType castType)
     }
 }
 
-CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
+CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer)
     : semanticAnalyzer(semanticAnalyzer)
 {
     currentStage = Stage::CODE_GEN;
+}
+
+LLD_HAS_DRIVER(coff)
+LLD_HAS_DRIVER(elf)
+LLD_HAS_DRIVER(mingw)
+LLD_HAS_DRIVER(macho)
+LLD_HAS_DRIVER(wasm)
+
+void CodeGen::Compile(Project &project, bool printIR)
+{
     llvm::InitializeAllTargetInfos();
     llvm::InitializeAllTargets();
     llvm::InitializeAllTargetMCs();
@@ -491,20 +501,14 @@ CodeGen::CodeGen(SemanticAnalyzer &semanticAnalyzer, std::string targetArch)
 
     ctx = std::make_unique<llvm::LLVMContext>();
     module = std::make_unique<llvm::Module>("ztoon module", *ctx);
-
-    module->setTargetTriple(targetArch);
+    if (project.targetArch.empty())
+    {
+        project.targetArch = llvm::sys::getDefaultTargetTriple();
+    }
+    module->setTargetTriple(project.targetArch);
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
-}
 
-LLD_HAS_DRIVER(coff)
-LLD_HAS_DRIVER(elf)
-LLD_HAS_DRIVER(mingw)
-LLD_HAS_DRIVER(macho)
-LLD_HAS_DRIVER(wasm)
-
-void CodeGen::Compile(Project &project)
-{
     std::function<void(Library * lib)> GenLibIR;
     GenLibIR = [&](Library *lib)
     {
@@ -526,7 +530,8 @@ void CodeGen::Compile(Project &project)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    module->print(llvm::outs(), nullptr);
+    if (printIR)
+        module->print(llvm::outs(), nullptr);
 
     std::string error;
     const llvm::Target *target =
@@ -816,13 +821,13 @@ void CodeGen::Link(Project &project)
 #error "Unknown platform"
 #endif
 
-    printf("Building %s...\n", project.name.c_str());
-    printf("Linker Flags: \n");
-    for (auto f : lldArgs)
-    {
-        printf("%s\n", f);
-    }
-    printf("\n\n");
+    // printf("Building %s...\n", project.name.c_str());
+    // printf("Linker Flags: \n");
+    // for (auto f : lldArgs)
+    // {
+    //     printf("%s\n", f);
+    // }
+    // printf("\n\n");
     lld::Result result =
         lld::lldMain(lldArgs, llvm::outs(), llvm::errs(), LLD_ALL_DRIVERS);
     if (result.retCode)

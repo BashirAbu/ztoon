@@ -3039,7 +3039,9 @@ IRValue CodeGen::GenUnaryExpressionIR(UnaryExpression *unaryExpr, bool isWrite)
         unaryExpr->GetOperator()->GetType() != TokenType::ASTERISK &&
         unaryExpr->GetOperator()->GetType() != TokenType::BITWISE_AND)
     {
+
         rValue = GenExpressionIR(unaryExpr->GetRightExpression(), isWrite);
+
         irValue.type = rValue.type;
     }
 
@@ -3193,6 +3195,13 @@ IRValue CodeGen::GenUnaryExpressionIR(UnaryExpression *unaryExpr, bool isWrite)
     case TokenType::BITWISE_AND:
     {
         irValue = GenExpressionIR(unaryExpr->GetRightExpression(), true);
+        auto constValue = llvm::isa<llvm::Constant>(irValue.value);
+        if (constValue)
+        {
+            ReportError(
+                std::format("Cannot dereference a compile time expression"),
+                unaryExpr->GetRightExpression()->GetCodeErrString());
+        }
         break;
     }
     default:

@@ -49,6 +49,16 @@
 #include <format>
 #include <memory>
 #include <string>
+static void removeReadonlyPrefix(std::string &str)
+{
+    const std::string prefix = "readonly ";
+    const size_t prefixLen = prefix.length();
+
+    if (str.compare(0, prefixLen, prefix) == 0)
+    {
+        str.erase(0, prefixLen);
+    }
+}
 IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
 {
     IRType irType = {};
@@ -823,7 +833,8 @@ CodeGen::InitListToArrayConstant(ArrayDataType *arrType,
             llvm::dyn_cast<llvm::Constant>(value.value);
         if (!valueConst)
         {
-            ReportError("Expression is not constant", expr->GetCodeErrString());
+            ReportError("Expression is not known at compile time",
+                        expr->GetCodeErrString());
         }
         consts.push_back(valueConst);
     }
@@ -918,7 +929,8 @@ CodeGen::InitListToStructConstant(StructDataType *structType,
             llvm::dyn_cast<llvm::Constant>(value.value);
         if (!valueConst)
         {
-            ReportError("Expression is not constant", expr->GetCodeErrString());
+            ReportError("Expression is not known at compile time",
+                        expr->GetCodeErrString());
         }
         consts.push_back(valueConst);
     }
@@ -1029,7 +1041,11 @@ void CodeGen::AssignValueToVarArray(IRValue ptr, Expression *expr,
     else if (rValueArrType)
     {
 
-        if (rValueArrType->ToString() != arrType->ToString())
+        std::string r = rValueArrType->ToString();
+        std::string l = arrType->ToString();
+        removeReadonlyPrefix(r);
+        removeReadonlyPrefix(l);
+        if (r != l)
         {
             ReportError(std::format("Type {} and type {} are not compatible",
                                     arrType->ToString(),
@@ -1372,105 +1388,133 @@ void CodeGen::GenGlobalVariableIR(VarDeclStatement *varDeclStatement)
     varDeclType.type = ZtoonTypeToLLVMType(type).type;
     varDeclType.isSigned = type->IsSigned();
 
-    llvm::GlobalVariable *globalVar;
-    if (varDeclStatement->GetExpression())
-    {
-        auto pe = dynamic_cast<PrimaryExpression *>(
-            varDeclStatement->GetExpression());
-
-        if (pe && pe->GetPrimary()->GetType() == TokenType::IDENTIFIER)
-        {
-            auto irSymbol = GetIRSymbol(pe->GetPrimary()->GetLexeme());
-            if (!irSymbol)
-            {
-                Variable *rVar = dynamic_cast<Variable *>(
-                    semanticAnalyzer.currentScope->GetSymbol(
-                        pe->GetPrimary()->GetLexeme(),
-                        varDeclStatement->GetExpression()->GetCodeErrString()));
-
-                GenGlobalVariableIR(rVar->varDeclStmt);
-            }
-        }
-
-        if (arrType || structType)
-        {
-            auto listExpr = dynamic_cast<InitializerListExpression *>(
-                varDeclStatement->GetExpression());
-            if (!listExpr)
-            {
-                ReportError(
-                    std::format("Global {} variables can only be  initialized "
-                                "with a list of constant expressions",
-                                arrType ? " array " : "struct"),
-                    varDeclStatement->GetCodeErrString());
-            }
-            llvm::Constant *consts =
-                arrType ? InitListToArrayConstant(arrType, listExpr)
-                        : InitListToStructConstant(structType, listExpr);
-
-            globalVar = new llvm::GlobalVariable(
-                *module, varDeclType.type, type->IsReadOnly(),
-                llvm::GlobalValue::ExternalLinkage, consts,
-                std::format("g_{}",
-                            varDeclStatement->GetIdentifier()->GetLexeme()));
-            globalConstsMap[varDeclStatement] = {consts, false};
-        }
-        else
-        {
-
-            bool isExprGlobalVar =
-                pe ? pe->GetPrimary()->GetType() == TokenType::IDENTIFIER
-                   : false;
-            IRValue exprValue =
-                GenExpressionIR(varDeclStatement->GetExpression());
-            if (!llvm::isa<llvm::Constant>(exprValue.value) ||
-                type->GetType() == DataType::Type::FN)
-            {
-                ReportError(
-                    std::format("Expression '{}' is not known at "
-                                "compile time",
-                                varDeclStatement->GetExpression()
-                                    ->GetCodeErrString()
-                                    .str),
-                    varDeclStatement->GetExpression()->GetCodeErrString());
-            }
-            llvm::Constant *constValue =
-                llvm::cast<llvm::Constant>(exprValue.value);
-            globalVar = new llvm::GlobalVariable(
-                *module, varDeclType.type, type->IsReadOnly(),
-                llvm::GlobalValue::ExternalLinkage,
-                isExprGlobalVar
-                    ? llvm::cast<llvm::GlobalVariable>(exprValue.value)
-                          ->getInitializer()
-                    : constValue,
-                std::format("g_{}",
-                            varDeclStatement->GetIdentifier()->GetLexeme()));
-            globalConstsMap[varDeclStatement] = {constValue, false};
-        }
-    }
-    else
-    {
-        llvm::Constant *constValue =
-            structType ? InitListToStructConstant(structType,
-                                                  structType->defaultValuesList)
-                       : llvm::Constant::getNullValue(varDeclType.type);
-        globalVar = new llvm::GlobalVariable(
-            *module, varDeclType.type, type->IsReadOnly(),
-            llvm::GlobalValue::ExternalLinkage, constValue,
-            std::format("g_{}",
-                        varDeclStatement->GetIdentifier()->GetLexeme()));
-
-        globalConstsMap[varDeclStatement] = {constValue, false};
-    }
-
-    IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
-    irVariable->value = globalVar;
-    irVariable->variabel =
+    std::string varName =
+        std::format("{}::{}", semanticAnalyzer.currentScope->name,
+                    varDeclStatement->GetIdentifier()->GetLexeme());
+    Variable *var =
         dynamic_cast<Variable *>(semanticAnalyzer.currentScope->GetSymbol(
             varDeclStatement->GetIdentifier()->GetLexeme(),
             varDeclStatement->GetCodeErrString()));
-    irVariable->irType = varDeclType;
-    AddIRSymbol(irVariable);
+    if (var->isConstSymbol)
+    {
+        IRConstSymbol *constSymbol = gZtoonArena.Allocate<IRConstSymbol>();
+        constSymbol->name = varDeclStatement->identifier->GetLexeme();
+        constSymbol->irType = varDeclType;
+        if (varDeclStatement->GetExpression())
+        {
+            constSymbol->value =
+                GenExpressionIR(varDeclStatement->GetExpression()).value;
+        }
+        else
+        {
+            llvm::Constant *constValue =
+                structType ? InitListToStructConstant(
+                                 structType, structType->defaultValuesList)
+                           : llvm::Constant::getNullValue(varDeclType.type);
+            constSymbol->value = constValue;
+        }
+        AddIRSymbol(constSymbol);
+    }
+    else
+    {
+
+        llvm::GlobalVariable *globalVar;
+        if (varDeclStatement->GetExpression())
+        {
+            auto pe = dynamic_cast<PrimaryExpression *>(
+                varDeclStatement->GetExpression());
+
+            if (pe && pe->GetPrimary()->GetType() == TokenType::IDENTIFIER)
+            {
+                auto irSymbol = GetIRSymbol(pe->GetPrimary()->GetLexeme());
+                if (!irSymbol)
+                {
+                    Variable *rVar = dynamic_cast<Variable *>(
+                        semanticAnalyzer.currentScope->GetSymbol(
+                            pe->GetPrimary()->GetLexeme(),
+                            varDeclStatement->GetExpression()
+                                ->GetCodeErrString()));
+
+                    GenGlobalVariableIR(rVar->varDeclStmt);
+                }
+            }
+
+            if (arrType || structType)
+            {
+                auto listExpr = dynamic_cast<InitializerListExpression *>(
+                    varDeclStatement->GetExpression());
+                if (!listExpr)
+                {
+                    ReportError(
+                        std::format(
+                            "Global {} variables can only be initialized "
+                            "with a list of compile time expressions",
+                            arrType ? " array " : "struct"),
+                        varDeclStatement->GetCodeErrString());
+                }
+                llvm::Constant *consts =
+                    arrType ? InitListToArrayConstant(arrType, listExpr)
+                            : InitListToStructConstant(structType, listExpr);
+
+                globalVar = new llvm::GlobalVariable(
+                    *module, varDeclType.type, type->IsReadOnly(),
+                    llvm::GlobalValue::ExternalLinkage, consts, varName);
+                globalConstsMap[varDeclStatement] = {consts, false};
+            }
+            else
+            {
+
+                bool isExprGlobalVar =
+                    pe ? pe->GetPrimary()->GetType() == TokenType::IDENTIFIER
+                       : false;
+                IRValue exprValue =
+                    GenExpressionIR(varDeclStatement->GetExpression());
+                if (!llvm::isa<llvm::Constant>(exprValue.value) ||
+                    type->GetType() == DataType::Type::FN)
+                {
+                    ReportError(
+                        std::format("Expression '{}' is not known at "
+                                    "compile time",
+                                    varDeclStatement->GetExpression()
+                                        ->GetCodeErrString()
+                                        .str),
+                        varDeclStatement->GetExpression()->GetCodeErrString());
+                }
+                llvm::Constant *constValue =
+                    llvm::cast<llvm::Constant>(exprValue.value);
+                globalVar = new llvm::GlobalVariable(
+                    *module, varDeclType.type, type->IsReadOnly(),
+                    llvm::GlobalValue::ExternalLinkage,
+                    isExprGlobalVar
+                        ? llvm::cast<llvm::GlobalVariable>(exprValue.value)
+                              ->getInitializer()
+                        : constValue,
+                    varName);
+                globalConstsMap[varDeclStatement] = {constValue, false};
+            }
+        }
+        else
+        {
+            llvm::Constant *constValue =
+                structType ? InitListToStructConstant(
+                                 structType, structType->defaultValuesList)
+                           : llvm::Constant::getNullValue(varDeclType.type);
+            globalVar = new llvm::GlobalVariable(
+                *module, varDeclType.type, type->IsReadOnly(),
+                llvm::GlobalValue::ExternalLinkage, constValue, varName);
+
+            globalConstsMap[varDeclStatement] = {constValue, false};
+        }
+
+        IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
+        irVariable->value = globalVar;
+        irVariable->variabel =
+            dynamic_cast<Variable *>(semanticAnalyzer.currentScope->GetSymbol(
+                varDeclStatement->GetIdentifier()->GetLexeme(),
+                varDeclStatement->GetCodeErrString()));
+        irVariable->irType = varDeclType;
+        AddIRSymbol(irVariable);
+    }
 }
 void CodeGen::GenPackageGlobalFuncsAndVarsIR(Package *pkg)
 {
@@ -1816,63 +1860,100 @@ void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
         varDeclType.type = ZtoonTypeToLLVMType(type).type;
         varDeclType.isSigned = type->IsSigned();
 
-        llvm::AllocaInst *inst =
-            irBuilder->CreateAlloca(varDeclType.type, nullptr,
-                                    varDeclStmt->GetIdentifier()->GetLexeme());
-        IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
-        irVariable->value = inst;
-        irVariable->variabel =
+        Variable *var =
             dynamic_cast<Variable *>(semanticAnalyzer.currentScope->GetSymbol(
                 varDeclStmt->GetIdentifier()->GetLexeme(),
                 varDeclStmt->GetCodeErrString()));
-        irVariable->variabel->dataType =
-            semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
-        irVariable->irType = varDeclType;
-        AddIRSymbol(irVariable);
+        if (var->isConstSymbol)
+        {
+            IRConstSymbol *constSymbol = gZtoonArena.Allocate<IRConstSymbol>();
+            constSymbol->name = varDeclStmt->identifier->GetLexeme();
+            constSymbol->irType = varDeclType;
+
+            AddIRSymbol(constSymbol);
+        }
+        else
+        {
+            llvm::AllocaInst *inst = irBuilder->CreateAlloca(
+                varDeclType.type, nullptr,
+                varDeclStmt->GetIdentifier()->GetLexeme());
+            IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
+            irVariable->value = inst;
+            irVariable->variabel = dynamic_cast<Variable *>(
+                semanticAnalyzer.currentScope->GetSymbol(
+                    varDeclStmt->GetIdentifier()->GetLexeme(),
+                    varDeclStmt->GetCodeErrString()));
+            irVariable->variabel->dataType =
+                semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
+            irVariable->irType = varDeclType;
+            AddIRSymbol(irVariable);
+        }
     }
     if (genBody)
     {
-        auto irVariable = dynamic_cast<IRVariable *>(
-            GetIRSymbol(varDeclStmt->GetIdentifier()->GetLexeme()));
+        auto irSymbol = GetIRSymbol(varDeclStmt->GetIdentifier()->GetLexeme());
         DataType *type = semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
         ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(type);
         StructDataType *structType = dynamic_cast<StructDataType *>(type);
-        if (varDeclStmt->GetExpression())
+        auto varDeclType = ZtoonTypeToLLVMType(type);
+        IRVariable *irVariable = dynamic_cast<IRVariable *>(irSymbol);
+        IRConstSymbol *constSymbol = dynamic_cast<IRConstSymbol *>(irSymbol);
+        if (constSymbol)
         {
-            if (arrType)
+            if (varDeclStmt->GetExpression())
             {
-                std::vector<llvm::Value *> index;
-                AssignValueToVarArray({irVariable->value, irVariable->irType},
-                                      varDeclStmt->GetExpression(), arrType,
-                                      index);
-            }
-            else if (structType)
-            {
-                AssignValueToVarStruct({irVariable->value, irVariable->irType},
-                                       varDeclStmt->GetExpression(),
-                                       structType);
+                constSymbol->value =
+                    GenExpressionIR(varDeclStmt->GetExpression()).value;
             }
             else
             {
-                IRValue value = GenExpressionIR(varDeclStmt->GetExpression());
-                irBuilder->CreateStore(value.value, irVariable->value);
+                llvm::Constant *constValue =
+                    structType ? InitListToStructConstant(
+                                     structType, structType->defaultValuesList)
+                               : llvm::Constant::getNullValue(varDeclType.type);
+                constSymbol->value = constValue;
             }
         }
         else
         {
-            if (structType)
+            if (varDeclStmt->GetExpression())
             {
-                AssignValueToVarStruct({irVariable->value, irVariable->irType},
-                                       structType->defaultValuesList,
-                                       structType);
+                if (arrType)
+                {
+                    std::vector<llvm::Value *> index;
+                    AssignValueToVarArray(
+                        {irVariable->value, irVariable->irType},
+                        varDeclStmt->GetExpression(), arrType, index);
+                }
+                else if (structType)
+                {
+                    AssignValueToVarStruct(
+                        {irVariable->value, irVariable->irType},
+                        varDeclStmt->GetExpression(), structType);
+                }
+                else
+                {
+                    IRValue value =
+                        GenExpressionIR(varDeclStmt->GetExpression());
+                    irBuilder->CreateStore(value.value, irVariable->value);
+                }
             }
             else
             {
-                irBuilder->CreateStore(
-                    llvm::Constant::getNullValue(
-                        ZtoonTypeToLLVMType(irVariable->variabel->dataType)
-                            .type),
-                    irVariable->value);
+                if (structType)
+                {
+                    AssignValueToVarStruct(
+                        {irVariable->value, irVariable->irType},
+                        structType->defaultValuesList, structType);
+                }
+                else
+                {
+                    irBuilder->CreateStore(
+                        llvm::Constant::getNullValue(
+                            ZtoonTypeToLLVMType(irVariable->variabel->dataType)
+                                .type),
+                        irVariable->value);
+                }
             }
         }
     }
@@ -2221,7 +2302,7 @@ void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
                 llvm::dyn_cast<llvm::ConstantInt>(fValue.value);
             if (!valueConst)
             {
-                ReportError("Expression is not constant",
+                ReportError("Expression is not known at compile time",
                             f->expr->GetCodeErrString());
             }
             if (useSigned)

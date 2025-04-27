@@ -1,4 +1,3 @@
-#include "compiler/compiler.h"
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -9,6 +8,16 @@
 #include <functional>
 #include <stack>
 #include <utility>
+void removeReadonlyPrefix(std::string &str)
+{
+    const std::string prefix = "readonly ";
+    const size_t prefixLen = prefix.length();
+
+    if (str.compare(0, prefixLen, prefix) == 0)
+    {
+        str.erase(0, prefixLen);
+    }
+}
 std::string DataType::ToString()
 {
     std::string str;
@@ -394,7 +403,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         return fnPtrType;
     }
 
-    if (dataTypeToken->arrayDesc)
+    else if (dataTypeToken->arrayDesc)
     {
         auto arrType = gZtoonArena.Allocate<ArrayDataType>();
         arrType->type = DataType::Type::ARRAY;
@@ -416,7 +425,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         }
         result = arrType;
     }
-    if (dataTypeToken->pointerDesc)
+    else if (dataTypeToken->pointerDesc)
     {
 
         PointerDataType *ptrDataType = gZtoonArena.Allocate<PointerDataType>();
@@ -441,15 +450,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         ptrDataType->isReadOnly = dataTypeToken->readOnly;
         result = ptrDataType;
     }
-    else if (dataTypeToken->readOnly)
-    {
-        DataType *type = gZtoonArena.Allocate<DataType>();
-        *type = *(datatypesMap[dataTypeToken->GetDataType()->GetLexeme()]);
 
-        type->isReadOnly = true;
-        datatypesMap[type->ToString()] = type;
-        result = type;
-    }
     if (!result)
     {
         CodeErrString ces;
@@ -676,6 +677,7 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
         if (current->symbolsMap.contains(_name))
         {
             symbol = current->symbolsMap.at(_name);
+            break;
         }
 
         for (auto pkgScope : current->importedPackages)
@@ -806,7 +808,11 @@ void SemanticAnalyzer::ValidateAssignValueToVarArray(Expression *expr,
     }
     else if (rValueArrType)
     {
-        if (rValueArrType->ToString() != arrType->ToString())
+        std::string r = rValueArrType->ToString();
+        std::string l = arrType->ToString();
+        removeReadonlyPrefix(r);
+        removeReadonlyPrefix(l);
+        if (r != l)
         {
             ReportError(std::format("Types '{}' and '{}' are not compatible",
                                     arrType->ToString(),
@@ -1571,6 +1577,18 @@ void SemanticAnalyzer::AnalyzeVarDeclStatement(VarDeclStatement *varDeclStmt,
                             "assigned to global variables"),
                         varDeclStmt->GetExpression()->GetCodeErrString());
                 }
+            }
+        }
+
+        Variable *var = dynamic_cast<Variable *>(
+            currentScope->GetSymbol(varDeclStmt->GetIdentifier()->GetLexeme(),
+                                    varDeclStmt->GetCodeErrString()));
+        if (!varDeclStmt->IsParamter() && var->dataType->IsReadOnly())
+        {
+            if (!varDeclStmt->GetExpression() ||
+                exprToDataTypeMap[varDeclStmt->GetExpression()]->IsReadOnly())
+            {
+                var->isConstSymbol = true;
             }
         }
     }
@@ -3915,16 +3933,6 @@ void SemanticAnalyzer::AnalyzePrimaryExpression(PrimaryExpression *primaryExpr)
     }
 }
 
-void removeReadonlyPrefix(std::string &str)
-{
-    const std::string prefix = "readonly ";
-    const size_t prefixLen = prefix.length();
-
-    if (str.compare(0, prefixLen, prefix) == 0)
-    {
-        str.erase(0, prefixLen);
-    }
-}
 DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                                                 Expression **right)
 {

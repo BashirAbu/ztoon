@@ -220,6 +220,7 @@ class Variable : public Symbol
     std::string name = "";
     DataType *dataType = nullptr;
     VarDeclStatement *varDeclStmt = nullptr;
+    bool isConstSymbol = false;
     friend class SemanticAnalyzer;
     friend class CodeGen;
 };

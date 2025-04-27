@@ -3,9 +3,7 @@ import core::core;
 
 import sdl3;
 
-fn testing()
-{
-}
+arr: readonly i32[3] = {4,2,6};
 
 fn main() -> i32
 {

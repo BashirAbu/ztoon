@@ -22,13 +22,11 @@ fn main() -> i32
     done: bool = false;
     while !done {
         event: SDL3::event;
-        e: bool = SDL3::poll_event(&event);
-        while e {
-            if ((event.type) == (SDL3::event_type::SDL_EVENT_QUIT as u32))
+        while SDL3::poll_event(&event) {
+            if (event.type == SDL3::event_type::SDL_EVENT_QUIT)
             {
                 done = true;  
             }
-            e = SDL3::poll_event(&event); 
         }
     }
     ret 0;

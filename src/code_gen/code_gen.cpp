@@ -3270,6 +3270,11 @@ IRValue CodeGen::GenMemberAccessExpressionIR(MemberAccessExpression *maExpr,
         IRType type = ZtoonTypeToLLVMType(castToType);
         value.type = type;
 
+        if (!isWrite)
+        {
+            value.value = irBuilder->CreateLoad(value.type.type, value.value);
+        }
+
         irValue = value;
     }
     else if (maExpr->accessType == MemberAccessExpression::AccessType::ENUM)

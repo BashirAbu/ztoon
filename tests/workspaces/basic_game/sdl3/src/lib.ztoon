@@ -34,10 +34,10 @@ pub fn create_window(title: readonly i8*, w: i32, h: i32, flags: window_flags) -
     ret SDL_CreateWindow(title, w, h, flags as u64);
 }
 
-pub struct event 
+pub union event 
 {
-    type: u32;
-    //padding : u8[128];
+    type: event_type;
+    padding : u8[128];
 }
 
 pub fn SDL_PollEvent(e: event*) -> i32;

@@ -784,6 +784,7 @@ Statement *Parser::ParseStructStatement(bool anonymous)
             }
             if (varDeclStmt)
             {
+                varDeclStmt->isField = true;
                 structStmt->fieldsInOrder.push_back(varDeclStmt);
                 structStmt->fields.push_back(varDeclStmt);
             }
@@ -905,6 +906,7 @@ Statement *Parser::ParseUnionStatement()
             }
             if (varDeclStmt)
             {
+                varDeclStmt->isField = true;
                 unionStmt->fieldsInOrder.push_back(varDeclStmt);
                 unionStmt->fields.push_back(varDeclStmt);
             }

@@ -261,6 +261,19 @@ struct Library
     bool analyed = false;
 };
 
+struct TopVarDecl
+{
+    VarDeclStatement *varDecl = nullptr;
+    Scope *currentScope = nullptr;
+};
+struct TopAggTypeDecl
+{
+    StructStatement *structStmt = nullptr;
+    UnionStatement *unionStmt = nullptr;
+    EnumStatement *enumStmt = nullptr;
+    Scope *currentScope = nullptr;
+};
+
 class SemanticAnalyzer
 {
   public:
@@ -335,6 +348,8 @@ class SemanticAnalyzer
     std::unordered_map<Expression *, DataType *> exprToDataTypeMap;
     std::unordered_map<Statement *, DataType *> stmtToDataTypeMap;
     std::unordered_map<Expression *, Expression *> methodToCallerMap;
+    std::unordered_map<Function *, std::vector<TopVarDecl>> fnToVarDeclsMap;
+    std::unordered_map<Function *, std::vector<TopAggTypeDecl>> fnToAggDeclsMap;
     std::vector<Package *> packages;
     std::vector<Library *> libraries;
     Package *currentPackage = nullptr;

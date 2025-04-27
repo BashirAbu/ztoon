@@ -198,6 +198,7 @@ class VarDeclStatement : public Statement
     Expression *expression = nullptr;
 
     bool isParamter = false;
+    bool isField = false;
     bool isGlobal = false;
     friend class Parser;
     friend class SemanticAnalyzer;

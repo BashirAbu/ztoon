@@ -5,40 +5,31 @@ import sdl3;
 
 fn main() -> i32
 {
-    // result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);
+    result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);
 
-    // if !result {
-    //     printf("Failed to initialize SDL: %s", SDL3::get_error());
-    //     ret 1;
-    // }
+    if !result {
+        printf("Failed to initialize SDL: %s", SDL3::get_error());
+        ret 1;
+    }
 
-    // window: u8* = SDL3::create_window("Ztoon", 1280, 720,
-    //  window_flags::SDL_WINDOW_OPENGL);
+    window: u8* = SDL3::create_window("Ztoon", 1280, 720,
+     window_flags::SDL_WINDOW_OPENGL);
 
-    // if !(window as bool) {
-    //     printf("Failed to create window. Err: %s", SDL3::get_error());
-    //     ret 1;
-    // }
+    if !(window as bool) {
+        printf("Failed to create window. Err: %s", SDL3::get_error());
+        ret 1;
+    }
     done: bool = false;
     while !done {
-        // event: SDL3::event;
-        // e: bool = SDL3::poll_event(&event);
-        printf("done: %lu\n", done as u32);
-        while true {
-            done = true;
-            break;
-            // done = ((event.type) == (SDL3::event_type::SDL_EVENT_QUIT as u32));
-            // if ((event.type) == (SDL3::event_type::SDL_EVENT_QUIT as u32))
-            // {
-            //     //printf("Cond: %d\n",
-            //      //((event.type) == (SDL3::event_type::SDL_EVENT_QUIT as u32)) as i32);
-            //     done = true;  
-            // }
-            // e = SDL3::poll_event(&event); 
+        event: SDL3::event;
+        e: bool = SDL3::poll_event(&event);
+        while e {
+            if ((event.type) == (SDL3::event_type::SDL_EVENT_QUIT as u32))
+            {
+                done = true;  
+            }
+            e = SDL3::poll_event(&event); 
         }
-        //printf("Out Done: %d\n", (done) as i32);
     }
-    printf("Done for real");
-
     ret 0;
 }

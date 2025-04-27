@@ -1567,9 +1567,30 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 semanticAnalyzer.currentScope =
                     semanticAnalyzer
                         .blockToScopeMap[fnStmt->GetBlockStatement()];
+                for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
+                {
+                    auto temp = semanticAnalyzer.currentScope;
+                    if (aggType.structStmt)
+                    {
+                        GenStructStatementIR(aggType.structStmt, true, false);
+                    }
+                }
                 for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
                 {
-                    GenStatementIR(paramStmt);
+                    GenVarDeclStatementIR(paramStmt, true, false);
+                }
+
+                for (auto varDecl : semanticAnalyzer.fnToVarDeclsMap[fn])
+                {
+                    auto temp = semanticAnalyzer.currentScope;
+                    semanticAnalyzer.currentScope = varDecl.currentScope;
+                    GenVarDeclStatementIR(varDecl.varDecl, true, false);
+                    semanticAnalyzer.currentScope = temp;
+                }
+
+                for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
+                {
+                    GenVarDeclStatementIR(paramStmt, false, true);
                     IRVariable *paramVar = dynamic_cast<IRVariable *>(
                         GetIRSymbol(paramStmt->GetIdentifier()->GetLexeme()));
                     llvm::Value *value = irFunc->fn->getArg(index);
@@ -1632,9 +1653,23 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 semanticAnalyzer.currentScope =
                     semanticAnalyzer
                         .blockToScopeMap[fnStmt->GetBlockStatement()];
+
                 for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
                 {
-                    GenStatementIR(paramStmt);
+                    GenVarDeclStatementIR(paramStmt, true, false);
+                }
+
+                for (auto varDecl : semanticAnalyzer.fnToVarDeclsMap[fn])
+                {
+                    auto temp = semanticAnalyzer.currentScope;
+                    semanticAnalyzer.currentScope = varDecl.currentScope;
+                    GenVarDeclStatementIR(varDecl.varDecl, true, false);
+                    semanticAnalyzer.currentScope = temp;
+                }
+
+                for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
+                {
+                    GenVarDeclStatementIR(paramStmt, false, true);
                     IRVariable *paramVar = dynamic_cast<IRVariable *>(
                         GetIRSymbol(paramStmt->GetIdentifier()->GetLexeme()));
                     llvm::Value *value = irFunc->fn->getArg(index);
@@ -1674,24 +1709,23 @@ void CodeGen::GenStatementIR(Statement *statement)
 {
     if (dynamic_cast<StructStatement *>(statement))
     {
-        GenStructStatementIR(dynamic_cast<StructStatement *>(statement));
+        GenStructStatementIR(dynamic_cast<StructStatement *>(statement), false,
+                             true);
     }
     else if (dynamic_cast<EnumStatement *>(statement))
     {
         auto enumStmt = dynamic_cast<EnumStatement *>(statement);
-        GenEnumStatementIR(enumStmt);
+        GenEnumStatementIR(enumStmt, true, true);
     }
-
     else if (dynamic_cast<UnionStatement *>(statement))
     {
         auto unionStmt = dynamic_cast<UnionStatement *>(statement);
-        GenUnionStatementIR(unionStmt);
+        GenUnionStatementIR(unionStmt, true, true);
     }
     else if (dynamic_cast<VarDeclStatement *>(statement))
     {
-        VarDeclStatement *varDeclStatement =
-            dynamic_cast<VarDeclStatement *>(statement);
-        GenVarDeclStatementIR(varDeclStatement);
+        GenVarDeclStatementIR(dynamic_cast<VarDeclStatement *>(statement),
+                              false, true);
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
     {
@@ -1757,85 +1791,89 @@ void CodeGen::GenBlockStatementIR(BlockStatement *blockStmt)
 {
     Scope *temp = semanticAnalyzer.currentScope;
     semanticAnalyzer.currentScope = semanticAnalyzer.blockToScopeMap[blockStmt];
-    // // if (irBuilder->GetInsertBlock())
-    // // {
-    // //     startOfStackFrame = irBuilder->CreateStackSave();
-    // // }
-    // auto tempPos = startOfStackFrame;
     for (Statement *s : blockStmt->GetStatements())
     {
         GenStatementIR(s);
     }
-    // startOfStackFrame = tempPos;
-    // if (startOfStackFrame)
-    // {
-    //     irBuilder->CreateStackRestore(startOfStackFrame);
-    // }
 
     semanticAnalyzer.currentScope = temp;
 }
-void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt)
+void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
+                                    bool genSymbol, bool genBody)
 {
-    UnionDataType *unionType = dynamic_cast<UnionDataType *>(
-        semanticAnalyzer.stmtToDataTypeMap[varDeclStmt]);
-    if (unionType)
+    if (genSymbol)
     {
-        semanticAnalyzer.stmtToDataTypeMap[varDeclStmt] =
-            unionType->largestDatatype;
-    }
-    DataType *type = semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
-    ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(type);
-    StructDataType *structType = dynamic_cast<StructDataType *>(type);
-
-    IRType varDeclType = {};
-    varDeclType.type = ZtoonTypeToLLVMType(type).type;
-    varDeclType.isSigned = type->IsSigned();
-
-    llvm::AllocaInst *inst = irBuilder->CreateAlloca(
-        varDeclType.type, nullptr, varDeclStmt->GetIdentifier()->GetLexeme());
-    IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
-    irVariable->value = inst;
-    irVariable->variabel =
-        dynamic_cast<Variable *>(semanticAnalyzer.currentScope->GetSymbol(
-            varDeclStmt->GetIdentifier()->GetLexeme(),
-            varDeclStmt->GetCodeErrString()));
-    irVariable->variabel->dataType =
-        semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
-    irVariable->irType = varDeclType;
-    AddIRSymbol(irVariable);
-
-    if (varDeclStmt->GetExpression())
-    {
-        if (arrType)
+        UnionDataType *unionType = dynamic_cast<UnionDataType *>(
+            semanticAnalyzer.stmtToDataTypeMap[varDeclStmt]);
+        if (unionType)
         {
-            std::vector<llvm::Value *> index;
-            AssignValueToVarArray({irVariable->value, irVariable->irType},
-                                  varDeclStmt->GetExpression(), arrType, index);
+            semanticAnalyzer.stmtToDataTypeMap[varDeclStmt] =
+                unionType->largestDatatype;
         }
-        else if (structType)
+        DataType *type = semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
+
+        IRType varDeclType = {};
+        varDeclType.type = ZtoonTypeToLLVMType(type).type;
+        varDeclType.isSigned = type->IsSigned();
+
+        llvm::AllocaInst *inst =
+            irBuilder->CreateAlloca(varDeclType.type, nullptr,
+                                    varDeclStmt->GetIdentifier()->GetLexeme());
+        IRVariable *irVariable = gZtoonArena.Allocate<IRVariable>();
+        irVariable->value = inst;
+        irVariable->variabel =
+            dynamic_cast<Variable *>(semanticAnalyzer.currentScope->GetSymbol(
+                varDeclStmt->GetIdentifier()->GetLexeme(),
+                varDeclStmt->GetCodeErrString()));
+        irVariable->variabel->dataType =
+            semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
+        irVariable->irType = varDeclType;
+        AddIRSymbol(irVariable);
+    }
+    if (genBody)
+    {
+        auto irVariable = dynamic_cast<IRVariable *>(
+            GetIRSymbol(varDeclStmt->GetIdentifier()->GetLexeme()));
+        DataType *type = semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
+        ArrayDataType *arrType = dynamic_cast<ArrayDataType *>(type);
+        StructDataType *structType = dynamic_cast<StructDataType *>(type);
+        if (varDeclStmt->GetExpression())
         {
-            AssignValueToVarStruct({irVariable->value, irVariable->irType},
-                                   varDeclStmt->GetExpression(), structType);
+            if (arrType)
+            {
+                std::vector<llvm::Value *> index;
+                AssignValueToVarArray({irVariable->value, irVariable->irType},
+                                      varDeclStmt->GetExpression(), arrType,
+                                      index);
+            }
+            else if (structType)
+            {
+                AssignValueToVarStruct({irVariable->value, irVariable->irType},
+                                       varDeclStmt->GetExpression(),
+                                       structType);
+            }
+            else
+            {
+                IRValue value = GenExpressionIR(varDeclStmt->GetExpression());
+                irBuilder->CreateStore(value.value, irVariable->value);
+            }
         }
         else
         {
-            IRValue value = GenExpressionIR(varDeclStmt->GetExpression());
-            irBuilder->CreateStore(value.value, inst);
-        }
-    }
-    else
-    {
-        if (structType)
-        {
-            AssignValueToVarStruct({inst, irVariable->irType},
-                                   structType->defaultValuesList, structType);
-        }
-        else
-        {
-            irBuilder->CreateStore(
-                llvm::Constant::getNullValue(
-                    ZtoonTypeToLLVMType(irVariable->variabel->dataType).type),
-                inst);
+            if (structType)
+            {
+                AssignValueToVarStruct({irVariable->value, irVariable->irType},
+                                       structType->defaultValuesList,
+                                       structType);
+            }
+            else
+            {
+                irBuilder->CreateStore(
+                    llvm::Constant::getNullValue(
+                        ZtoonTypeToLLVMType(irVariable->variabel->dataType)
+                            .type),
+                    irVariable->value);
+            }
         }
     }
 }
@@ -2020,108 +2058,146 @@ void CodeGen::GenContinueStatementIR(ContinueStatement *continueStmt)
     }
 }
 
-void CodeGen::GenStructStatementIR(StructStatement *structStmt)
+void CodeGen::GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
+                                   bool genBody)
 {
-
     auto structZtoonType = dynamic_cast<StructDataType *>(
         semanticAnalyzer.stmtToDataTypeMap[structStmt]);
     auto temp = semanticAnalyzer.currentScope;
     semanticAnalyzer.currentScope = structZtoonType->scope;
-    for (auto method : structStmt->GetMethods())
+    if (genSymbol)
     {
-        FnStatement *fnStmt = method;
-        Function *fn =
-            dynamic_cast<Function *>(semanticAnalyzer.currentScope->GetSymbol(
-                fnStmt->GetIdentifier()->GetLexeme(),
-                fnStmt->GetCodeErrString()));
-
-        FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
-        llvm::FunctionType *fnType = llvm::dyn_cast<llvm::FunctionType>(
-            ZtoonTypeToLLVMType(fnDataType).type);
-
-        std::string fpName = fn->GetName();
-
-        if (!fnStmt->IsPrototype())
+        for (auto method : structStmt->GetMethods())
         {
-            fpName = semanticAnalyzer.currentScope->name + "::" + fpName;
+            FnStatement *fnStmt = method;
+            Function *fn = dynamic_cast<Function *>(
+                semanticAnalyzer.currentScope->GetSymbol(
+                    fnStmt->GetIdentifier()->GetLexeme(),
+                    fnStmt->GetCodeErrString()));
+
+            FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
+            llvm::FunctionType *fnType = llvm::dyn_cast<llvm::FunctionType>(
+                ZtoonTypeToLLVMType(fnDataType).type);
+
+            std::string fpName = fn->GetName();
+
+            if (!fnStmt->IsPrototype())
+            {
+                fpName = semanticAnalyzer.currentScope->name + "::" + fpName;
+            }
+
+            llvm::Function *function = llvm::Function::Create(
+                fnType, llvm::GlobalValue::ExternalLinkage, fpName, *module);
+
+            IRFunction *irFunc = gZtoonArena.Allocate<IRFunction>();
+            irFunc->fn = function;
+            irFunc->fnType = fnType;
+            irFunc->ztoonFn = fn;
+            irFunc->name = fnStmt->GetIdentifier()->GetLexeme();
+            irFunc->fullName = fpName;
+
+            AddIRSymbol(irFunc);
         }
-
-        llvm::Function *function = llvm::Function::Create(
-            fnType, llvm::GlobalValue::ExternalLinkage, fpName, *module);
-
-        IRFunction *irFunc = gZtoonArena.Allocate<IRFunction>();
-        irFunc->fn = function;
-        irFunc->fnType = fnType;
-        irFunc->ztoonFn = fn;
-        irFunc->name = fnStmt->GetIdentifier()->GetLexeme();
-        irFunc->fullName = fpName;
-
-        AddIRSymbol(irFunc);
     }
-    for (auto method : structStmt->GetMethods())
+    if (genBody)
+
     {
-
-        FnStatement *fnStmt = method;
-        Function *fn =
-            dynamic_cast<Function *>(semanticAnalyzer.currentScope->GetSymbol(
-                fnStmt->GetIdentifier()->GetLexeme(),
-                fnStmt->GetCodeErrString()));
-
-        FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
-
-        IRFunction *irFunc = dynamic_cast<IRFunction *>(
-            GetIRSymbol(fnStmt->GetIdentifier()->GetLexeme()));
-        llvm::BasicBlock *tempBB = irBuilder->GetInsertBlock();
-        llvm::BasicBlock *fnBB = llvm::BasicBlock::Create(
-            *ctx, std::format("{}FnBlock", fn->GetName()), irFunc->fn);
-        irFunc->fnBB = fnBB;
-        irBuilder->SetInsertPoint(fnBB);
-
-        size_t index = 0;
-        auto tempScope = semanticAnalyzer.currentScope;
-        semanticAnalyzer.currentScope =
-            semanticAnalyzer.blockToScopeMap[fnStmt->GetBlockStatement()];
-        for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
+        for (auto method : structStmt->GetMethods())
         {
-            GenStatementIR(paramStmt);
-            IRVariable *paramVar = dynamic_cast<IRVariable *>(
-                GetIRSymbol(paramStmt->GetIdentifier()->GetLexeme()));
-            llvm::Value *value = irFunc->fn->getArg(index);
-            irBuilder->CreateStore(value, paramVar->value);
-            index++;
-        }
 
-        GenStatementIR(fnStmt->GetBlockStatement());
+            FnStatement *fnStmt = method;
+            Function *fn = dynamic_cast<Function *>(
+                semanticAnalyzer.currentScope->GetSymbol(
+                    fnStmt->GetIdentifier()->GetLexeme(),
+                    fnStmt->GetCodeErrString()));
 
-        llvm::Instruction *term = irBuilder->GetInsertBlock()->getTerminator();
+            FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
 
-        if (!term || !llvm::isa<llvm::ReturnInst>(term))
-        {
-            if (irFunc->ztoonFn->GetFnDataTypeFromFnPTR()
-                    ->returnDataType->type != DataType::Type::NOTYPE)
+            IRFunction *irFunc = dynamic_cast<IRFunction *>(
+                GetIRSymbol(fnStmt->GetIdentifier()->GetLexeme()));
+            llvm::BasicBlock *tempBB = irBuilder->GetInsertBlock();
+            llvm::BasicBlock *fnBB = llvm::BasicBlock::Create(
+                *ctx, std::format("{}FnBlock", fn->GetName()), irFunc->fn);
+            irFunc->fnBB = fnBB;
+            irBuilder->SetInsertPoint(fnBB);
+
+            size_t index = 0;
+            auto tempScope = semanticAnalyzer.currentScope;
+            semanticAnalyzer.currentScope =
+                semanticAnalyzer.blockToScopeMap[fnStmt->GetBlockStatement()];
+
+            for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
             {
-                irBuilder->CreateRet(
-                    GenExpressionIR(irFunc->ztoonFn->retStmt->GetExpression())
-                        .value);
+                auto temp = semanticAnalyzer.currentScope;
+                if (aggType.structStmt)
+                {
+                    GenStructStatementIR(aggType.structStmt, true, false);
+                }
             }
-            else
+
+            for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
             {
-                irBuilder->CreateRetVoid();
+                GenVarDeclStatementIR(paramStmt, true, false);
             }
+
+            for (auto varDecl : semanticAnalyzer.fnToVarDeclsMap[fn])
+            {
+                auto temp = semanticAnalyzer.currentScope;
+                semanticAnalyzer.currentScope = varDecl.currentScope;
+                GenVarDeclStatementIR(varDecl.varDecl, true, false);
+                semanticAnalyzer.currentScope = temp;
+            }
+
+            for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
+            {
+                GenVarDeclStatementIR(paramStmt, false, true);
+                IRVariable *paramVar = dynamic_cast<IRVariable *>(
+                    GetIRSymbol(paramStmt->GetIdentifier()->GetLexeme()));
+                llvm::Value *value = irFunc->fn->getArg(index);
+                irBuilder->CreateStore(value, paramVar->value);
+                index++;
+            }
+
+            GenStatementIR(fnStmt->GetBlockStatement());
+
+            llvm::Instruction *term =
+                irBuilder->GetInsertBlock()->getTerminator();
+
+            if (!term || !llvm::isa<llvm::ReturnInst>(term))
+            {
+                if (irFunc->ztoonFn->GetFnDataTypeFromFnPTR()
+                        ->returnDataType->type != DataType::Type::NOTYPE)
+                {
+                    irBuilder->CreateRet(
+                        GenExpressionIR(
+                            irFunc->ztoonFn->retStmt->GetExpression())
+                            .value);
+                }
+                else
+                {
+                    irBuilder->CreateRetVoid();
+                }
+            }
+            irBuilder->SetInsertPoint(tempBB);
+            semanticAnalyzer.currentScope = tempScope;
         }
-        irBuilder->SetInsertPoint(tempBB);
-        semanticAnalyzer.currentScope = tempScope;
     }
+
     semanticAnalyzer.currentScope = temp;
 }
-void CodeGen::GenUnionStatementIR(UnionStatement *unionStmt)
+void CodeGen::GenUnionStatementIR(UnionStatement *unionStmt, bool genSymbol,
+                                  bool genBody)
 {
-    auto unionType = dynamic_cast<UnionDataType *>(
-        semanticAnalyzer.stmtToDataTypeMap[unionStmt]);
+    if (genSymbol)
+    {
+        auto unionType = dynamic_cast<UnionDataType *>(
+            semanticAnalyzer.stmtToDataTypeMap[unionStmt]);
 
-    ZtoonTypeToLLVMType(unionType);
+        ZtoonTypeToLLVMType(unionType);
+    }
 }
-void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt)
+void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
+                                 bool genBody)
 {
     auto enumType = dynamic_cast<EnumDataType *>(
         semanticAnalyzer.stmtToDataTypeMap[enumStmt]);
@@ -2380,16 +2456,37 @@ IRValue CodeGen::GenFnExpressionIR(FnExpression *fnExpr, bool isWrite)
     semanticAnalyzer.currentScope =
         semanticAnalyzer.blockToScopeMap[fnExpr->GetBlockStatement()];
     size_t index = 0;
+
+    for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
+    {
+        auto temp = semanticAnalyzer.currentScope;
+        if (aggType.structStmt)
+        {
+            GenStructStatementIR(aggType.structStmt, true, false);
+        }
+    }
     for (VarDeclStatement *paramStmt : fnExpr->GetParameters())
     {
-        GenStatementIR(paramStmt);
+        GenVarDeclStatementIR(paramStmt, true, false);
+    }
+
+    for (auto varDecl : semanticAnalyzer.fnToVarDeclsMap[fn])
+    {
+        auto temp = semanticAnalyzer.currentScope;
+        semanticAnalyzer.currentScope = varDecl.currentScope;
+        GenVarDeclStatementIR(varDecl.varDecl, true, false);
+        semanticAnalyzer.currentScope = temp;
+    }
+
+    for (VarDeclStatement *paramStmt : fnExpr->GetParameters())
+    {
+        GenVarDeclStatementIR(paramStmt, false, true);
         IRVariable *paramVar = dynamic_cast<IRVariable *>(
             GetIRSymbol(paramStmt->GetIdentifier()->GetLexeme()));
         llvm::Value *value = irFunc->fn->getArg(index);
         irBuilder->CreateStore(value, paramVar->value);
         index++;
     }
-
     GenStatementIR(fnExpr->GetBlockStatement());
 
     llvm::Instruction *term = irBuilder->GetInsertBlock()->getTerminator();
@@ -2765,7 +2862,7 @@ IRValue CodeGen::GenCastExpressionIR(CastExpression *castExpr, bool isWrite)
                     toCastValue.value);
             }
             toCastValue.value = irBuilder->CreateCmp(
-                llvm::CmpInst::Predicate::ICMP_UGT, value,
+                llvm::CmpInst::Predicate::ICMP_NE, value,
                 irBuilder->getIntN(value->getType()->getIntegerBitWidth(), 0));
         }
     }

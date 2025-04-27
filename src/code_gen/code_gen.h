@@ -114,7 +114,8 @@ class CodeGen
 
     void GenBlockStatementIR(BlockStatement *blockStmt);
     void GenFnStatementIR(FnStatement *fnStmt);
-    void GenVarDeclStatementIR(VarDeclStatement *varDeclStmt);
+    void GenVarDeclStatementIR(VarDeclStatement *varDeclStmt, bool genSymbol,
+                               bool genBody);
     void GenVarAssignmentStatementIR(VarAssignmentStatement *varAssignmentStmt);
     void GenVarCompundAssignmentStatementIR(
         VarCompoundAssignmentStatement *varComStmt);
@@ -127,9 +128,12 @@ class CodeGen
     void GenForLoopStatementIR(ForLoopStatement *forLoopStmt);
     void GenBreakStatementIR(BreakStatement *breakStmt);
     void GenContinueStatementIR(ContinueStatement *continueStmt);
-    void GenStructStatementIR(StructStatement *structStmt);
-    void GenUnionStatementIR(UnionStatement *unionStmt);
-    void GenEnumStatementIR(EnumStatement *enumStmt);
+    void GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
+                              bool genBody);
+    void GenUnionStatementIR(UnionStatement *unionStmt, bool genSymbol,
+                             bool genBody);
+    void GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
+                            bool genBody);
     void GenRetStatementIR(RetStatement *retStmt);
     void GenImportStatementIR(ImportStatement *importStmt);
 

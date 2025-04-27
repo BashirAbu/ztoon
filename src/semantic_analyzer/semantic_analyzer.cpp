@@ -1414,6 +1414,14 @@ void SemanticAnalyzer::AnalyzeVarDeclStatement(VarDeclStatement *varDeclStmt,
         var->varDeclStmt = varDeclStmt;
         var->isPublic = varDeclStmt->IsPublic();
         currentScope->AddSymbol(var, varDeclStmt->GetCodeErrString());
+        if (currentFunction && !varDeclStmt->isField &&
+            !varDeclStmt->IsParamter())
+        {
+            TopVarDecl topDecl;
+            topDecl.varDecl = varDeclStmt;
+            topDecl.currentScope = currentScope;
+            fnToVarDeclsMap[currentFunction].push_back(topDecl);
+        }
     }
     if (analyzeBody)
     {
@@ -1873,6 +1881,13 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
 {
     if (analyzeSymbol)
     {
+        if (currentFunction)
+        {
+            TopAggTypeDecl aggType;
+            aggType.currentScope = currentScope;
+            aggType.structStmt = structStmt;
+            fnToAggDeclsMap[currentFunction].push_back(aggType);
+        }
         StructDataType *structType = gZtoonArena.Allocate<StructDataType>();
         structType->structStmt = structStmt;
         structType->type = DataType::Type::STRUCT;
@@ -1924,6 +1939,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
                                         structStmt->GetCodeErrString());
             }
             VarDeclStatement *var = gZtoonArena.Allocate<VarDeclStatement>();
+            var->isField = true;
             DataTypeToken *dataToken = gZtoonArena.Allocate<DataTypeToken>();
             auto dataTypeToken =
                 gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
@@ -2153,6 +2169,13 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
                         unionStmt->GetCodeErrString());
         }
 
+        if (currentFunction)
+        {
+            TopAggTypeDecl aggType;
+            aggType.currentScope = currentScope;
+            aggType.unionStmt = unionStmt;
+            fnToAggDeclsMap[currentFunction].push_back(aggType);
+        }
         UnionDataType *unionType = gZtoonArena.Allocate<UnionDataType>();
         unionType->unionStmt = unionStmt;
         unionType->type = DataType::Type::UNION;
@@ -2196,6 +2219,7 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
                 currentScope->AddSymbol(s.second, sField->GetCodeErrString());
             }
             VarDeclStatement *var = gZtoonArena.Allocate<VarDeclStatement>();
+            var->isField = true;
             DataTypeToken *dataToken = gZtoonArena.Allocate<DataTypeToken>();
             auto dataTypeToken =
                 gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
@@ -2373,6 +2397,14 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
 
     if (analyzeSymbol)
     {
+
+        if (currentFunction)
+        {
+            TopAggTypeDecl aggType;
+            aggType.currentScope = currentScope;
+            aggType.enumStmt = enumStmt;
+            fnToAggDeclsMap[currentFunction].push_back(aggType);
+        }
         EnumDataType *enumType = gZtoonArena.Allocate<EnumDataType>();
         enumType->type = DataType::Type::ENUM;
         enumType->name = enumStmt->identifier->GetLexeme();

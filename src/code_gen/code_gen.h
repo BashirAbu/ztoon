@@ -58,7 +58,10 @@ struct IRFunction : public IRSymbol
     llvm::Function *fn = nullptr;
     llvm::BasicBlock *fnBB;
     Function *ztoonFn = nullptr;
-    virtual std::string GetName() override { return ztoonFn->GetName(); }
+    std::string fullName;
+    std::string name;
+    virtual std::string GetName() override { return name; }
+    virtual std::string GetFullName() { return fullName; }
     virtual llvm::Value *GetValue() override { return fn; }
     virtual llvm::Type *GetType() override { return fnType; }
 };
@@ -76,7 +79,8 @@ class CodeGen
   public:
     CodeGen(SemanticAnalyzer &semanticAnalyzer);
     ~CodeGen();
-    void GenIR(std::vector<Package *> &packages);
+    void GenIR(std::vector<Package *> &packages, bool genSymbol,
+               bool genSymbolBody);
     void Compile(Project &project, bool printIR = false);
     static void Link(Project &project);
     void AddIRSymbol(IRSymbol *irSymbol);
@@ -162,11 +166,9 @@ class CodeGen
     IRValue CastPtrToPtr(IRValue value, IRType castType);
     IRValue CastIntToPtr(IRValue value, IRType castType);
     IRValue CastPtrToInt(IRValue value, IRType castType);
-    // std::unordered_map<Scope const *,
-    //                    std::unordered_map<std::string, IRSymbol *>>
-    //     scopeToIRSymbolsMap;
     std::unordered_map<std::string, IRSymbol *> irSymbolsMap;
     IRLoop *currentLoop = nullptr;
+    llvm::Value *startOfStackFrame = nullptr;
     SemanticAnalyzer &semanticAnalyzer;
     std::unordered_map<Statement *, bool> globalStatementIRDoneMap;
     std::unordered_map<VarDeclStatement *, IRValue> globalConstsMap;

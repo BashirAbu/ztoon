@@ -1,3 +1,4 @@
+#include "compiler/compiler.h"
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -326,17 +327,6 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
             {
                 DataType *type = currentScope->datatypesMap[typeStr];
 
-                auto symbolType = dynamic_cast<Symbol *>(type);
-
-                if (symbolType)
-                {
-                    if (!symbolType->IsPublic())
-                    {
-                        ReportError(std::format("'{}' is private",
-                                                symbolType->GetName()),
-                                    dataTypeToken->GetCodeErrString());
-                    }
-                }
                 return type;
             }
             for (auto pkg : currentScope->importedPackages)
@@ -1224,7 +1214,9 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
     if (analyzeSymbol)
     {
         Function *fp = gZtoonArena.Allocate<Function>();
-        fp->name = fnStmt->identifier->GetLexeme();
+        std::string fpName = fnStmt->GetIdentifier()->GetLexeme();
+
+        fp->name = fpName;
         FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
         fpDataType->type = DataType::Type::FN;
         fpDataType->returnDataType =

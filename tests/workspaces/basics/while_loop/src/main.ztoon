@@ -1,9 +1,23 @@
 
 package mainPkg;
+
+struct big
+{
+    i : i32[120];
+}
+
+fn printf(str: readonly i8*, ...) -> i32;
+
+fn say_msg(msg: i8*)
+{
+    i: i32;
+    printf("%s\n", msg);
+}
+
 fn main() -> i32 {
     a: i32 = 0;
     b: i32 = 1;
-    while b < 5 {
+    while b < 5 {       
         a = a + b;
         b++;
     }

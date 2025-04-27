@@ -5,3 +5,6 @@ sdl3:
       - sdl3:
           type: static-lib
           relative_path: deps/SDL3.lib
+  deps:
+    - core:
+        relative_path: ../core

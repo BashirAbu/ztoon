@@ -763,6 +763,7 @@ class MemberAccessExpression : public Expression
     std::vector<Expression *> args;
     friend class Parser;
     friend class SemanticAnalyzer;
+    friend class CodeGen;
 };
 
 class FnCallExpression : public Expression

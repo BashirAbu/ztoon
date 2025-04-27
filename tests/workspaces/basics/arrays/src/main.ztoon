@@ -68,8 +68,6 @@ fn main() -> i32
     array_pass_by_value(arr3);
         
     c6: bool = arr3[3] == 8;
-    printf("arr3[3]: %d\n", arr3[3]);
-    printf("c6: %d\n", c6 as i32);
     
     array_pass_by_reference(arr3 as i32*);
         

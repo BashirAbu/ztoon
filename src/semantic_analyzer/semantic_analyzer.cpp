@@ -2394,10 +2394,8 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
                                             bool isGlobal, bool analyzeSymbol,
                                             bool analyzeBody)
 {
-
     if (analyzeSymbol)
     {
-
         if (currentFunction)
         {
             TopAggTypeDecl aggType;
@@ -2411,6 +2409,9 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
         enumType->enumStmt = enumStmt;
         enumType->datatype = currentScope->GetDataType(enumStmt->datatype);
         enumType->isPublic = enumStmt->IsPublic();
+        enumType->scope = gZtoonArena.Allocate<Scope>(
+            this, std::format("{}_{}", enumType->GetName(), (size_t)enumType),
+            currentScope);
         if (!enumType->datatype->IsInteger())
         {
             ReportError("Enum type must be interger",
@@ -2428,9 +2429,15 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
     {
         auto enumType =
             dynamic_cast<EnumDataType *>(stmtToDataTypeMap[enumStmt]);
-
+        auto temp = currentScope;
+        currentScope = enumType->scope;
         for (auto f : enumStmt->fields)
         {
+            ConstSymbol *constSymbol =
+                gZtoonArena.Allocate<ConstSymbol>(f->identifier->GetLexeme());
+            constSymbol->dataType = enumType->GetDataType();
+            constSymbol->token = f->identifier;
+            currentScope->AddSymbol(constSymbol, enumStmt->GetCodeErrString());
             if (f->expr)
             {
                 AnalyzeExpression(f->expr);
@@ -2442,6 +2449,7 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
                 }
             }
         }
+        currentScope = temp;
     }
 }
 void SemanticAnalyzer::AnalyzeRetStatement(RetStatement *retStmt)

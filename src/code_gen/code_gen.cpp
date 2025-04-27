@@ -2196,6 +2196,9 @@ void CodeGen::GenUnionStatementIR(UnionStatement *unionStmt, bool genSymbol,
         ZtoonTypeToLLVMType(unionType);
     }
 }
+
+llvm::Value *IRConstSymbol::GetValue() { return value; }
+
 void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
                                  bool genBody)
 {
@@ -2204,9 +2207,11 @@ void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
     uint64_t uValue = 0;
     int64_t sValue = 0;
     bool useSigned = enumType->datatype->IsSigned();
-
+    auto temp = semanticAnalyzer.currentScope;
+    semanticAnalyzer.currentScope = enumType->scope;
     for (auto f : enumStmt->fields)
     {
+        IRConstSymbol *irConstSymbol = gZtoonArena.Allocate<IRConstSymbol>();
         f->useSigned = useSigned;
         if (f->expr)
         {
@@ -2243,7 +2248,22 @@ void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
                 f->uValue = ++uValue;
             }
         }
+        irConstSymbol->name = f->identifier->GetLexeme();
+        irConstSymbol->irType = ZtoonTypeToLLVMType(enumType->GetDataType());
+        if (useSigned)
+        {
+            irConstSymbol->value =
+                llvm::ConstantInt::get(irConstSymbol->irType.type, f->sValue);
+        }
+        else
+        {
+            irConstSymbol->value =
+                llvm::ConstantInt::get(irConstSymbol->irType.type, f->uValue);
+        }
+
+        AddIRSymbol(irConstSymbol);
     }
+    semanticAnalyzer.currentScope = temp;
 }
 void CodeGen::GenRetStatementIR(RetStatement *retStmt)
 {
@@ -3404,7 +3424,7 @@ IRValue CodeGen::GenPrimaryExpressionIR(PrimaryExpression *primaryExpr,
         llvm::BasicBlock *block = irBuilder->GetInsertBlock();
 
         IRSymbol *symbol = GetIRSymbol(primaryExpr->GetPrimary()->GetLexeme());
-
+        IRConstSymbol *constSymbol = dynamic_cast<IRConstSymbol *>(symbol);
         IRVariable *var = dynamic_cast<IRVariable *>(symbol);
         IRFunction *fn = dynamic_cast<IRFunction *>(symbol);
         if (var)
@@ -3435,6 +3455,11 @@ IRValue CodeGen::GenPrimaryExpressionIR(PrimaryExpression *primaryExpr,
             // fn type
             irValue.type.type = symbol->GetType()->getPointerTo();
             irValue.value = symbol->GetValue();
+        }
+        else if (constSymbol)
+        {
+            irValue.value = constSymbol->value;
+            irValue.type = constSymbol->irType;
         }
         else
         {

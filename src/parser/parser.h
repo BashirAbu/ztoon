@@ -259,14 +259,14 @@ class StructStatement : public Statement
         ces.firstToken = token;
         ces.str = std::format("struct {}\n",
                               identifier ? identifier->GetLexeme() : "");
-        ces.str += "{\n";
-        for (auto field : fields)
-        {
-            ces.str += field->GetCodeErrString().str;
-            ces.str += ";\n";
-        }
+        // ces.str += "{\n";
+        // for (auto field : fields)
+        // {
+        //     ces.str += field->GetCodeErrString().str;
+        //     ces.str += ";\n";
+        // }
 
-        ces.str += "}";
+        // ces.str += "}";
 
         return ces;
     }
@@ -296,15 +296,15 @@ class UnionStatement : public Statement
         CodeErrString ces = {};
         ces.firstToken = token;
         ces.str =
-            std::format(" {}\n", identifier ? identifier->GetLexeme() : "");
-        ces.str += "{\n";
-        for (auto field : fields)
-        {
-            ces.str += field->GetCodeErrString().str;
-            ces.str += ";\n";
-        }
+            std::format("{}\n", identifier ? identifier->GetLexeme() : "");
+        // ces.str += "{\n";
+        // for (auto field : fields)
+        // {
+        //     ces.str += field->GetCodeErrString().str;
+        //     ces.str += ";\n";
+        // }
 
-        ces.str += "}";
+        // ces.str += "}";
 
         return ces;
     }
@@ -333,16 +333,16 @@ class EnumStatement : public Statement
         ces.firstToken = token;
         ces.str = std::format(" {} : {}\n", identifier->GetLexeme(),
                               datatype->ToString());
-        ces.str += "{\n";
-        for (auto field : fields)
-        {
-            ces.str += field->identifier->GetLexeme();
-            ces.str += ces.str +=
-                field->expr ? "=" + field->expr->GetCodeErrString().str : "";
-            ces.str += ",\n";
-        }
+        // ces.str += "{\n";
+        // for (auto field : fields)
+        // {
+        //     ces.str += field->identifier->GetLexeme();
+        //     ces.str += ces.str +=
+        //         field->expr ? "=" + field->expr->GetCodeErrString().str : "";
+        //     ces.str += ",\n";
+        // }
 
-        ces.str += "}";
+        // ces.str += "}";
 
         return ces;
     }
@@ -398,12 +398,12 @@ class BlockStatement : public Statement
         ces.firstToken = statements.size() > 0
                              ? statements[0]->GetCodeErrString().firstToken
                              : nullptr;
-        ces.str += "{\n";
-        for (Statement *s : statements)
-        {
-            ces.str += std::format("    {}\n", s->GetCodeErrString().str);
-        }
-        ces.str += "}\n";
+        // ces.str += "{\n";
+        // for (Statement *s : statements)
+        // {
+        //     ces.str += std::format("    {}\n", s->GetCodeErrString().str);
+        // }
+        // ces.str += "}\n";
         return ces;
     }
     size_t index = 0;
@@ -423,28 +423,28 @@ class SwitchStatement : public Statement
         CodeErrString ces = {};
         ces.firstToken = token;
         ces.str += "switch " + matchExpr->GetCodeErrString().str + "\n{\n";
-        for (auto c : cases)
-        {
-            ces.str += "case ";
-            for (auto expr : c->exprs)
-            {
-                ces.str += expr->GetCodeErrString().str + ",";
-            }
-            if (ces.str.ends_with(','))
-            {
-                ces.str.pop_back();
-            }
-            ces.str += ":\n";
-            ces.str += c->blockStatement->GetCodeErrString().str;
-            ces.str += "\n";
-        }
+        // for (auto c : cases)
+        // {
+        //     ces.str += "case ";
+        //     for (auto expr : c->exprs)
+        //     {
+        //         ces.str += expr->GetCodeErrString().str + ",";
+        //     }
+        //     if (ces.str.ends_with(','))
+        //     {
+        //         ces.str.pop_back();
+        //     }
+        //     ces.str += ":\n";
+        //     ces.str += c->blockStatement->GetCodeErrString().str;
+        //     ces.str += "\n";
+        // }
 
-        if (defualtCase)
-        {
-            ces.str += "defualt:\n";
-            ces.str += defualtCase->blockStatement->GetCodeErrString().str;
-        }
-        ces.str += "\n}";
+        // if (defualtCase)
+        // {
+        //     ces.str += "defualt:\n";
+        //     ces.str += defualtCase->blockStatement->GetCodeErrString().str;
+        // }
+        // ces.str += "\n}";
         return ces;
     }
 
@@ -908,20 +908,20 @@ class InitializerListExpression : public Expression
         CodeErrString es = {};
         es.firstToken = GetFirstToken();
 
-        es.str = "{";
+        // es.str = "{";
 
-        for (Expression *expr : expressions)
-        {
-            if (expr)
-                es.str += expr->GetCodeErrString().str + ",";
-            else
-                es.str += "null,";
-        }
-        if (es.str.ends_with(','))
-        {
-            es.str.pop_back();
-        }
-        es.str += "}";
+        // for (Expression *expr : expressions)
+        // {
+        //     if (expr)
+        //         es.str += expr->GetCodeErrString().str + ",";
+        //     else
+        //         es.str += "null,";
+        // }
+        // if (es.str.ends_with(','))
+        // {
+        //     es.str.pop_back();
+        // }
+        // es.str += "}";
         return es;
     }
 

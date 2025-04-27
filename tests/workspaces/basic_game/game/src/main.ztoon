@@ -3,6 +3,10 @@ import core::core;
 
 import sdl3;
 
+fn testing()
+{
+}
+
 fn main() -> i32
 {
     result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);
@@ -13,7 +17,7 @@ fn main() -> i32
     }
 
     window: u8* = SDL3::create_window("Ztoon", 1280, 720,
-     window_flags::SDL_WINDOW_OPENGL);
+     window_flags::SDL_WINDOW_OPENGL | window_flags::SDL_WINDOW_RESIZABLE);
 
     if !(window as bool) {
         printf("Failed to create window. Err: %s", SDL3::get_error());

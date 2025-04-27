@@ -3,7 +3,6 @@
 #include "semantic_analyzer/semantic_analyzer.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -12,7 +11,6 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
 #include <unordered_map>
@@ -28,6 +26,16 @@ struct IRSymbol
     virtual std::string GetName() = 0;
     virtual llvm::Value *GetValue() = 0;
     virtual llvm::Type *GetType() = 0;
+};
+
+struct IRConstSymbol : public IRSymbol
+{
+    std::string name;
+    llvm::Value *value;
+    IRType irType;
+    virtual std::string GetName() override { return name; }
+    virtual llvm::Value *GetValue() override;
+    virtual llvm::Type *GetType() override { return irType.type; }
 };
 
 struct IRVariable : public IRSymbol

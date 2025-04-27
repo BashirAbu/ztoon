@@ -136,6 +136,7 @@ class EnumDataType : public DataType, public Symbol
     std::string name;
     EnumStatement *enumStmt = nullptr;
     DataType *datatype = nullptr;
+    Scope *scope = nullptr;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -184,6 +185,23 @@ class FnDataType : public DataType
     bool isVarArgs = false;
     bool isMethod = false;
     friend class Scope;
+    friend class SemanticAnalyzer;
+    friend class CodeGen;
+};
+
+class ConstSymbol : public Symbol
+{
+  public:
+    ConstSymbol(std::string name) : name(name) {}
+    virtual ~ConstSymbol() {}
+    std::string GetName() override { return name; }
+    Token const *GetToken() { return token; }
+    DataType *GetDataType() override { return dataType; }
+
+  protected:
+    Token const *token = nullptr;
+    std::string name = "";
+    DataType *dataType = nullptr;
     friend class SemanticAnalyzer;
     friend class CodeGen;
 };

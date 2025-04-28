@@ -3213,6 +3213,10 @@ void SemanticAnalyzer::AnalyzeUnaryExpression(UnaryExpression *unaryExpr)
         ptrDataType->type = DataType::Type::POINTER;
         ptrDataType->dataType = rightDataType;
         currentScope->datatypesMap[ptrDataType->ToString()] = ptrDataType;
+<<<<<<< HEAD
+=======
+        // ptrDataType->isReadOnly = true;
+>>>>>>> 595cc44b514e014b982db43ae12e25b240e44906
         exprToDataTypeMap[unaryExpr] = ptrDataType;
         break;
     }

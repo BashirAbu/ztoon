@@ -1,5 +1,7 @@
 package SDL3
 import core::core;
+
+
 pub enum init_flags : u32
 {
     SDL_INIT_AUDIO = 0x00000010,

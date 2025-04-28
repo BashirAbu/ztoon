@@ -3,8 +3,17 @@ import core::core;
 
 import sdl3;
 
+<<<<<<< HEAD
+=======
+arr: readonly i32[3] = {4,2,6};
+
+
+>>>>>>> 595cc44b514e014b982db43ae12e25b240e44906
 fn main() -> i32
 {
+    c: readonly i32 = 33333;
+    //cPtr: i32* = &c;
+   // printf("c: %llu\n", cPtr);
     result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);
 
     if !result {

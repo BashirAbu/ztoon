@@ -11,6 +11,16 @@ struct CodeErrString
     std::string str;
 };
 
+struct Generic
+{
+    std::vector<Token const *> types;
+};
+struct Tokens
+{
+    size_t startPos;
+    size_t endPos;
+    std::vector<Token *> tokens;
+};
 class DataTypeToken
 {
   public:
@@ -52,7 +62,11 @@ class DataTypeToken
     };
 
     PointerDesc *pointerDesc = nullptr;
-
+    struct Generic
+    {
+        std::vector<class DataTypeToken *> types;
+    };
+    Generic *generic = nullptr;
     const Token *libToken = nullptr;
     const Token *pkgToken = nullptr;
 
@@ -284,9 +298,12 @@ class StructStatement : public Statement
     std::vector<FnStatement *> methods;
     std::vector<class UnionStatement *> unions;
     std::vector<Statement *> fieldsInOrder;
+    Generic *generic = nullptr;
+    Tokens tokens;
     friend class Parser;
     friend class SemanticAnalyzer;
     friend class CodeGen;
+    friend class Scope;
 };
 class UnionStatement : public Statement
 {
@@ -1038,7 +1055,7 @@ class PrimaryExpression : public Expression
 class Parser
 {
   public:
-    Parser(const std::vector<Token *> &tokens);
+    Parser(std::vector<Token *> &tokens);
     ~Parser();
     void PrettyPrintAST();
     std::vector<Package *> &Parse();
@@ -1101,6 +1118,7 @@ class Parser
 
     DataTypeToken *ParseDataType();
 
+    Generic *ParseGeneric();
     bool Consume(TokenType type);
     Token const *Peek();
     Token const *PeekAhead(size_t steps);
@@ -1108,6 +1126,9 @@ class Parser
     void Advance();
     size_t currentIndex = 0;
     bool isAnonymous = false;
-    const std::vector<Token *> tokens;
+    std::vector<Token *> tokens;
     std::vector<Package *> packages;
+
+    friend class Scope;
+    friend class SemanticAnalyzer;
 };

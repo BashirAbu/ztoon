@@ -1,3 +1,4 @@
+#include "compiler/compiler.h"
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -7,6 +8,7 @@
 #include <format>
 #include <functional>
 #include <stack>
+#include <unordered_map>
 #include <utility>
 void removeReadonlyPrefix(std::string &str)
 {
@@ -330,13 +332,14 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 
     if (!dataTypeToken->arrayDesc)
     {
-        while (currentScope)
+        while (currentScope && !result)
         {
             if (currentScope->datatypesMap.contains(typeStr))
             {
                 DataType *type = currentScope->datatypesMap[typeStr];
 
-                return type;
+                result = type;
+                break;
             }
             for (auto pkg : currentScope->importedPackages)
             {
@@ -357,14 +360,252 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                         }
                     }
 
-                    return type;
+                    result = type;
+                    break;
                 }
             }
             currentScope = currentScope->parent;
         }
     }
 
-    if (dataTypeToken->fnStatement)
+    if (result && dataTypeToken->generic)
+    {
+        if (result->GetType() == DataType::Type::STRUCT)
+        {
+            auto structType = dynamic_cast<StructDataType *>(result);
+            if (dataTypeToken->generic->types.size() !=
+                structType->structStmt->generic->types.size())
+            {
+                ReportError(
+                    std::format(
+                        "Wrong number of parameters provided to generic "
+                        "struct '{}'",
+                        structType->GetName()),
+                    dataTypeToken->GetCodeErrString());
+            }
+
+            std::function<std::string(DataTypeToken *)> genName = nullptr;
+            genName = [&structType](DataTypeToken *dataTypeToken) -> std::string
+            {
+                std::string name = dataTypeToken->dataType->GetLexeme();
+                for (auto dtToken : dataTypeToken->generic->types)
+                {
+
+                    name += std::format("_{}",
+
+                                        dtToken->ToString());
+                }
+                return name;
+            };
+
+            if (auto foundSymbol = currentScope->GetSymbol(
+                    genName(dataTypeToken), dataTypeToken->GetCodeErrString(),
+                    true))
+            {
+                result = dynamic_cast<StructDataType *>(foundSymbol);
+            }
+            else
+            {
+
+                if (!structType->generic)
+                {
+                    ReportError(std::format("Struct '{}' is not generic",
+                                            structType->GetName()),
+                                dataTypeToken->GetCodeErrString());
+                }
+
+                std::unordered_map<std::string, DataTypeToken *> dataTypesMap;
+
+                for (size_t i = 0; i < dataTypeToken->generic->types.size();
+                     i++)
+                {
+                    dataTypesMap[structType->structStmt->generic->types[i]
+                                     ->lexeme] =
+                        dataTypeToken->generic->types[i];
+                }
+
+                // remove generics tokens
+                std::vector<Token *> processTokens =
+                    structType->structStmt->tokens.tokens;
+
+                // replace types
+                for (size_t i = structType->structStmt->tokens.startPos;
+                     i < structType->structStmt->tokens.endPos; i++)
+                {
+
+                    auto itr = std::find_if(
+                        structType->structStmt->generic->types.begin(),
+                        structType->structStmt->generic->types.end(),
+                        [&](const Token *t) -> bool {
+                            return t->GetLexeme() ==
+                                   processTokens[i]->GetLexeme();
+                        });
+
+                    if (itr != structType->structStmt->generic->types.end())
+                    {
+                        auto dtToken =
+                            dataTypesMap[processTokens[i]->GetLexeme()];
+                        auto oldToken = processTokens[i];
+                        processTokens[i] =
+                            gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+                        *processTokens[i] = *(oldToken);
+                        processTokens[i]->type = dtToken->dataType->type;
+                        processTokens[i]->lexeme = dtToken->dataType->lexeme;
+                    }
+                }
+                for (auto itr =
+                         processTokens.begin() +
+                         (long long)structType->structStmt->tokens.startPos;
+                     itr !=
+                     processTokens.begin() +
+                         (long long)structType->structStmt->tokens.endPos;
+                     itr++)
+                {
+                    if ((*itr)->GetType() == TokenType::IDENTIFIER)
+                    {
+                        auto oldID = *itr;
+                        *itr =
+                            gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+                        *(*itr) = *oldID;
+                        (*itr)->lexeme = genName(dataTypeToken);
+                    }
+                    if ((*itr)->GetType() == TokenType::LESS)
+                    {
+                        while ((*itr)->GetType() != TokenType::GREATER)
+                        {
+                            itr = processTokens.erase(itr);
+                        }
+                        itr = processTokens.erase(itr);
+                        break;
+                    }
+                }
+
+                Parser parser(processTokens);
+                parser.currentIndex = structType->structStmt->tokens.startPos;
+                StructStatement *newStructStatement =
+                    dynamic_cast<StructStatement *>(
+                        parser.ParseStructStatement());
+                if (!newStructStatement)
+                {
+                    ReportError("Failed to generate generic type",
+                                dataTypeToken->GetCodeErrString());
+                }
+
+                GenericStatementInfo temp = {};
+
+                temp.currentScope = semanticAnalyzer->currentScope;
+                temp.currentBlockStatement =
+                    semanticAnalyzer->currentBlockStatement;
+                temp.currentFunction = semanticAnalyzer->currentFunction;
+                temp.currentLibrary = semanticAnalyzer->currentLibrary;
+                temp.currentPackage = semanticAnalyzer->currentPackage;
+
+                semanticAnalyzer->currentScope =
+                    structType->generic->currentScope;
+                semanticAnalyzer->currentBlockStatement =
+                    structType->generic->currentBlockStatement;
+                semanticAnalyzer->currentFunction =
+                    structType->generic->currentFunction;
+                semanticAnalyzer->currentLibrary =
+                    structType->generic->currentLibrary;
+                semanticAnalyzer->currentPackage =
+                    structType->generic->currentPackage;
+
+                semanticAnalyzer->AnalyzeStructStatement(
+                    newStructStatement, semanticAnalyzer->currentFunction, true,
+                    false, false);
+                semanticAnalyzer->AnalyzeStructStatement(
+                    newStructStatement, semanticAnalyzer->currentFunction,
+                    false, true, false);
+                semanticAnalyzer->AnalyzeStructStatement(
+                    newStructStatement, semanticAnalyzer->currentFunction,
+                    false, false, true);
+
+                // Get location
+                if (structType->generic->currentFunction)
+                {
+                    if (auto fnStmt =
+                            structType->generic->currentFunction->fnStmt)
+                    {
+
+                        auto itr = std::find(
+                            fnStmt->GetBlockStatement()
+                                ->GetStatements()
+                                .begin(),
+                            fnStmt->GetBlockStatement()->GetStatements().end(),
+                            structType->structStmt);
+
+                        if (itr ==
+                            fnStmt->GetBlockStatement()->GetStatements().end())
+                        {
+                            PrintError("Internal error: generic statement "
+                                       "cannot be found");
+                        }
+                        long long index = itr - fnStmt->GetBlockStatement()
+                                                    ->GetStatements()
+                                                    .begin();
+                        semanticAnalyzer->stmtsToAdd.push_back(
+                            {fnStmt->GetBlockStatement()->GetStatements(),
+                             index, newStructStatement});
+                    }
+                    else if (auto fnExpr =
+                                 structType->generic->currentFunction->fnExpr)
+                    {
+                        auto itr = std::find(
+                            fnExpr->GetBlockStatement()
+                                ->GetStatements()
+                                .begin(),
+                            fnExpr->GetBlockStatement()->GetStatements().end(),
+                            structType->structStmt);
+                        if (itr ==
+                            fnExpr->GetBlockStatement()->GetStatements().end())
+                        {
+                            PrintError("Internal error: generic statement "
+                                       "cannot be found");
+                        }
+                        long long index = itr - fnExpr->GetBlockStatement()
+                                                    ->GetStatements()
+                                                    .begin();
+                        semanticAnalyzer->stmtsToAdd.push_back(
+                            {fnExpr->GetBlockStatement()->GetStatements(),
+                             index, newStructStatement});
+                    }
+                }
+                else
+                {
+                    auto itr = std::find(
+                        semanticAnalyzer->currentPackage->GetStatements()
+                            .begin(),
+                        semanticAnalyzer->currentPackage->GetStatements().end(),
+                        structType->structStmt);
+                    if (itr ==
+                        semanticAnalyzer->currentPackage->GetStatements().end())
+                    {
+                        PrintError("Internal error: generic statement "
+                                   "cannot be found");
+                    }
+                    long long index =
+                        itr - semanticAnalyzer->currentPackage->GetStatements()
+                                  .begin();
+                    semanticAnalyzer->stmtsToAdd.push_back(
+                        {semanticAnalyzer->currentPackage->GetStatements(),
+                         index, newStructStatement});
+                }
+
+                semanticAnalyzer->currentScope = temp.currentScope;
+                semanticAnalyzer->currentBlockStatement =
+                    temp.currentBlockStatement;
+                semanticAnalyzer->currentFunction = temp.currentFunction;
+                semanticAnalyzer->currentLibrary = temp.currentLibrary;
+                semanticAnalyzer->currentPackage = temp.currentPackage;
+
+                result =
+                    semanticAnalyzer->stmtToDataTypeMap[newStructStatement];
+            }
+        }
+    }
+
+    else if (dataTypeToken->fnStatement)
     {
         auto fnType = gZtoonArena.Allocate<FnDataType>();
         fnType->type = DataType::Type::FN;
@@ -749,7 +990,7 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
 void Scope::AddSymbol(Symbol *symbol, CodeErrString codeErrString)
 {
     std::string symbolName = std::format("{}::{}", name, symbol->GetName());
-    if (symbolsMap.contains(symbol->GetName()))
+    if (symbolsMap.contains(symbolName))
     {
         Symbol *alreadyDefined = symbolsMap[symbolName];
         ReportError(std::format("'{}' already defined", symbol->GetName()),
@@ -973,6 +1214,12 @@ void SemanticAnalyzer::Analyze(std::vector<Package *> &packages)
     {
         AnalyzePackage(pkg);
         AnalyzePackageVarAndFuncBodies(pkg);
+    }
+
+    for (auto toAdd : stmtsToAdd)
+    {
+        toAdd.statements.insert(toAdd.statements.begin() + toAdd.index,
+                                toAdd.stmt);
     }
 }
 
@@ -1220,6 +1467,7 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
     if (analyzeSymbol)
     {
         Function *fp = gZtoonArena.Allocate<Function>();
+        fp->fnStmt = fnStmt;
         std::string fpName = fnStmt->GetIdentifier()->GetLexeme();
 
         fp->name = fpName;
@@ -1400,6 +1648,7 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
                 }
             }
         }
+        currentFunction = temp;
     }
 }
 
@@ -1912,6 +2161,15 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
             structType->name = std::format("__anonymous_struct__number__{}",
                                            (size_t)(structStmt));
         }
+        if (structStmt->identifier && structStmt->generic)
+        {
+            structType->generic = gZtoonArena.Allocate<GenericStatementInfo>();
+            structType->generic->currentBlockStatement = currentBlockStatement;
+            structType->generic->currentFunction = currentFunction;
+            structType->generic->currentLibrary = currentLibrary;
+            structType->generic->currentPackage = currentPackage;
+            structType->generic->currentScope = currentScope;
+        }
         currentScope->datatypesMap[structType->name] = structType;
         structType->isPublic = structStmt->IsPublic();
         currentScope->AddSymbol(structType, structStmt->GetCodeErrString());
@@ -1924,7 +2182,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
             currentScope);
         structType->scope = scope;
     }
-    if (analyzeBody)
+    if (analyzeBody && !structStmt->generic)
     {
         auto structType =
             dynamic_cast<StructDataType *>(stmtToDataTypeMap[structStmt]);
@@ -2148,7 +2406,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         structType->complete = true;
         currentScope = temp;
     }
-    if (analyzeMethodsBody)
+    if (analyzeMethodsBody && !structStmt->generic)
     {
         auto structType =
             dynamic_cast<StructDataType *>(stmtToDataTypeMap[structStmt]);
@@ -2668,6 +2926,7 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
 void SemanticAnalyzer::AnalyzeFnExpression(FnExpression *fnExpr)
 {
     Function *fp = gZtoonArena.Allocate<Function>();
+    fp->fnExpr = fnExpr;
     fp->name = std::format("__anonymous_fn_{}", (size_t)fnExpr);
     fnExpr->name = fp->name;
     FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
@@ -3213,10 +3472,6 @@ void SemanticAnalyzer::AnalyzeUnaryExpression(UnaryExpression *unaryExpr)
         ptrDataType->type = DataType::Type::POINTER;
         ptrDataType->dataType = rightDataType;
         currentScope->datatypesMap[ptrDataType->ToString()] = ptrDataType;
-<<<<<<< HEAD
-=======
-        // ptrDataType->isReadOnly = true;
->>>>>>> 595cc44b514e014b982db43ae12e25b240e44906
         exprToDataTypeMap[unaryExpr] = ptrDataType;
         break;
     }

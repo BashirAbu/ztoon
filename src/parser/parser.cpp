@@ -62,7 +62,6 @@ std::string DataTypeToken::ToString()
         }
         else
         {
-
             str += dataType->GetLexeme();
         }
     }
@@ -295,6 +294,7 @@ DataTypeToken *Parser::ParseDataType()
 
             if (IsDataType(secondAccessStage->GetType()))
             {
+
                 dataType->dataType = secondAccessStage;
             }
             else
@@ -320,6 +320,18 @@ DataTypeToken *Parser::ParseDataType()
                 ReportError(std::format("Expected 'datatype' after '::'"), ces);
             }
         }
+        if (Consume(TokenType::LESS))
+        {
+            auto generic = gZtoonArena.Allocate<DataTypeToken::Generic>();
+            while (!Consume(TokenType::GREATER))
+            {
+
+                generic->types.push_back(ParseDataType());
+                Consume(TokenType::COMMA);
+            }
+
+            dataType->generic = generic;
+        }
     }
     else
     {
@@ -328,7 +340,6 @@ DataTypeToken *Parser::ParseDataType()
         ces.str = ces.firstToken->GetLexeme();
         ReportError(std::format("Expect datatype"), ces);
     }
-
     while (Consume(TokenType::ASTERISK))
     {
         auto ptrDesc = gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
@@ -386,7 +397,7 @@ bool Parser::IsDataType(TokenType type)
 {
     return ::IsDataType(type) || type == TokenType::IDENTIFIER;
 }
-Parser::Parser(const std::vector<Token *> &tokens) : tokens(tokens)
+Parser::Parser(std::vector<Token *> &tokens) : tokens(tokens)
 {
     currentStage = Stage::PARSER;
 }
@@ -431,6 +442,27 @@ std::vector<Package *> &Parser::Parse()
     return packages;
 }
 
+Generic *Parser::ParseGeneric()
+{
+    Generic *generic = nullptr;
+    if (Consume(TokenType::LESS))
+    {
+        generic = gZtoonArena.Allocate<Generic>();
+        while (!Consume(TokenType::GREATER))
+        {
+            if (!Consume(TokenType::IDENTIFIER))
+            {
+                CodeErrString ces;
+                ces.firstToken = Peek();
+                ces.str = ces.firstToken->GetLexeme();
+                ReportError("expected identifier after '<'", ces);
+            }
+            generic->types.push_back(Prev());
+            Consume(TokenType::COMMA);
+        }
+    }
+    return generic;
+}
 Statement *Parser::ParseDeclaration()
 {
     Statement *declStmt = ParseStatement();
@@ -735,15 +767,26 @@ Statement *Parser::ParseStructStatement(bool anonymous)
 {
 
     Token const *pubToken = nullptr;
+    size_t startPos = 0;
     if (Peek()->GetType() == TokenType::PUB &&
         PeekAhead(1)->GetType() == TokenType::STRUCT)
     {
+        startPos = currentIndex;
         Advance();
         pubToken = Prev();
     }
     if (Consume(TokenType::STRUCT))
     {
         StructStatement *structStmt = gZtoonArena.Allocate<StructStatement>();
+        structStmt->tokens.tokens = tokens;
+        if (pubToken)
+        {
+            structStmt->tokens.startPos = startPos;
+        }
+        else
+        {
+            structStmt->tokens.startPos = currentIndex - 1;
+        }
         structStmt->pub = pubToken;
         structStmt->token = Prev();
         if (!anonymous && !Consume(TokenType::IDENTIFIER))
@@ -756,8 +799,8 @@ Statement *Parser::ParseStructStatement(bool anonymous)
         if (!anonymous)
         {
             structStmt->identifier = Prev();
+            structStmt->generic = ParseGeneric();
         }
-
         if (!Consume(TokenType::LEFT_CURLY_BRACKET))
         {
             CodeErrString ces;
@@ -784,6 +827,11 @@ Statement *Parser::ParseStructStatement(bool anonymous)
             }
             if (varDeclStmt)
             {
+                if (anonymous && varDeclStmt->GetExpression())
+                {
+                    ReportError("Anonymous structs cannot have default values",
+                                varDeclStmt->GetCodeErrString());
+                }
                 varDeclStmt->isField = true;
                 structStmt->fieldsInOrder.push_back(varDeclStmt);
                 structStmt->fields.push_back(varDeclStmt);
@@ -849,6 +897,7 @@ Statement *Parser::ParseStructStatement(bool anonymous)
                         structStmt->GetCodeErrString());
         }
 
+        structStmt->tokens.endPos = currentIndex;
         return structStmt;
     }
     return ParseUnionStatement();
@@ -912,7 +961,6 @@ Statement *Parser::ParseUnionStatement()
             }
             else if (structStmt)
             {
-
                 unionStmt->fieldsInOrder.push_back(structStmt);
                 unionStmt->structs.push_back(structStmt);
             }

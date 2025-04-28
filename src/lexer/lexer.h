@@ -169,6 +169,7 @@ class Token
     friend class Parser;
     friend class SemanticAnalyzer;
     friend class CodeGen;
+    friend class Scope;
 };
 
 template <typename T>
@@ -194,7 +195,7 @@ class Lexer
     ~Lexer();
     void Tokenize(std::string sourceCode, std::string filename);
     void DebugPrint();
-    const std::vector<Token *> &GetTokens() { return tokens; }
+    std::vector<Token *> &GetTokens() { return tokens; }
     void EndProgram()
     {
         Token *token = gZtoonArena.Allocate<Token>(TokenType::END_OF_PROGRAM);

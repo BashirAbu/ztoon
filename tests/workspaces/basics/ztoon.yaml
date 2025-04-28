@@ -104,3 +104,6 @@ workspace:
     - packages:
             relative_path: packages/
             type: exe
+    - generics:
+            relative_path: generics/
+            type: exe

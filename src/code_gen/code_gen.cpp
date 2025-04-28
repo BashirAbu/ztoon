@@ -1324,6 +1324,10 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
         if (dynamic_cast<StructStatement *>(stmt))
         {
             StructStatement *structStmt = dynamic_cast<StructStatement *>(stmt);
+            if (structStmt->generic)
+            {
+                continue;
+            }
             auto structZtoonType = dynamic_cast<StructDataType *>(
                 semanticAnalyzer.stmtToDataTypeMap[structStmt]);
             genStructIR(structZtoonType);
@@ -1644,6 +1648,10 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
         else if (dynamic_cast<StructStatement *>(stmt))
         {
             StructStatement *structStmt = dynamic_cast<StructStatement *>(stmt);
+            if (structStmt->generic)
+            {
+                continue;
+            }
             auto structZtoonType = dynamic_cast<StructDataType *>(
                 semanticAnalyzer.stmtToDataTypeMap[structStmt]);
             auto tempScope = semanticAnalyzer.currentScope;
@@ -2087,6 +2095,10 @@ void CodeGen::GenContinueStatementIR(ContinueStatement *continueStmt)
 void CodeGen::GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
                                    bool genBody)
 {
+    if (structStmt->generic)
+    {
+        return;
+    }
     auto structZtoonType = dynamic_cast<StructDataType *>(
         semanticAnalyzer.stmtToDataTypeMap[structStmt]);
     auto temp = semanticAnalyzer.currentScope;

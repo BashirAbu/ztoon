@@ -97,6 +97,16 @@ class LibraryDataType : public DataType, public Symbol
     std::string name;
     friend class SemanticAnalyzer;
 };
+
+struct GenericStatementInfo
+{
+    class Scope *currentScope = nullptr;
+    Package *currentPackage = nullptr;
+    Library *currentLibrary = nullptr;
+    BlockStatement *currentBlockStatement = nullptr;
+    class Function *currentFunction = nullptr;
+};
+
 class StructDataType : public DataType, public Symbol
 {
   public:
@@ -109,6 +119,7 @@ class StructDataType : public DataType, public Symbol
     StructStatement *structStmt;
     InitializerListExpression *defaultValuesList = nullptr;
     std::vector<DataType *> fields;
+    GenericStatementInfo *generic;
     friend class SemanticAnalyzer;
 };
 class UnionDataType : public DataType, public Symbol
@@ -238,11 +249,14 @@ class Function : public Symbol
     }
 
   private:
+    FnStatement *fnStmt = nullptr;
+    FnExpression *fnExpr = nullptr;
     std::string name;
     class RetStatement *retStmt = nullptr;
     PointerDataType *fnPointer = nullptr;
     friend class SemanticAnalyzer;
     friend class CodeGen;
+    friend class Scope;
 };
 
 class Scope
@@ -373,9 +387,18 @@ class SemanticAnalyzer
     Package *currentPackage = nullptr;
     Library *currentLibrary = nullptr;
     BlockStatement *currentBlockStatement = nullptr;
-    size_t statementCurrentIndex = 0;
     Function *currentFunction = nullptr;
     size_t inLoop = 0;
+
+    struct StmtToAdd
+    {
+        std::vector<Statement *> &statements;
+        long long index;
+        Statement *stmt;
+    };
+
+    std::vector<StmtToAdd> stmtsToAdd;
+
     friend class CodeGen;
     friend class Scope;
 };

@@ -577,17 +577,29 @@ Statement *Parser::ParseFnStatement(bool isMethod)
 {
 
     Token const *pubToken = nullptr;
+    size_t startPos = 0;
     if (Peek()->GetType() == TokenType::PUB &&
         PeekAhead(1)->GetType() == TokenType::FN)
     {
+        startPos = currentIndex;
         Advance();
         pubToken = Prev();
     }
     if (Consume(TokenType::FN))
     {
         FnStatement *fnStmt = gZtoonArena.Allocate<FnStatement>();
+        fnStmt->tokens.tokens = tokens;
+        if (pubToken)
+        {
+            fnStmt->tokens.startPos = startPos;
+        }
+        else
+        {
+            fnStmt->tokens.startPos = currentIndex - 1;
+        }
         fnStmt->pub = pubToken;
         fnStmt->fnToken = Prev();
+        fnStmt->generic = ParseGeneric();
         PrimaryExpression *primaryExpr =
             dynamic_cast<PrimaryExpression *>(ParsePrimaryExpression());
 
@@ -758,7 +770,7 @@ Statement *Parser::ParseFnStatement(bool isMethod)
         }
 
         fnStmt->blockStatement = (BlockStatement *)blockStatement;
-
+        fnStmt->tokens.endPos = currentIndex;
         return fnStmt;
     }
     return ParseStructStatement();
@@ -838,7 +850,7 @@ Statement *Parser::ParseStructStatement(bool anonymous)
             }
             else if (unionStmt)
             {
-                if (unionStmt->identifier)
+                if (!unionStmt->identifier)
                 {
                     ReportError("Only anonymous unions are allowd to be "
                                 "decalred in struct definition",
@@ -907,15 +919,26 @@ Statement *Parser::ParseUnionStatement()
 {
 
     Token const *pubToken = nullptr;
+    size_t startPos = 0;
     if (Peek()->GetType() == TokenType::PUB &&
         PeekAhead(1)->GetType() == TokenType::UNION)
     {
+        startPos = currentIndex;
         Advance();
         pubToken = Prev();
     }
     if (Consume(TokenType::UNION))
     {
         UnionStatement *unionStmt = gZtoonArena.Allocate<UnionStatement>();
+        unionStmt->tokens.tokens = tokens;
+        if (pubToken)
+        {
+            unionStmt->tokens.startPos = startPos;
+        }
+        else
+        {
+            unionStmt->tokens.startPos = currentIndex - 1;
+        }
         unionStmt->pub = pubToken;
         unionStmt->token = Prev();
         if (!Consume(TokenType::IDENTIFIER) && !isAnonymous)
@@ -928,6 +951,11 @@ Statement *Parser::ParseUnionStatement()
         if (isAnonymous)
         {
             isAnonymous = false;
+        }
+        if (!isAnonymous)
+        {
+            unionStmt->identifier = Prev();
+            unionStmt->generic = ParseGeneric();
         }
         else
         {
@@ -984,7 +1012,7 @@ Statement *Parser::ParseUnionStatement()
                             varDeclStmt->GetCodeErrString());
             }
         }
-
+        unionStmt->tokens.endPos = currentIndex;
         return unionStmt;
     }
     return ParseEnumStatement();

@@ -1,6 +1,14 @@
 package mainPkg;
 
-
+union Vec<T>
+{
+    elements: T[2];
+    struct
+    {
+        x: T;
+        y: T;
+    }
+}
 
 
 fn main() -> i32
@@ -20,6 +28,10 @@ fn main() -> i32
 
     pos3: Vector2<f64> = {455.0, 44.4};    
 
+    v2: Vec<f64>;
+    v2.x = 12.04;
+
+    printf("v2.x: %f\n", v2.elements[0]);
         
     printf("pos: %d\n", pos.Len());
     printf("pos2: %d\n", pos2.Len());

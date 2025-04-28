@@ -134,6 +134,7 @@ class UnionDataType : public DataType, public Symbol
     Scope *scope = nullptr;
     UnionStatement *unionStmt;
     std::vector<DataType *> fields;
+    GenericStatementInfo *generic;
     friend class SemanticAnalyzer;
 };
 

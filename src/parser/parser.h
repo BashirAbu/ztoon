@@ -337,8 +337,11 @@ class UnionStatement : public Statement
     std::vector<class VarDeclStatement *> fields;
     std::vector<class StructStatement *> structs;
     std::vector<class Statement *> fieldsInOrder;
+    Generic *generic = nullptr;
+    Tokens tokens;
     friend class Parser;
     friend class SemanticAnalyzer;
+    friend class Scope;
 };
 
 class EnumStatement : public Statement
@@ -692,6 +695,8 @@ class FnStatement : public Statement
     Method *method = nullptr;
 
     class StructStatement *structStmt = nullptr;
+    Generic *generic = nullptr;
+    Tokens tokens;
     friend class Parser;
     friend class SemanticAnalyzer;
 };

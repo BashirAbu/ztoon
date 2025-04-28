@@ -28,13 +28,13 @@ struct IRSymbol
     virtual llvm::Type *GetType() = 0;
 };
 
-struct IRConstSymbol : public IRSymbol
+struct IRReadonlySymbol : public IRSymbol
 {
     std::string name;
     llvm::Value *value;
     IRType irType;
     virtual std::string GetName() override { return name; }
-    virtual llvm::Value *GetValue() override;
+    virtual llvm::Value *GetValue() override { return value; }
     virtual llvm::Type *GetType() override { return irType.type; }
 };
 

@@ -3,8 +3,6 @@ import core::core;
 
 import sdl3;
 
-arr: readonly i32[3] = {4,2,6};
-
 fn main() -> i32
 {
     result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);

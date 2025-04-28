@@ -1579,18 +1579,6 @@ void SemanticAnalyzer::AnalyzeVarDeclStatement(VarDeclStatement *varDeclStmt,
                 }
             }
         }
-
-        Variable *var = dynamic_cast<Variable *>(
-            currentScope->GetSymbol(varDeclStmt->GetIdentifier()->GetLexeme(),
-                                    varDeclStmt->GetCodeErrString()));
-        if (!varDeclStmt->IsParamter() && var->dataType->IsReadOnly())
-        {
-            if (!varDeclStmt->GetExpression() ||
-                exprToDataTypeMap[varDeclStmt->GetExpression()]->IsReadOnly())
-            {
-                var->isConstSymbol = true;
-            }
-        }
     }
 }
 void SemanticAnalyzer::AnalyzeVarAssignmentStatement(
@@ -2451,11 +2439,13 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
         currentScope = enumType->scope;
         for (auto f : enumStmt->fields)
         {
-            ConstSymbol *constSymbol =
-                gZtoonArena.Allocate<ConstSymbol>(f->identifier->GetLexeme());
-            constSymbol->dataType = enumType->GetDataType();
-            constSymbol->token = f->identifier;
-            currentScope->AddSymbol(constSymbol, enumStmt->GetCodeErrString());
+            ReadonlySymbol *readonlySymbol =
+                gZtoonArena.Allocate<ReadonlySymbol>(
+                    f->identifier->GetLexeme());
+            readonlySymbol->dataType = enumType->GetDataType();
+            readonlySymbol->token = f->identifier;
+            currentScope->AddSymbol(readonlySymbol,
+                                    enumStmt->GetCodeErrString());
             if (f->expr)
             {
                 AnalyzeExpression(f->expr);
@@ -3223,7 +3213,6 @@ void SemanticAnalyzer::AnalyzeUnaryExpression(UnaryExpression *unaryExpr)
         ptrDataType->type = DataType::Type::POINTER;
         ptrDataType->dataType = rightDataType;
         currentScope->datatypesMap[ptrDataType->ToString()] = ptrDataType;
-        ptrDataType->isReadOnly = true;
         exprToDataTypeMap[unaryExpr] = ptrDataType;
         break;
     }

@@ -189,11 +189,11 @@ class FnDataType : public DataType
     friend class CodeGen;
 };
 
-class ConstSymbol : public Symbol
+class ReadonlySymbol : public Symbol
 {
   public:
-    ConstSymbol(std::string name) : name(name) {}
-    virtual ~ConstSymbol() {}
+    ReadonlySymbol(std::string name) : name(name) {}
+    virtual ~ReadonlySymbol() {}
     std::string GetName() override { return name; }
     Token const *GetToken() { return token; }
     DataType *GetDataType() override { return dataType; }
@@ -220,7 +220,6 @@ class Variable : public Symbol
     std::string name = "";
     DataType *dataType = nullptr;
     VarDeclStatement *varDeclStmt = nullptr;
-    bool isConstSymbol = false;
     friend class SemanticAnalyzer;
     friend class CodeGen;
 };

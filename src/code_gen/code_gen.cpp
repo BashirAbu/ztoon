@@ -1335,6 +1335,10 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
             semanticAnalyzer.currentScope = structZtoonType->scope;
             for (auto method : structStmt->GetMethods())
             {
+                if (method->GetGeneric())
+                {
+                    continue;
+                }
                 FnStatement *fnStmt = method;
                 Function *fn = dynamic_cast<Function *>(
                     semanticAnalyzer.currentScope->GetSymbol(
@@ -1667,6 +1671,10 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
             for (auto method : structStmt->GetMethods())
             {
 
+                if (method->GetGeneric())
+                {
+                    continue;
+                }
                 FnStatement *fnStmt = method;
                 Function *fn = dynamic_cast<Function *>(
                     semanticAnalyzer.currentScope->GetSymbol(
@@ -2115,6 +2123,10 @@ void CodeGen::GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
     {
         for (auto method : structStmt->GetMethods())
         {
+            if (method->GetGeneric())
+            {
+                continue;
+            }
             FnStatement *fnStmt = method;
             Function *fn = dynamic_cast<Function *>(
                 semanticAnalyzer.currentScope->GetSymbol(
@@ -2151,6 +2163,10 @@ void CodeGen::GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
         for (auto method : structStmt->GetMethods())
         {
 
+            if (method->GetGeneric())
+            {
+                continue;
+            }
             FnStatement *fnStmt = method;
             Function *fn = dynamic_cast<Function *>(
                 semanticAnalyzer.currentScope->GetSymbol(

@@ -1544,12 +1544,20 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
         currentScope->AddSymbol(fp, fnStmt->GetCodeErrString());
         if (fnStmt->generic)
         {
+            FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
+            fpDataType->type = DataType::Type::FN;
+            fpDataType->isVarArgs = fnStmt->IsVarArgs();
+            fpDataType->isMethod = fnStmt->method;
+            fpDataType->fn = fp;
+
             fp->generic = gZtoonArena.Allocate<GenericStatementInfo>();
             fp->generic->currentBlockStatement = currentBlockStatement;
             fp->generic->currentFunction = currentFunction;
             fp->generic->currentLibrary = currentLibrary;
             fp->generic->currentPackage = currentPackage;
             fp->generic->currentScope = currentScope;
+            fp->fnPointer = fpDataType->GetFnPtrType();
+            fp->isPublic = fnStmt->IsPublic();
         }
         else
         {
@@ -3615,18 +3623,40 @@ void SemanticAnalyzer::AnalyzeSubScriptExpression(SubscriptExpression *subExpr)
 }
 void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
 {
-
+    AnalyzeExpression(fnCallExpr->GetGetExpression());
     if (fnCallExpr->generic)
     {
         auto pe =
             dynamic_cast<PrimaryExpression *>(fnCallExpr->GetGetExpression());
-        if (!pe || pe->GetPrimary()->GetType() != TokenType::IDENTIFIER)
+        auto maExpr = dynamic_cast<MemberAccessExpression *>(
+            fnCallExpr->GetGetExpression());
+        if (!pe)
+        {
+            if (!maExpr)
+            {
+                ReportError("Missing identifier",
+                            fnCallExpr->GetCodeErrString());
+            }
+            pe =
+                dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
+        }
+
+        if ((!pe || pe->GetPrimary()->GetType() != TokenType::IDENTIFIER))
         {
             ReportError("Missing identifier", fnCallExpr->GetCodeErrString());
         }
+        Scope *methodScope = nullptr;
+        StructDataType *structType = nullptr;
+        if (maExpr)
+        {
+            structType = dynamic_cast<StructDataType *>(
+                stmtToDataTypeMap[currentStruct]);
+            methodScope = structType->scope;
+        }
 
-        Function *fn = dynamic_cast<Function *>(currentScope->GetSymbol(
-            pe->primary->GetLexeme(), pe->GetCodeErrString()));
+        Function *fn = dynamic_cast<Function *>(
+            (structType ? methodScope : currentScope)
+                ->GetSymbol(pe->primary->GetLexeme(), pe->GetCodeErrString()));
 
         if (!fn->generic)
         {
@@ -3742,8 +3772,13 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             Parser parser(processTokens);
             parser.currentIndex = tokens.startPos;
 
-            FnStatement *newStatement =
-                dynamic_cast<FnStatement *>(parser.ParseFnStatement());
+            FnStatement *newStatement = dynamic_cast<FnStatement *>(
+                parser.ParseFnStatement(structType));
+            if (newStatement->method)
+            {
+                Parser::AddSelfParam(newStatement,
+                                     structType->structStmt->identifier);
+            }
             if (!newStatement)
             {
                 ReportError("Failed to generate generic type",
@@ -3761,7 +3796,7 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             GenericStatementInfo *genericInfo = fn->generic;
             Statement *genericStatement = fn->fnStmt;
 
-            currentScope = genericInfo->currentScope;
+            currentScope = structType ? methodScope : genericInfo->currentScope;
             currentBlockStatement = genericInfo->currentBlockStatement;
             currentFunction = genericInfo->currentFunction;
             currentLibrary = genericInfo->currentLibrary;
@@ -3772,50 +3807,7 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             AnalyzeFnStatement(newStatement, currentFunction, false, true,
                                fn->fnStmt->method);
             // Get location
-            if (genericInfo->currentFunction)
-            {
-                if (auto fnStmt = genericInfo->currentFunction->fnStmt)
-                {
-
-                    auto itr = std::find(
-                        fnStmt->GetBlockStatement()->GetStatements().begin(),
-                        fnStmt->GetBlockStatement()->GetStatements().end(),
-                        genericStatement);
-
-                    if (itr ==
-                        fnStmt->GetBlockStatement()->GetStatements().end())
-                    {
-                        PrintError("Internal error: generic statement "
-                                   "cannot be found");
-                    }
-                    long long index =
-                        itr -
-                        fnStmt->GetBlockStatement()->GetStatements().begin();
-                    stmtsToAdd.push_back(
-                        {fnStmt->GetBlockStatement()->GetStatements(), index,
-                         newStatement});
-                }
-                else if (auto fnExpr = genericInfo->currentFunction->fnExpr)
-                {
-                    auto itr = std::find(
-                        fnExpr->GetBlockStatement()->GetStatements().begin(),
-                        fnExpr->GetBlockStatement()->GetStatements().end(),
-                        genericStatement);
-                    if (itr ==
-                        fnExpr->GetBlockStatement()->GetStatements().end())
-                    {
-                        PrintError("Internal error: generic statement "
-                                   "cannot be found");
-                    }
-                    long long index =
-                        itr -
-                        fnExpr->GetBlockStatement()->GetStatements().begin();
-                    stmtsToAdd.push_back(
-                        {fnExpr->GetBlockStatement()->GetStatements(), index,
-                         newStatement});
-                }
-            }
-            else
+            if (!structType)
             {
                 auto itr = std::find(currentPackage->GetStatements().begin(),
                                      currentPackage->GetStatements().end(),
@@ -3835,7 +3827,10 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             currentFunction = temp.currentFunction;
             currentLibrary = temp.currentLibrary;
             currentPackage = temp.currentPackage;
-
+            if (structType)
+            {
+                structType->structStmt->methods.push_back(newStatement);
+            }
             fnCallExpr->generic = nullptr;
         }
     }
@@ -4186,6 +4181,7 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
         }
 
         structStmt = structType->structStmt;
+        currentStruct = structStmt;
 
         PrimaryExpression *field =
             dynamic_cast<PrimaryExpression *>(maExpr->GetRightExpression());
@@ -4287,8 +4283,8 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
             {
                 PointerDataType *fnPtrType = dynamic_cast<PointerDataType *>(
                     exprToDataTypeMap[maExpr->GetRightExpression()]);
-                FnDataType *fnDataType = dynamic_cast<FnDataType *>(
-                    fnPtrType ? fnPtrType->dataType : nullptr);
+                FnDataType *fnDataType =
+                    dynamic_cast<FnDataType *>(fnPtrType->dataType);
                 if (fnDataType->IsMethod())
                 {
                     methodToCallerMap[maExpr] = maExpr->GetLeftExpression();

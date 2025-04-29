@@ -3,6 +3,7 @@
 #include "parser.h"
 #include <algorithm>
 #include <format>
+#include <functional>
 std::string DataTypeToken::ToString()
 {
     std::string str;
@@ -827,33 +828,7 @@ Statement *Parser::ParseStructStatement(bool anonymous)
             {
                 if (fnStmt->method)
                 {
-                    // add param
-                    auto selfParam = gZtoonArena.Allocate<VarDeclStatement>();
-                    selfParam->identifier = fnStmt->method->selfToken;
-                    selfParam->isParamter = true;
-                    DataTypeToken *dataTypeToken =
-                        gZtoonArena.Allocate<DataTypeToken>();
-                    dataTypeToken->dataType = structStmt->identifier;
-                    if (fnStmt->method->asterisk)
-                    {
-                        DataTypeToken *ptrDataTypeToken =
-                            gZtoonArena.Allocate<DataTypeToken>();
-                        ptrDataTypeToken->pointerDesc =
-                            gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
-                        ptrDataTypeToken->pointerDesc->dataTypeToken =
-                            dataTypeToken;
-                        ptrDataTypeToken->pointerDesc->token =
-                            structStmt->identifier;
-                        dataTypeToken = ptrDataTypeToken;
-                    }
-                    else
-                    {
-                        dataTypeToken->dataType = structStmt->identifier;
-                    }
-                    dataTypeToken->readOnly = fnStmt->method->readonly;
-                    selfParam->dataTypeToken = dataTypeToken;
-                    fnStmt->GetParameters().insert(
-                        fnStmt->GetParameters().begin(), selfParam);
+                    AddSelfParam(fnStmt, structStmt->identifier);
                 }
 
                 fnStmt->structStmt = structStmt;
@@ -877,6 +852,32 @@ Statement *Parser::ParseStructStatement(bool anonymous)
         return structStmt;
     }
     return ParseUnionStatement();
+}
+
+void Parser::AddSelfParam(FnStatement *method, const Token *dataType)
+{
+    // add param
+    auto selfParam = gZtoonArena.Allocate<VarDeclStatement>();
+    selfParam->identifier = method->method->selfToken;
+    selfParam->isParamter = true;
+    DataTypeToken *dataTypeToken = gZtoonArena.Allocate<DataTypeToken>();
+    dataTypeToken->dataType = dataType;
+    if (method->method->asterisk)
+    {
+        DataTypeToken *ptrDataTypeToken = gZtoonArena.Allocate<DataTypeToken>();
+        ptrDataTypeToken->pointerDesc =
+            gZtoonArena.Allocate<DataTypeToken::PointerDesc>();
+        ptrDataTypeToken->pointerDesc->dataTypeToken = dataTypeToken;
+        ptrDataTypeToken->pointerDesc->token = dataType;
+        dataTypeToken = ptrDataTypeToken;
+    }
+    else
+    {
+        dataTypeToken->dataType = dataType;
+    }
+    dataTypeToken->readOnly = method->method->readonly;
+    selfParam->dataTypeToken = dataTypeToken;
+    method->GetParameters().insert(method->GetParameters().begin(), selfParam);
 }
 
 Statement *Parser::ParseUnionStatement()

@@ -671,6 +671,7 @@ class FnStatement : public Statement
     std::vector<VarDeclStatement *> &GetParameters() { return parameters; }
 
     bool IsPublic() { return (bool)pub; };
+    Generic *GetGeneric() { return generic; }
 
   private:
     Token const *pub = nullptr;
@@ -1121,6 +1122,7 @@ class Parser
 
     DataTypeToken *ParseDataType(bool check = false);
 
+    static void AddSelfParam(FnStatement *method, const Token *dataType);
     Generic *ParseGeneric();
     bool Consume(TokenType type);
     Token const *Peek();

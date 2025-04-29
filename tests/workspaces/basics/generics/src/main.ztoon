@@ -24,9 +24,9 @@ fn main() -> i32
     {
         x: T;
         y: B;
-        fn Len(self) -> T
+        fn<[C]> Len(self) -> C
         {
-            ret sqrt((self.x * self.x + self.y * self.y) as f64) as B ;
+            ret sqrt((self.x * self.x + self.y * self.y) as f64) as C ;
         }
     }
     pos: Vector2<[i32, i32]> = {30, 44};
@@ -40,10 +40,10 @@ fn main() -> i32
 
     printf("v2.y: %d\n", v2.y);
         
-    printf("pos: %d\n", pos.Len());
-    printf("pos2: %d\n", pos2.Len());
-    printf("pos3: %f\n", pos3.Len());
-
+    printf("pos: %d\n", pos.Len<[i32]>());
+    printf("pos2: %lld\n", pos2.Len<[i64]>());
+    printf("pos3: %f\n", pos3.Len<[f64]>());
+  
     printf("add<[i32]>(12, 33) = %d\n", add<[i32,i32]>(12, 33));
     printf("add<[f64]>(12.5, 33.5) = %f\n", add<[f64, f64]>(12.5, 33.5));
     

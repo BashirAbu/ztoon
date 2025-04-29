@@ -377,6 +377,7 @@ class SemanticAnalyzer
     DataType::Type DecideDataType(Expression **left, Expression **right);
     void AnalyzeExpression(Expression *expression);
     Scope *currentScope = nullptr;
+    StructStatement *currentStruct = nullptr;
     std::unordered_map<Library *, LibraryDataType *> libToDataTypeMap;
     std::unordered_map<Package *, PackageDataType *> pkgToDataTypeMap;
     std::unordered_map<Package *, Scope *> pkgToScopeMap;

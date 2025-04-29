@@ -111,9 +111,11 @@ Token const *Parser::Prev()
         return nullptr;
 }
 
-DataTypeToken *Parser::ParseDataType()
+DataTypeToken *Parser::ParseDataType(bool check)
 {
     DataTypeToken *dataType = gZtoonArena.Allocate<DataTypeToken>();
+    dataType->tokens.tokens = tokens;
+    dataType->tokens.startPos = currentIndex;
     if (Consume(TokenType::READONLY))
     {
         dataType->readOnly = Prev();
@@ -176,17 +178,7 @@ DataTypeToken *Parser::ParseDataType()
                     ((VarDeclStatement *)varDeclStatement)->isParamter = true;
                     fnStmt->parameters.push_back(
                         (VarDeclStatement *)varDeclStatement);
-                    if (Peek()->GetType() != TokenType::RIGHT_PAREN)
-                    {
-                        if (!Consume(TokenType::COMMA))
-                        {
-                            ReportError(
-                                std::format(
-                                    "Expect ',' after function paramter '{}'",
-                                    varDeclStatement->GetCodeErrString().str),
-                                varDeclStatement->GetCodeErrString());
-                        }
-                    }
+                    Consume(TokenType::COMMA);
                 }
             }
 
@@ -320,20 +312,9 @@ DataTypeToken *Parser::ParseDataType()
                 ReportError(std::format("Expected 'datatype' after '::'"), ces);
             }
         }
-        if (Consume(TokenType::LESS))
-        {
-            auto generic = gZtoonArena.Allocate<DataTypeToken::Generic>();
-            while (!Consume(TokenType::GREATER))
-            {
-
-                generic->types.push_back(ParseDataType());
-                Consume(TokenType::COMMA);
-            }
-
-            dataType->generic = generic;
-        }
+        dataType->generic = ParseGeneric();
     }
-    else
+    else if (!check)
     {
         CodeErrString ces = {};
         ces.firstToken = Peek();
@@ -389,7 +370,7 @@ DataTypeToken *Parser::ParseDataType()
         dataType->readOnly = nullptr;
         dataType = ptrType;
     }
-
+    dataType->tokens.endPos = currentIndex;
     return dataType;
 }
 
@@ -438,26 +419,19 @@ std::vector<Package *> &Parser::Parse()
             Consume(TokenType::END_OF_FILE);
         }
     }
-
     return packages;
 }
 
 Generic *Parser::ParseGeneric()
 {
     Generic *generic = nullptr;
-    if (Consume(TokenType::LESS))
+    if (Consume(TokenType::LEFT_ANGLE_SQUARE))
     {
         generic = gZtoonArena.Allocate<Generic>();
-        while (!Consume(TokenType::GREATER))
+
+        while (!Consume(TokenType::RIGHT_SQUARE_ANGLE))
         {
-            if (!Consume(TokenType::IDENTIFIER))
-            {
-                CodeErrString ces;
-                ces.firstToken = Peek();
-                ces.str = ces.firstToken->GetLexeme();
-                ReportError("expected identifier after '<'", ces);
-            }
-            generic->types.push_back(Prev());
+            generic->types.push_back(ParseDataType());
             Consume(TokenType::COMMA);
         }
     }
@@ -705,17 +679,7 @@ Statement *Parser::ParseFnStatement(bool isMethod)
                 ((VarDeclStatement *)varDeclStatement)->isParamter = true;
                 fnStmt->parameters.push_back(
                     (VarDeclStatement *)varDeclStatement);
-                if (Peek()->GetType() != TokenType::RIGHT_PAREN)
-                {
-                    if (!Consume(TokenType::COMMA))
-                    {
-                        ReportError(
-                            std::format(
-                                "Expect ',' after function paramter '{}'",
-                                varDeclStatement->GetCodeErrString().str),
-                            varDeclStatement->GetCodeErrString());
-                    }
-                }
+                Consume(TokenType::COMMA);
             }
         }
         else
@@ -1111,20 +1075,7 @@ Statement *Parser::ParseEnumStatement()
                 ReportError("Field already defined", ces);
             }
             enumStmt->fields.push_back(field);
-            if (!Consume(TokenType::COMMA))
-            {
-                if (!Consume(TokenType::RIGHT_CURLY_BRACKET))
-                {
-                    CodeErrString ces;
-                    ces.firstToken = Peek();
-                    ces.str = ces.firstToken->GetLexeme();
-                    ReportError("Expected ',' after field declaration", ces);
-                }
-                else
-                {
-                    break;
-                }
-            }
+            Consume(TokenType::COMMA);
         }
 
         return enumStmt;
@@ -1225,14 +1176,7 @@ Statement *Parser::ParseSwitchStatement()
                             ces);
                     }
                     switchCase->exprs.push_back(e);
-                    if (!Consume(TokenType::COMMA))
-                    {
-                        if (Peek()->GetType() != TokenType::COLON)
-                        {
-                            ReportError("Expected ',' after expression",
-                                        e->GetCodeErrString());
-                        }
-                    }
+                    Consume(TokenType::COMMA);
                 }
 
                 switchCase->blockStatement =
@@ -1805,17 +1749,7 @@ Expression *Parser::ParseFnExpression()
                 ((VarDeclStatement *)varDeclStatement)->isParamter = true;
                 fnExpr->parameters.push_back(
                     (VarDeclStatement *)varDeclStatement);
-                if (Peek()->GetType() != TokenType::RIGHT_PAREN)
-                {
-                    if (!Consume(TokenType::COMMA))
-                    {
-                        ReportError(
-                            std::format(
-                                "Expect ',' after function paramter '{}'",
-                                varDeclStatement->GetCodeErrString().str),
-                            varDeclStatement->GetCodeErrString());
-                    }
-                }
+                Consume(TokenType::COMMA);
             }
         }
         else
@@ -1889,15 +1823,7 @@ Expression *Parser::ParseInitializerListExpression()
         {
             Expression *expr = ParseExpression();
             initListExpr->expressions.push_back(expr);
-            if (!Consume(TokenType::COMMA))
-            {
-                if (Peek()->type == TokenType::RIGHT_CURLY_BRACKET)
-                {
-                    continue;
-                }
-                ReportError("Expected ',' after expression",
-                            expr->GetCodeErrString());
-            }
+            Consume(TokenType::COMMA);
         }
         return initListExpr;
     }
@@ -2171,13 +2097,19 @@ Expression *Parser::ParsePostfixExpression()
     Expression *expr = ParsePrimaryExpression();
     while (TokenMatch(Peek()->GetType(), TokenType::PERIOD,
                       TokenType::DOUBLE_COLON, TokenType::LEFT_PAREN,
+                      TokenType::LEFT_ANGLE_SQUARE,
                       TokenType::LEFT_SQUARE_BRACKET))
     {
-        if (Consume(TokenType::LEFT_PAREN))
+        if (TokenMatch(Peek()->GetType(), TokenType::LEFT_PAREN,
+                       TokenType::LEFT_ANGLE_SQUARE))
         {
             FnCallExpression *fnCallExpr =
                 gZtoonArena.Allocate<FnCallExpression>();
             fnCallExpr->expression = expr;
+            fnCallExpr->generic = ParseGeneric();
+
+            Consume(TokenType::LEFT_PAREN);
+
             while (!Consume(TokenType::RIGHT_PAREN))
             {
                 Expression *expr = ParseExpression();
@@ -2187,20 +2119,7 @@ Expression *Parser::ParsePostfixExpression()
                                 expr->GetCodeErrString());
                 }
                 fnCallExpr->args.push_back(expr);
-                if (!Consume(TokenType::COMMA))
-                {
-                    if (Peek()->GetType() == TokenType::RIGHT_PAREN)
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        ReportError(
-                            std::format("Expect ',' after argument '{}'",
-                                        expr->GetCodeErrString().str),
-                            expr->GetCodeErrString());
-                    }
-                }
+                Consume(TokenType::COMMA);
             }
             expr = fnCallExpr;
         }

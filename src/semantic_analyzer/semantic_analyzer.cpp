@@ -400,10 +400,9 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
             if (dataTypeToken->generic->types.size() != generic->types.size())
             {
                 ReportError(
-                    std::format(
-                        "Wrong number of parameters provided to generic "
-                        "type '{}'",
-                        genericTypeName),
+                    std::format("Wrong number of types provided to generic "
+                                "type '{}'",
+                                genericTypeName),
                     dataTypeToken->GetCodeErrString());
             }
 
@@ -441,7 +440,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 for (size_t i = 0; i < dataTypeToken->generic->types.size();
                      i++)
                 {
-                    dataTypesMap[generic->types[i]->lexeme] =
+                    dataTypesMap[generic->types[i]->ToString()] =
                         dataTypeToken->generic->types[i];
                 }
 
@@ -453,8 +452,8 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 {
                     auto itr = std::find_if(
                         generic->types.begin(), generic->types.end(),
-                        [&](const Token *t) -> bool {
-                            return t->GetLexeme() ==
+                        [&](DataTypeToken *t) -> bool {
+                            return t->ToString() ==
                                    processTokens[i]->GetLexeme();
                         });
 
@@ -462,12 +461,33 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                     {
                         auto dtToken =
                             dataTypesMap[processTokens[i]->GetLexeme()];
-                        auto oldToken = processTokens[i];
-                        processTokens[i] =
-                            gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
-                        *processTokens[i] = *(oldToken);
-                        processTokens[i]->type = dtToken->dataType->type;
-                        processTokens[i]->lexeme = dtToken->dataType->lexeme;
+                        bool first = true;
+                        for (size_t index = dtToken->tokens.startPos;
+                             index < dtToken->tokens.endPos; index++)
+                        {
+
+                            auto oldToken = processTokens[i];
+                            auto newToken = gZtoonArena.Allocate<Token>(
+                                TokenType::IDENTIFIER);
+                            *newToken = *(oldToken);
+                            newToken->type =
+                                dtToken->tokens.tokens[index]->GetType();
+                            newToken->lexeme =
+                                dtToken->tokens.tokens[index]->lexeme;
+                            if (first)
+                            {
+                                first = false;
+                                processTokens[i] = newToken;
+                            }
+                            else
+                            {
+                                processTokens.insert(processTokens.begin() +
+                                                         (long long)i,
+                                                     newToken);
+                                i++;
+                                tokens.endPos++;
+                            }
+                        }
                     }
                 }
                 for (auto itr =
@@ -483,9 +503,11 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                         *(*itr) = *oldID;
                         (*itr)->lexeme = genName(dataTypeToken);
                     }
-                    if ((*itr)->GetType() == TokenType::LESS)
+                    if ((*itr)->GetType() == TokenType::LEFT_ANGLE_SQUARE)
                     {
-                        while ((*itr)->GetType() != TokenType::GREATER)
+                        itr = processTokens.erase(itr);
+                        while ((*itr)->GetType() !=
+                               TokenType::RIGHT_SQUARE_ANGLE)
                         {
                             itr = processTokens.erase(itr);
                         }
@@ -1517,51 +1539,65 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
         Function *fp = gZtoonArena.Allocate<Function>();
         fp->fnStmt = fnStmt;
         std::string fpName = fnStmt->GetIdentifier()->GetLexeme();
-
         fp->name = fpName;
-        FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
-        fpDataType->type = DataType::Type::FN;
-        fpDataType->returnDataType =
-            currentScope->GetDataType(fnStmt->returnDataTypeToken);
-        fpDataType->isVarArgs = fnStmt->IsVarArgs();
-        fpDataType->isMethod = fnStmt->method;
-        // fp->fnStmt = fnStmt;
-        fp->fnPointer = fpDataType->GetFnPtrType();
-        fp->isPublic = fnStmt->IsPublic();
+        fp->isMethod = fnStmt->method;
         currentScope->AddSymbol(fp, fnStmt->GetCodeErrString());
-        Function *temp = currentFunction;
-        currentFunction = fp;
-
-        auto tempScope = currentScope;
-
-        currentScope = gZtoonArena.Allocate<Scope>(
-            this,
-            fnStmt->IsPrototype()
-                ? ""
-                : std::format("{}_{}", fnStmt->GetIdentifier()->GetLexeme(),
-                              (size_t)fnStmt),
-            tempScope);
-        currentScope->parent = tempScope;
-        if (isMethod && fnStmt->IsPrototype())
+        if (fnStmt->generic)
         {
-            ReportError("Methods must have a definition",
-                        fnStmt->GetCodeErrString());
+            fp->generic = gZtoonArena.Allocate<GenericStatementInfo>();
+            fp->generic->currentBlockStatement = currentBlockStatement;
+            fp->generic->currentFunction = currentFunction;
+            fp->generic->currentLibrary = currentLibrary;
+            fp->generic->currentPackage = currentPackage;
+            fp->generic->currentScope = currentScope;
         }
-        if (!fnStmt->IsPrototype())
+        else
         {
-            blockToScopeMap[fnStmt->blockStatement] = currentScope;
-        }
+            FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
+            fpDataType->type = DataType::Type::FN;
+            fp->isPublic = fnStmt->IsPublic();
+            fpDataType->isVarArgs = fnStmt->IsVarArgs();
+            fpDataType->isMethod = fnStmt->method;
+            fpDataType->fn = fp;
+            fp->fnPointer = fpDataType->GetFnPtrType();
+            fpDataType->returnDataType =
+                currentScope->GetDataType(fnStmt->returnDataTypeToken);
 
-        for (Statement *p : fnStmt->parameters)
-        {
-            AnalyzeStatement(p);
-            fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
+            Function *temp = currentFunction;
+            currentFunction = fp;
+
+            auto tempScope = currentScope;
+
+            currentScope = gZtoonArena.Allocate<Scope>(
+                this,
+                fnStmt->IsPrototype()
+                    ? ""
+                    : std::format("{}_{}", fnStmt->GetIdentifier()->GetLexeme(),
+                                  (size_t)fnStmt),
+                tempScope);
+            currentScope->parent = tempScope;
+            if (isMethod && fnStmt->IsPrototype())
+            {
+                ReportError("Methods must have a definition",
+                            fnStmt->GetCodeErrString());
+            }
+            if (!fnStmt->IsPrototype())
+            {
+                blockToScopeMap[fnStmt->blockStatement] = currentScope;
+            }
+
+            for (Statement *p : fnStmt->parameters)
+            {
+                AnalyzeStatement(p);
+                fpDataType->paramters.push_back(stmtToDataTypeMap[p]);
+            }
+            currentScope = tempScope;
+            currentScope->datatypesMap[fp->fnPointer->ToString()] =
+                fp->fnPointer;
+            currentFunction = temp;
         }
-        currentScope = tempScope;
-        currentScope->datatypesMap[fp->fnPointer->ToString()] = fp->fnPointer;
-        currentFunction = temp;
     }
-    if (analyzeBody)
+    if (analyzeBody && !fnStmt->generic)
     {
         Function *fp = dynamic_cast<Function *>(currentScope->GetSymbol(
             fnStmt->GetIdentifier()->GetLexeme(), fnStmt->GetCodeErrString()));
@@ -3579,7 +3615,232 @@ void SemanticAnalyzer::AnalyzeSubScriptExpression(SubscriptExpression *subExpr)
 }
 void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
 {
+
+    if (fnCallExpr->generic)
+    {
+        auto pe =
+            dynamic_cast<PrimaryExpression *>(fnCallExpr->GetGetExpression());
+        if (!pe || pe->GetPrimary()->GetType() != TokenType::IDENTIFIER)
+        {
+            ReportError("Missing identifier", fnCallExpr->GetCodeErrString());
+        }
+
+        Function *fn = dynamic_cast<Function *>(currentScope->GetSymbol(
+            pe->primary->GetLexeme(), pe->GetCodeErrString()));
+
+        if (!fn->generic)
+        {
+            ReportError(std::format("{} '{}' is not generic",
+                                    fn->isMethod ? "Method" : "Function",
+                                    fn->GetName()),
+                        fnCallExpr->GetCodeErrString());
+        }
+        if (fnCallExpr->generic->types.size() !=
+            fn->fnStmt->generic->types.size())
+        {
+            ReportError(std::format("Wrong number of types provided to generic "
+                                    "{} '{}'",
+                                    fn->isMethod ? "Method" : "Function",
+                                    fn->GetName()),
+                        fnCallExpr->GetCodeErrString());
+        }
+        std::string newName = fn->GetName();
+        for (auto dtToken : fnCallExpr->generic->types)
+        {
+
+            newName += std::format("_{}",
+
+                                   dtToken->ToString());
+        }
+
+        Token *newID = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+        *newID = *pe->primary;
+        newID->lexeme = newName;
+        pe->primary = newID;
+        if (Symbol *fnFound = currentScope->GetSymbol(
+                newName, fnCallExpr->GetCodeErrString(), true))
+        {
+            Function *found = dynamic_cast<Function *>(fnFound);
+            fnCallExpr->generic = nullptr;
+        }
+        else
+        {
+            std::unordered_map<std::string, DataTypeToken *> dataTypesMap;
+
+            for (size_t i = 0; i < fn->fnStmt->generic->types.size(); i++)
+            {
+                dataTypesMap[fn->fnStmt->generic->types[i]->ToString()] =
+                    fnCallExpr->generic->types[i];
+            }
+            auto tokens = fn->fnStmt->tokens;
+            // remove generics tokens
+            std::vector<Token *> processTokens = tokens.tokens;
+            auto generic = fn->fnStmt->generic;
+            // replace types
+            for (size_t i = tokens.startPos; i < tokens.endPos; i++)
+            {
+
+                auto itr = std::find_if(
+                    generic->types.begin(), generic->types.end(),
+                    [&](DataTypeToken *t) -> bool
+                    { return t->ToString() == processTokens[i]->GetLexeme(); });
+
+                if (itr != generic->types.end())
+                {
+                    auto dtToken = dataTypesMap[processTokens[i]->GetLexeme()];
+                    bool first = true;
+                    for (size_t index = dtToken->tokens.startPos;
+                         index < dtToken->tokens.endPos; index++)
+                    {
+
+                        auto oldToken = processTokens[i];
+                        auto newToken =
+                            gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+                        *newToken = *(oldToken);
+                        newToken->type =
+                            dtToken->tokens.tokens[index]->GetType();
+                        newToken->lexeme =
+                            dtToken->tokens.tokens[index]->lexeme;
+                        if (first)
+                        {
+                            first = false;
+                            processTokens[i] = newToken;
+                        }
+                        else
+                        {
+                            processTokens.insert(
+                                processTokens.begin() + (long long)i, newToken);
+                            i++;
+                            tokens.endPos++;
+                        }
+                    }
+                }
+            }
+            for (auto itr = processTokens.begin() + (long long)tokens.startPos;
+                 itr != processTokens.begin() + (long long)tokens.endPos; itr++)
+            {
+                bool doneRemoving = false;
+                if ((*itr)->GetType() == TokenType::LEFT_ANGLE_SQUARE)
+                {
+                    itr = processTokens.erase(itr);
+                    while ((*itr)->GetType() != TokenType::RIGHT_SQUARE_ANGLE)
+                    {
+                        itr = processTokens.erase(itr);
+                    }
+                    itr = processTokens.erase(itr);
+                    doneRemoving = true;
+                }
+                if (doneRemoving && (*itr)->GetType() == TokenType::IDENTIFIER)
+                {
+                    auto oldID = *itr;
+                    *itr = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+                    *(*itr) = *oldID;
+                    (*itr)->lexeme = newName;
+                    break;
+                }
+            }
+            Parser parser(processTokens);
+            parser.currentIndex = tokens.startPos;
+
+            FnStatement *newStatement =
+                dynamic_cast<FnStatement *>(parser.ParseFnStatement());
+            if (!newStatement)
+            {
+                ReportError("Failed to generate generic type",
+                            fn->fnStmt->GetCodeErrString());
+            }
+
+            GenericStatementInfo temp = {};
+
+            temp.currentScope = currentScope;
+            temp.currentBlockStatement = currentBlockStatement;
+            temp.currentFunction = currentFunction;
+            temp.currentLibrary = currentLibrary;
+            temp.currentPackage = currentPackage;
+
+            GenericStatementInfo *genericInfo = fn->generic;
+            Statement *genericStatement = fn->fnStmt;
+
+            currentScope = genericInfo->currentScope;
+            currentBlockStatement = genericInfo->currentBlockStatement;
+            currentFunction = genericInfo->currentFunction;
+            currentLibrary = genericInfo->currentLibrary;
+            currentPackage = genericInfo->currentPackage;
+
+            AnalyzeFnStatement(newStatement, currentFunction, true, false,
+                               fn->fnStmt->method);
+            AnalyzeFnStatement(newStatement, currentFunction, false, true,
+                               fn->fnStmt->method);
+            // Get location
+            if (genericInfo->currentFunction)
+            {
+                if (auto fnStmt = genericInfo->currentFunction->fnStmt)
+                {
+
+                    auto itr = std::find(
+                        fnStmt->GetBlockStatement()->GetStatements().begin(),
+                        fnStmt->GetBlockStatement()->GetStatements().end(),
+                        genericStatement);
+
+                    if (itr ==
+                        fnStmt->GetBlockStatement()->GetStatements().end())
+                    {
+                        PrintError("Internal error: generic statement "
+                                   "cannot be found");
+                    }
+                    long long index =
+                        itr -
+                        fnStmt->GetBlockStatement()->GetStatements().begin();
+                    stmtsToAdd.push_back(
+                        {fnStmt->GetBlockStatement()->GetStatements(), index,
+                         newStatement});
+                }
+                else if (auto fnExpr = genericInfo->currentFunction->fnExpr)
+                {
+                    auto itr = std::find(
+                        fnExpr->GetBlockStatement()->GetStatements().begin(),
+                        fnExpr->GetBlockStatement()->GetStatements().end(),
+                        genericStatement);
+                    if (itr ==
+                        fnExpr->GetBlockStatement()->GetStatements().end())
+                    {
+                        PrintError("Internal error: generic statement "
+                                   "cannot be found");
+                    }
+                    long long index =
+                        itr -
+                        fnExpr->GetBlockStatement()->GetStatements().begin();
+                    stmtsToAdd.push_back(
+                        {fnExpr->GetBlockStatement()->GetStatements(), index,
+                         newStatement});
+                }
+            }
+            else
+            {
+                auto itr = std::find(currentPackage->GetStatements().begin(),
+                                     currentPackage->GetStatements().end(),
+                                     genericStatement);
+                if (itr == currentPackage->GetStatements().end())
+                {
+                    PrintError("Internal error: generic statement "
+                               "cannot be found");
+                }
+                long long index = itr - currentPackage->GetStatements().begin();
+                stmtsToAdd.push_back(
+                    {currentPackage->GetStatements(), index, newStatement});
+            }
+
+            currentScope = temp.currentScope;
+            currentBlockStatement = temp.currentBlockStatement;
+            currentFunction = temp.currentFunction;
+            currentLibrary = temp.currentLibrary;
+            currentPackage = temp.currentPackage;
+
+            fnCallExpr->generic = nullptr;
+        }
+    }
     AnalyzeExpression(fnCallExpr->GetGetExpression());
+
     // id or epxr
     PointerDataType *fnPtrType = dynamic_cast<PointerDataType *>(
         exprToDataTypeMap[fnCallExpr->GetGetExpression()]);

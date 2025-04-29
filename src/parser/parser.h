@@ -13,7 +13,7 @@ struct CodeErrString
 
 struct Generic
 {
-    std::vector<Token const *> types;
+    std::vector<class DataTypeToken *> types;
 };
 struct Tokens
 {
@@ -62,11 +62,9 @@ class DataTypeToken
     };
 
     PointerDesc *pointerDesc = nullptr;
-    struct Generic
-    {
-        std::vector<class DataTypeToken *> types;
-    };
+
     Generic *generic = nullptr;
+    Tokens tokens;
     const Token *libToken = nullptr;
     const Token *pkgToken = nullptr;
 
@@ -820,7 +818,7 @@ class FnCallExpression : public Expression
 
   private:
     class Expression *expression = nullptr;
-
+    Generic *generic = nullptr;
     std::vector<Expression *> args;
     friend class Parser;
     friend class SemanticAnalyzer;
@@ -1121,7 +1119,7 @@ class Parser
     Expression *BuildBinaryExpression(Token const *op, Expression *left,
                                       Expression *right);
 
-    DataTypeToken *ParseDataType();
+    DataTypeToken *ParseDataType(bool check = false);
 
     Generic *ParseGeneric();
     bool Consume(TokenType type);

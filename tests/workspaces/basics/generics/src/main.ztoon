@@ -1,41 +1,51 @@
 package mainPkg;
 
-union Vec<T>
+union Vec <[T, B]>
 {
     elements: T[2];
     struct
     {
         x: T;
-        y: T;
+        y: B;
     }
 }
 
 
+
+fn <[T, B]> add(a :T, b: T) -> T
+{
+    ret a + b;
+}
+
 fn main() -> i32
 {
-    struct Vector2<T>
+    struct Vector2 <[T, B]>
+
     {
         x: T;
-        y: T;
+        y: B;
         fn Len(self) -> T
         {
-            ret sqrt((self.x * self.x + self.y * self.y) as f64) as T ;
+            ret sqrt((self.x * self.x + self.y * self.y) as f64) as B ;
         }
     }
-    pos: Vector2<i32> = {30, 44};
+    pos: Vector2<[i32, i32]> = {30, 44};
     // printf("Len: %d", pos.Len());
-    pos2: Vector2<i32> = {100, 200};
+    pos2: Vector2<[i32, i32]> = {100, 200};
 
-    pos3: Vector2<f64> = {455.0, 44.4};    
+    pos3: Vector2<[f64, f64]> = {455.0, 44.4};    
 
-    v2: Vec<f64>;
-    v2.x = 12.04;
+    v2: Vec<[f64, i32]>;
+    v2.elements[1] = 12.04;
 
-    printf("v2.x: %f\n", v2.elements[0]);
+    printf("v2.y: %d\n", v2.y);
         
     printf("pos: %d\n", pos.Len());
     printf("pos2: %d\n", pos2.Len());
     printf("pos3: %f\n", pos3.Len());
+
+    printf("add<[i32]>(12, 33) = %d\n", add<[i32,i32]>(12, 33));
+    printf("add<[f64]>(12.5, 33.5) = %f\n", add<[f64, f64]>(12.5, 33.5));
     
     ret 0;
 }

@@ -196,6 +196,7 @@ class FnDataType : public DataType
     std::vector<DataType *> paramters;
     bool isVarArgs = false;
     bool isMethod = false;
+    class Function *fn = nullptr;
     friend class Scope;
     friend class SemanticAnalyzer;
     friend class CodeGen;
@@ -252,9 +253,11 @@ class Function : public Symbol
   private:
     FnStatement *fnStmt = nullptr;
     FnExpression *fnExpr = nullptr;
+    bool isMethod = false;
     std::string name;
     class RetStatement *retStmt = nullptr;
     PointerDataType *fnPointer = nullptr;
+    GenericStatementInfo *generic = nullptr;
     friend class SemanticAnalyzer;
     friend class CodeGen;
     friend class Scope;

@@ -1518,6 +1518,10 @@ void CodeGen::GenPackageGlobalFuncsAndVarsIR(Package *pkg)
                 semanticAnalyzer.currentScope->GetSymbol(
                     fnStmt->GetIdentifier()->GetLexeme(),
                     fnStmt->GetCodeErrString()));
+            if (fn->generic)
+            {
+                continue;
+            }
             std::string fpName = fnStmt->GetIdentifier()->GetLexeme();
 
             if (!fnStmt->IsPrototype())
@@ -1574,6 +1578,10 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                     fnStmt->GetIdentifier()->GetLexeme(),
                     fnStmt->GetCodeErrString()));
 
+            if (fn->generic)
+            {
+                continue;
+            }
             FnDataType *fnDataType = fn->GetFnDataTypeFromFnPTR();
 
             IRFunction *irFunc = dynamic_cast<IRFunction *>(

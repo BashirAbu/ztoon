@@ -168,6 +168,9 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^union\b)"), TokenType::UNION});
     patterns.push_back({std::regex(R"(^enum\b)"), TokenType::ENUM});
     patterns.push_back({std::regex(R"(^\.\.\.)"), TokenType::VAR_ARGS});
+
+    patterns.push_back({std::regex(R"(^<\[)"), TokenType::LEFT_ANGLE_SQUARE});
+    patterns.push_back({std::regex(R"(^\]>)"), TokenType::RIGHT_SQUARE_ANGLE});
     patterns.push_back({std::regex(R"(^->)"), TokenType::ARROW});
     patterns.push_back({std::regex(R"(^--)"), TokenType::DASH_DASH});
     patterns.push_back({std::regex(R"(^\+=)"), TokenType::PLUS_EQUAL});
@@ -215,6 +218,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^~)"), TokenType::TILDE});
     patterns.push_back({std::regex(R"(^,)"), TokenType::COMMA});
     patterns.push_back({std::regex(R"(^\?)"), TokenType::QUESTION_MARK});
+    patterns.push_back({std::regex(R"(^@)"), TokenType::AT});
 
     patterns.push_back(
         {std::regex(R"(^0x([0-9a-fA-F]+))"), TokenType::INTEGER_LITERAL_HEX});

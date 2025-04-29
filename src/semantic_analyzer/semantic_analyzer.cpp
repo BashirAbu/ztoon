@@ -419,7 +419,9 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 }
                 return name;
             };
-
+            currentScope = dataTypeToken->pkgToken
+                               ? currentScope
+                               : semanticAnalyzer->currentScope;
             if (auto foundSymbol = currentScope->GetSymbol(
                     genName(dataTypeToken), dataTypeToken->GetCodeErrString(),
                     true))
@@ -595,7 +597,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 }
 
                 // Get location
-                if (genericInfo->currentFunction)
+                if (genericInfo->currentFunction && !dataTypeToken->pkgToken)
                 {
                     if (auto fnStmt = genericInfo->currentFunction->fnStmt)
                     {

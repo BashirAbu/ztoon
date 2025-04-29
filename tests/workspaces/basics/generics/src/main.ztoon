@@ -1,5 +1,4 @@
 package mainPkg;
-
 union Vec <[T, B]>
 {
     elements: T[2];
@@ -19,35 +18,23 @@ fn <[T, B]> add(a :T, b: T) -> T
 
 fn main() -> i32
 {
-    struct Vector2 <[T, B]>
-
-    {
-        x: T;
-        y: B;
-        fn<[C]> Len(self) -> C
-        {
-            ret sqrt((self.x * self.x + self.y * self.y) as f64) as C ;
-        }
-    }
-    pos: Vector2<[i32, i32]> = {30, 44};
+    pos: other::Vector2<[i32, i32]> = {30, 44};
     // printf("Len: %d", pos.Len());
-    pos2: Vector2<[i32, i32]> = {100, 200};
+    pos2: other::Vector2<[i32, i32]> = {100, 200};
 
-    pos3: Vector2<[f64, f64]> = {455.0, 44.4};    
+    pos3: other::Vector2<[f64, f64]> = {455.0, 44.4};    
 
     v2: Vec<[f64, i32]>;
     v2.elements[1] = 12.04;
 
-    printf("v2.y: %d\n", v2.y);
+    other::printf("v2.y: %d\n", v2.y);
         
-    printf("pos: %d\n", pos.Len<[i32]>());
-    printf("pos2: %lld\n", pos2.Len<[i64]>());
-    printf("pos3: %f\n", pos3.Len<[f64]>());
+    other::printf("pos: %d\n", pos.Len<[i32]>());
+    other::printf("pos2: %lld\n", pos2.Len<[i64]>());
+    other::printf("pos3: %f\n", pos3.Len<[f64]>());
   
-    printf("add<[i32]>(12, 33) = %d\n", add<[i32,i32]>(12, 33));
-    printf("add<[f64]>(12.5, 33.5) = %f\n", add<[f64, f64]>(12.5, 33.5));
+    other::printf("add<[i32]>(12, 33) = %d\n", add<[i32,i32]>(12, 33));
+    other::printf("add<[f64]>(12.5, 33.5) = %f\n", add<[f64, f64]>(12.5, 33.5));
     
     ret 0;
 }
-fn printf(str: readonly i8*, ...) -> i32;
-fn sqrt(v: f64) -> f64;

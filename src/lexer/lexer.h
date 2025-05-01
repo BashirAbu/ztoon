@@ -123,6 +123,7 @@ enum class TokenType
     PACKAGE,
     IMPORT,
     PUB,
+    DEFER,
 };
 
 std::string TokenDataTypeToString(TokenType type);

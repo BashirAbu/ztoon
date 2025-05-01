@@ -4,6 +4,7 @@
 #include "parser/parser.h"
 #include "semantic_analyzer.h"
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <format>
 #include <functional>
@@ -295,7 +296,6 @@ void SemanticAnalyzer::ReplaceGenericTypes(
                         {
                             layer--;
                         }
-                        PrintMSG(dtToken->tokens.tokens[index]->lexeme);
                         dtToken->tokens.tokens.erase(
                             dtToken->tokens.tokens.begin() + (int64_t)index);
                         dtToken->tokens.endPos--;
@@ -440,11 +440,6 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         if (!semanticAnalyzer->pkgToScopeMap.contains(pkgFound))
         {
             assert(0);
-            // auto tempPkg = semanticAnalyzer->currentPackage;
-            // auto tempScope = semanticAnalyzer->currentScope;
-            // semanticAnalyzer->AnalyzePackage(pkgFound);
-            // semanticAnalyzer->currentPackage = tempPkg;
-            // semanticAnalyzer->currentScope = tempScope;
         }
 
         currentScope = semanticAnalyzer->pkgToScopeMap[pkgFound];
@@ -507,11 +502,6 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
         if (!semanticAnalyzer->pkgToScopeMap.contains(pkgFound))
         {
             assert(0);
-            // auto tempPkg = semanticAnalyzer->currentPackage;
-            // auto tempScope = semanticAnalyzer->currentScope;
-            // semanticAnalyzer->AnalyzePackage(pkgFound);
-            // semanticAnalyzer->currentPackage = tempPkg;
-            // semanticAnalyzer->currentScope = tempScope;
         }
 
         currentScope = semanticAnalyzer->pkgToScopeMap[pkgFound];
@@ -686,13 +676,6 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                         break;
                     }
                 }
-                PrintMSG(std::format("{}:", genericTypeName));
-
-                for (size_t i = structType->structStmt->tokens.startPos;
-                     i < structType->structStmt->tokens.endPos; i++)
-                {
-                    PrintMSG(processTokens[i]->GetLexeme());
-                }
 
                 Parser parser(processTokens);
                 parser.currentIndex = tokens.startPos;
@@ -725,8 +708,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 GenericStatementInfo temp = {};
 
                 temp.currentScope = semanticAnalyzer->currentScope;
-                temp.currentBlockStatement =
-                    semanticAnalyzer->currentBlockStatement;
+                temp.currentBlockLeaf = semanticAnalyzer->currentBlockLeaf;
                 temp.currentFunction = semanticAnalyzer->currentFunction;
                 temp.currentLibrary = semanticAnalyzer->currentLibrary;
                 temp.currentPackage = semanticAnalyzer->currentPackage;
@@ -744,8 +726,8 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                     genericInfo = unionType->generic;
                 }
                 semanticAnalyzer->currentScope = genericInfo->currentScope;
-                semanticAnalyzer->currentBlockStatement =
-                    genericInfo->currentBlockStatement;
+                semanticAnalyzer->currentBlockLeaf =
+                    genericInfo->currentBlockLeaf;
                 semanticAnalyzer->currentFunction =
                     genericInfo->currentFunction;
                 semanticAnalyzer->currentLibrary = genericInfo->currentLibrary;
@@ -772,53 +754,23 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                         semanticAnalyzer->currentFunction, false, true);
                 }
 
-                // Get location
-                if (genericInfo->currentFunction && !dataTypeToken->pkgToken)
+                if (auto blockLeaf = genericInfo->currentBlockLeaf)
                 {
-                    if (auto fnStmt = genericInfo->currentFunction->fnStmt)
-                    {
+                    auto itr =
+                        std::find(blockLeaf->blockStmt->GetStatements().begin(),
+                                  blockLeaf->blockStmt->GetStatements().end(),
+                                  genericStatement);
 
-                        auto itr = std::find(
-                            fnStmt->GetBlockStatement()
-                                ->GetStatements()
-                                .begin(),
-                            fnStmt->GetBlockStatement()->GetStatements().end(),
-                            genericStatement);
-
-                        if (itr ==
-                            fnStmt->GetBlockStatement()->GetStatements().end())
-                        {
-                            PrintError("Internal error: generic statement "
-                                       "cannot be found");
-                        }
-                        long long index = itr - fnStmt->GetBlockStatement()
-                                                    ->GetStatements()
-                                                    .begin();
-                        semanticAnalyzer->stmtsToAdd.push_back(
-                            {fnStmt->GetBlockStatement()->GetStatements(),
-                             index, newStatement});
-                    }
-                    else if (auto fnExpr = genericInfo->currentFunction->fnExpr)
+                    if (itr == blockLeaf->blockStmt->GetStatements().end())
                     {
-                        auto itr = std::find(
-                            fnExpr->GetBlockStatement()
-                                ->GetStatements()
-                                .begin(),
-                            fnExpr->GetBlockStatement()->GetStatements().end(),
-                            genericStatement);
-                        if (itr ==
-                            fnExpr->GetBlockStatement()->GetStatements().end())
-                        {
-                            PrintError("Internal error: generic statement "
-                                       "cannot be found");
-                        }
-                        long long index = itr - fnExpr->GetBlockStatement()
-                                                    ->GetStatements()
-                                                    .begin();
-                        semanticAnalyzer->stmtsToAdd.push_back(
-                            {fnExpr->GetBlockStatement()->GetStatements(),
-                             index, newStatement});
+                        PrintError("Internal error: generic statement "
+                                   "cannot be found");
                     }
+                    long long index =
+                        itr - blockLeaf->blockStmt->GetStatements().begin();
+                    semanticAnalyzer->stmtsToAdd.push_back(
+                        {blockLeaf->blockStmt->GetStatements(), index,
+                         newStatement});
                 }
                 else
                 {
@@ -842,8 +794,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 }
 
                 semanticAnalyzer->currentScope = temp.currentScope;
-                semanticAnalyzer->currentBlockStatement =
-                    temp.currentBlockStatement;
+                semanticAnalyzer->currentBlockLeaf = temp.currentBlockLeaf;
                 semanticAnalyzer->currentFunction = temp.currentFunction;
                 semanticAnalyzer->currentLibrary = temp.currentLibrary;
                 semanticAnalyzer->currentPackage = temp.currentPackage;
@@ -1394,11 +1345,6 @@ SemanticAnalyzer::SemanticAnalyzer(std::vector<Package *> _packages,
                                    std::vector<Library *> _libraries)
     : packages(_packages), libraries(_libraries)
 {
-    for (auto l : libraries)
-    {
-        PrintMSG(l->name);
-    }
-
     currentStage = Stage::SEMANTIC_ANALYZER;
     for (auto l : libraries)
     {
@@ -1614,6 +1560,11 @@ void SemanticAnalyzer::AnalyzeStatement(Statement *statement)
         auto importStmt = dynamic_cast<ImportStatement *>(statement);
         AnalyzeImportStatement(importStmt);
     }
+    else if (dynamic_cast<DeferStatement *>(statement))
+    {
+        auto deferStmt = dynamic_cast<DeferStatement *>(statement);
+        AnalyzeDeferStatement(deferStmt);
+    }
     else if (dynamic_cast<StructStatement *>(statement))
     {
         auto structStmt = dynamic_cast<StructStatement *>(statement);
@@ -1728,18 +1679,104 @@ void SemanticAnalyzer::AnalyzeBlockStatement(BlockStatement *blockStmt)
 
     Scope *temp = currentScope;
 
-    BlockStatement *blockTemp = currentBlockStatement;
-    currentBlockStatement = blockStmt;
-
     currentScope = scope;
 
+    BlockStatementLeaf *tempBlock = currentBlockLeaf;
+
+    BlockStatementLeaf *newBlock = gZtoonArena.Allocate<BlockStatementLeaf>();
+    newBlock->blockStmt = blockStmt;
+    newBlock->parent = currentBlockLeaf;
+
+    currentBlockLeaf = newBlock;
+
+    currentBlockLeaf->blockStmt = blockStmt;
+
+    bool doneDefer = false;
+    std::vector<Statement *> rets;
+    // for ret stmts need to go up tree
+    // for break and continue, no need to go up tree.
     for (size_t i = 0; i < blockStmt->statements.size(); i++)
     {
+        auto retStmt = dynamic_cast<RetStatement *>(blockStmt->statements[i]);
+        auto contStmt =
+            dynamic_cast<ContinueStatement *>(blockStmt->statements[i]);
+        auto breakStmt =
+            dynamic_cast<BreakStatement *>(blockStmt->statements[i]);
+        if (retStmt || contStmt || breakStmt)
+        {
+            bool retStmtFound =
+                std::find(rets.begin(), rets.end(),
+                          dynamic_cast<RetStatement *>(
+                              blockStmt->statements[i])) != rets.end();
+            bool continueStmtFound =
+                std::find(rets.begin(), rets.end(),
+                          dynamic_cast<ContinueStatement *>(
+                              blockStmt->statements[i])) != rets.end();
+            bool breakStmtFound =
+                std::find(rets.begin(), rets.end(),
+                          dynamic_cast<BreakStatement *>(
+                              blockStmt->statements[i])) != rets.end();
+            if (!retStmtFound && !continueStmtFound && !breakStmtFound)
+            {
+
+                BlockStatementLeaf *currentLeaf = currentBlockLeaf;
+                while (currentLeaf)
+                {
+                    rets.push_back(
+                        dynamic_cast<RetStatement *>(blockStmt->statements[i]));
+                    if (deferredStatementsMap.contains(currentLeaf))
+                    {
+                        doneDefer = true;
+                        for (int64_t index =
+                                 (int64_t)deferredStatementsMap[currentLeaf]
+                                     .size() -
+                                 1;
+                             index >= 0; index--)
+                        {
+                            auto stmt =
+                                deferredStatementsMap[currentLeaf][index];
+                            blockStmt->statements.insert(
+                                blockStmt->statements.begin() + (int64_t)i,
+                                stmt);
+                        }
+                    }
+
+                    currentLeaf = currentLeaf->parent;
+
+                    if ((contStmt || breakStmt))
+                    {
+                        if (currentLeaf->blockStmt->loopBlock)
+                        {
+                            currentLeaf = nullptr;
+                        }
+                    }
+                }
+            }
+        }
+
         AnalyzeStatement(blockStmt->statements[i]);
         blockStmt->index = i;
     }
+
+    if (!doneDefer)
+    {
+        if (deferredStatementsMap.contains(currentBlockLeaf))
+        {
+            doneDefer = true;
+            for (int64_t index =
+                     (int64_t)deferredStatementsMap[currentBlockLeaf].size() -
+                     1;
+                 index >= 0; index--)
+            {
+                auto stmt = deferredStatementsMap[currentBlockLeaf][index];
+                AnalyzeStatement(stmt);
+                blockStmt->statements.push_back(stmt);
+            }
+        }
+    }
+
     currentScope = temp;
-    currentBlockStatement = blockTemp;
+    currentBlockLeaf = tempBlock;
 }
 
 void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
@@ -1763,7 +1800,7 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
             fpDataType->fn = fp;
 
             fp->generic = gZtoonArena.Allocate<GenericStatementInfo>();
-            fp->generic->currentBlockStatement = currentBlockStatement;
+            fp->generic->currentBlockLeaf = currentBlockLeaf;
             fp->generic->currentFunction = currentFunction;
             fp->generic->currentLibrary = currentLibrary;
             fp->generic->currentPackage = currentPackage;
@@ -2361,12 +2398,12 @@ void SemanticAnalyzer::AnalyzeSwitchStatement(SwitchStatement *switchStmt)
         ifStmt->nextElseIforElseStatements.push_back(elseStmt);
     }
     AnalyzeStatement(ifStmt);
-    for (size_t index = 0; index < currentBlockStatement->statements.size();
-         index++)
+    for (size_t index = 0;
+         index < currentBlockLeaf->blockStmt->statements.size(); index++)
     {
-        if (currentBlockStatement->statements[index] == switchStmt)
+        if (currentBlockLeaf->blockStmt->statements[index] == switchStmt)
         {
-            currentBlockStatement->statements[index] = ifStmt;
+            currentBlockLeaf->blockStmt->statements[index] = ifStmt;
             break;
         }
     }
@@ -2384,6 +2421,7 @@ void SemanticAnalyzer::AnalyzeWhileLoopStatement(
                         whileLoopStmt->GetCondition()->GetCodeErrString().str),
             whileLoopStmt->GetCondition()->GetCodeErrString());
     }
+    currentBlockLeaf->blockStmt->loopBlock = true;
     inLoop++;
     AnalyzeStatement(whileLoopStmt->GetBlockStatement());
     inLoop--;
@@ -2411,7 +2449,7 @@ void SemanticAnalyzer::AnalyzeForLoopStatement(ForLoopStatement *forLoopStmt)
         AnalyzeStatement(forLoopStmt->GetUpdate());
     }
     inLoop++;
-
+    currentBlockLeaf->blockStmt->loopBlock = true;
     AnalyzeStatement(forLoopStmt->GetBlockStatement());
     inLoop--;
 }
@@ -2467,7 +2505,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         if (structStmt->identifier && structStmt->generic)
         {
             structType->generic = gZtoonArena.Allocate<GenericStatementInfo>();
-            structType->generic->currentBlockStatement = currentBlockStatement;
+            structType->generic->currentBlockLeaf = currentBlockLeaf;
             structType->generic->currentFunction = currentFunction;
             structType->generic->currentLibrary = currentLibrary;
             structType->generic->currentPackage = currentPackage;
@@ -2764,7 +2802,7 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
         if (unionStmt->identifier && unionStmt->generic)
         {
             unionType->generic = gZtoonArena.Allocate<GenericStatementInfo>();
-            unionType->generic->currentBlockStatement = currentBlockStatement;
+            unionType->generic->currentBlockLeaf = currentBlockLeaf;
             unionType->generic->currentFunction = currentFunction;
             unionType->generic->currentLibrary = currentLibrary;
             unionType->generic->currentPackage = currentPackage;
@@ -3142,21 +3180,6 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
                         peRight->GetCodeErrString());
         }
 
-        // if (!lib->analyed)
-        // {
-        //     assert(0);
-        //     auto tempPackages = packages;
-        //     auto tempPkg = currentPackage;
-        //     auto temp = currentLibrary;
-        //     currentLibrary = lib;
-        //     packages = tempPackages;
-        //     Analyze(lib->packages);
-        //     currentLibrary = temp;
-        //     lib->analyed = true;
-        //     currentPackage = tempPkg;
-        //     currentScope = pkgToScopeMap[tempPkg];
-        //     packages = tempPackages;
-        // }
         auto pkgScope = pkgToScopeMap[pkg];
         if (!pkgScope)
         {
@@ -3205,11 +3228,6 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
             if (!pkgToScopeMap.contains(importedPkg))
             {
                 assert(0);
-                // auto tempPkg = currentPackage;
-                // auto tempScope = currentScope;
-                // AnalyzePackage(importedPkg);
-                // currentScope = tempScope;
-                // currentPackage = tempPkg;
             }
             auto importedPkgScope = pkgToScopeMap[importedPkg];
             pkgToScopeMap[currentPackage]->importedPackages.push_back(
@@ -3217,21 +3235,6 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
         }
         else if (importedLibrary)
         {
-            // if (!importedLibrary->analyed)
-            // {
-            //     assert(0);
-            //     auto tempPackages = packages;
-            //     auto tempPkg = currentPackage;
-            //     auto temp = currentLibrary;
-            //     currentLibrary = importedLibrary;
-            //     packages = tempPackages;
-            //     Analyze(importedLibrary->packages);
-            //     currentLibrary = temp;
-            //     importedLibrary->analyed = true;
-            //     currentPackage = tempPkg;
-            //     currentScope = pkgToScopeMap[tempPkg];
-            //     packages = tempPackages;
-            // }
             for (auto impPkg : importedLibrary->packages)
             {
                 auto importedPkgScope = pkgToScopeMap[impPkg];
@@ -3243,6 +3246,11 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
     }
 }
 
+void SemanticAnalyzer::AnalyzeDeferStatement(DeferStatement *deferStmt)
+{
+    deferredStatementsMap[currentBlockLeaf].push_back(
+        deferStmt->GetStatement());
+}
 void SemanticAnalyzer::AnalyzeFnExpression(FnExpression *fnExpr)
 {
     Function *fp = gZtoonArena.Allocate<Function>();
@@ -3709,13 +3717,13 @@ void SemanticAnalyzer::AnalyzeUnaryExpression(UnaryExpression *unaryExpr)
             // need to know if inside block statement or no.
             // if inside, need to get block statement.
 
-            if (currentBlockStatement)
+            if (currentBlockLeaf)
             {
                 // inside
-                size_t s = currentBlockStatement->statements.size();
-                currentBlockStatement->statements.insert(
-                    currentBlockStatement->statements.begin() +
-                        (long long)currentBlockStatement->index + 1,
+                size_t s = currentBlockLeaf->blockStmt->statements.size();
+                currentBlockLeaf->blockStmt->statements.insert(
+                    currentBlockLeaf->blockStmt->statements.begin() +
+                        (long long)currentBlockLeaf->blockStmt->index + 1,
                     varAssignStatement);
             }
             // disable this expression.
@@ -3927,23 +3935,11 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             auto tokens = fn->fnStmt->tokens;
             std::vector<Token *> processTokens = tokens.tokens;
             auto generic = fn->fnStmt->generic;
-            PrintMSG(std::format("Raw {}:", newName));
-            for (size_t i = fn->fnStmt->tokens.startPos;
-                 i < fn->fnStmt->tokens.endPos; i++)
-            {
-                PrintMSG(processTokens[i]->GetLexeme());
-            }
             ReplaceGenericTypes(dataTypesMap);
 
             ReplaceGenericTypesInStatement(tokens, generic, processTokens,
                                            dataTypesMap);
 
-            PrintMSG(std::format("Replaced types in {}:", newName));
-            for (size_t i = fn->fnStmt->tokens.startPos;
-                 i < fn->fnStmt->tokens.endPos; i++)
-            {
-                PrintMSG(processTokens[i]->GetLexeme());
-            }
             for (auto itr = processTokens.begin() + (long long)tokens.startPos;
                  itr != processTokens.begin() + (long long)tokens.endPos; itr++)
             {
@@ -3977,13 +3973,6 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
                     break;
                 }
             }
-
-            PrintMSG(std::format("renamed {}:", newName));
-            for (size_t i = fn->fnStmt->tokens.startPos;
-                 i < fn->fnStmt->tokens.endPos; i++)
-            {
-                PrintMSG(processTokens[i]->GetLexeme());
-            }
             Parser parser(processTokens);
             parser.currentIndex = tokens.startPos;
 
@@ -4004,7 +3993,7 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             GenericStatementInfo temp = {};
 
             temp.currentScope = currentScope;
-            temp.currentBlockStatement = currentBlockStatement;
+            temp.currentBlockLeaf = currentBlockLeaf;
             temp.currentFunction = currentFunction;
             temp.currentLibrary = currentLibrary;
             temp.currentPackage = currentPackage;
@@ -4013,7 +4002,7 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             Statement *genericStatement = fn->fnStmt;
 
             currentScope = structType ? methodScope : genericInfo->currentScope;
-            currentBlockStatement = genericInfo->currentBlockStatement;
+            currentBlockLeaf = genericInfo->currentBlockLeaf;
             currentFunction = genericInfo->currentFunction;
             currentLibrary = genericInfo->currentLibrary;
             currentPackage = genericInfo->currentPackage;
@@ -4039,7 +4028,7 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             }
 
             currentScope = temp.currentScope;
-            currentBlockStatement = temp.currentBlockStatement;
+            currentBlockLeaf = temp.currentBlockLeaf;
             currentFunction = temp.currentFunction;
             currentLibrary = temp.currentLibrary;
             currentPackage = temp.currentPackage;

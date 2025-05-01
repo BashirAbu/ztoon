@@ -2,18 +2,6 @@ package core
 
 pub fn printf(msg: readonly i8*, ...) -> i32;
 
-pub struct Data
-{
-    i: i8[12];
-
-    fn print(self*) 
-    {
-        printf("hi\n");
-        for i: i32 = 0; i < 12; i++ {
-            printf("%d: %d\n", i, self.i[i]);
-        }
-    }
-}
 
 pub fn<[T]> mem_alloc() ->T*
 {

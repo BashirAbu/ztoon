@@ -131,6 +131,26 @@ class ImportStatement : public Statement
     friend class Parser;
     friend class SemanticAnalyzer;
 };
+
+class DeferStatement : public Statement
+{
+  public:
+    CodeErrString GetCodeErrString() override
+    {
+        CodeErrString es = {};
+        es.firstToken = token;
+        es.str = token->GetLexeme();
+        return es;
+    }
+    Statement *GetStatement() { return statement; }
+
+  private:
+    bool moved = false;
+    Statement *statement;
+    const Token *token = nullptr;
+    friend class Parser;
+    friend class SemanticAnalyzer;
+};
 class EmptyStatement : public Statement
 {
 
@@ -427,6 +447,7 @@ class BlockStatement : public Statement
     size_t index = 0;
 
   private:
+    bool loopBlock = false;
     std::vector<Statement *> statements;
     friend class Parser;
     friend class SemanticAnalyzer;
@@ -1092,6 +1113,7 @@ class Parser
     Statement *ParseUnionStatement();
     Statement *ParseEnumStatement();
     Statement *ParseRetStatement();
+    Statement *ParseDeferStatement();
     Statement *ParseImportStatement();
 
     Expression *ParseExpression();

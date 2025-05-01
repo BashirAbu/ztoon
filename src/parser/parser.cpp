@@ -3,7 +3,6 @@
 #include "parser.h"
 #include <algorithm>
 #include <format>
-#include <functional>
 std::string DataTypeToken::ToString()
 {
     std::string str;
@@ -1489,9 +1488,27 @@ Statement *Parser::ParseRetStatement()
 
         return retStatement;
     }
-    return ParseExpressionStatement();
+    return ParseDeferStatement();
 }
 
+Statement *Parser::ParseDeferStatement()
+{
+    if (Consume(TokenType::DEFER))
+    {
+        DeferStatement *deferStmt = gZtoonArena.Allocate<DeferStatement>();
+        deferStmt->token = Prev();
+        deferStmt->statement = ParseBlockStatement();
+        if (!deferStmt->statement)
+        {
+            CodeErrString ces;
+            ces.firstToken = deferStmt->token;
+            ces.str = ces.firstToken->GetLexeme();
+            ReportError("Expected statement after 'defer'", ces);
+        }
+        return deferStmt;
+    }
+    return ParseExpressionStatement();
+}
 Statement *Parser::ParseExpressionStatement()
 {
     Expression *expr = ParseExpression();

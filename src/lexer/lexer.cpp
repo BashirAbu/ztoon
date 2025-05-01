@@ -163,6 +163,7 @@ Lexer::Lexer()
     patterns.push_back({std::regex(R"(^package\b)"), TokenType::PACKAGE});
     patterns.push_back({std::regex(R"(^import\b)"), TokenType::IMPORT});
     patterns.push_back({std::regex(R"(^pub\b)"), TokenType::PUB});
+    patterns.push_back({std::regex(R"(^defer\b)"), TokenType::DEFER});
 
     patterns.push_back({std::regex(R"(^struct\b)"), TokenType::STRUCT});
     patterns.push_back({std::regex(R"(^union\b)"), TokenType::UNION});

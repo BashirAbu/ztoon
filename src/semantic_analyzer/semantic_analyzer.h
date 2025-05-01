@@ -106,7 +106,7 @@ struct GenericStatementInfo
     class Scope *currentScope = nullptr;
     Package *currentPackage = nullptr;
     Library *currentLibrary = nullptr;
-    BlockStatement *currentBlockStatement = nullptr;
+    class BlockStatementLeaf *currentBlockLeaf = nullptr;
     class Function *currentFunction = nullptr;
 };
 
@@ -312,6 +312,11 @@ struct TopAggTypeDecl
     Scope *currentScope = nullptr;
 };
 
+struct BlockStatementLeaf
+{
+    BlockStatement *blockStmt = nullptr;
+    BlockStatementLeaf *parent = nullptr;
+};
 class SemanticAnalyzer
 {
   public:
@@ -363,6 +368,7 @@ class SemanticAnalyzer
                               bool analyzeSymbol, bool analyzeBody);
     void AnalyzeRetStatement(RetStatement *retStmt);
     void AnalyzeImportStatement(ImportStatement *importStmt);
+    void AnalyzeDeferStatement(DeferStatement *deferStmt);
 
     void AnalyzeFnExpression(FnExpression *fnExpression);
     void AnalyzeTernaryExpression(TernaryExpression *ternaryExpr);
@@ -398,11 +404,15 @@ class SemanticAnalyzer
     std::unordered_map<Function *, std::vector<TopVarDecl>> fnToVarDeclsMap;
     std::unordered_map<Function *, std::vector<TopAggTypeDecl>> fnToAggDeclsMap;
     std::unordered_map<std::string, Symbol *> uidToSymbolMap;
+
+    std::unordered_map<BlockStatementLeaf *, std::vector<Statement *>>
+        deferredStatementsMap;
     std::vector<Package *> packages;
     std::vector<Library *> libraries;
     Package *currentPackage = nullptr;
     Library *currentLibrary = nullptr;
-    BlockStatement *currentBlockStatement = nullptr;
+    // BlockStatement *currentBlockStatement = nullptr;
+    BlockStatementLeaf *currentBlockLeaf = nullptr;
     Function *currentFunction = nullptr;
     size_t inLoop = 0;
 

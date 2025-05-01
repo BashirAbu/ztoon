@@ -2,6 +2,31 @@ package core
 
 pub fn printf(msg: readonly i8*, ...) -> i32;
 
-pub fn malloc(size: u64) -> i8*;
-pub fn free(ptr: i8*);
+pub struct Data
+{
+    i: i8[12];
+
+    fn print(self*) 
+    {
+        printf("hi\n");
+        for i: i32 = 0; i < 12; i++ {
+            printf("%d: %d\n", i, self.i[i]);
+        }
+    }
+}
+
+pub fn<[T]> mem_alloc() ->T*
+{
+    ret malloc(sizeof(T)) as T*;
+}
+
+pub fn<[T]> mem_free(ptr: T*) 
+{
+    free(ptr as i8*);
+}
+
+fn malloc(size: u64) -> i8*;
+fn free(ptr: i8*);
+
+
 

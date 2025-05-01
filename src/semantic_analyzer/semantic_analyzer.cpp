@@ -10,6 +10,7 @@
 #include <stack>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 void removeReadonlyPrefix(std::string &str)
 {
     const std::string prefix = "readonly ";
@@ -189,9 +190,193 @@ std::string DataType::ToString()
     return str;
 }
 
+void SemanticAnalyzer::ReplaceGenericTypes(
+    std::unordered_map<std::string, DataTypeToken *> &dataTypesMap)
+{
+    for (auto dt : dataTypesMap)
+    {
+        auto dtToken = dt.second;
+        Token *first = nullptr;
+        Token *second = nullptr;
+        Token *third = nullptr;
+        for (size_t index = dtToken->tokens.startPos;
+             index < dtToken->tokens.endPos; index++)
+        {
+
+            if (TokenMatch(dtToken->tokens.tokens[index]->GetType(),
+                           TokenType::READONLY))
+            {
+                continue;
+            }
+
+            if (TokenMatch(dtToken->tokens.tokens[index]->GetType(),
+                           TokenType::IDENTIFIER))
+            {
+                first = dtToken->tokens.tokens[index];
+                index++;
+
+                if (TokenMatch(dtToken->tokens.tokens[index]->GetType(),
+                               TokenType::DOUBLE_COLON))
+                {
+
+                    second = dtToken->tokens.tokens[index];
+                    index++;
+                    if (TokenMatch(dtToken->tokens.tokens[index]->GetType(),
+                                   TokenType::DOUBLE_COLON))
+                    {
+                        third = dtToken->tokens.tokens[index];
+                        index++;
+                    }
+                }
+                index--;
+            }
+
+            Token *typeToken = nullptr;
+            if (third)
+            {
+                typeToken = third;
+            }
+            else if (second)
+            {
+                typeToken = second;
+            }
+            else
+            {
+                typeToken = first;
+            }
+
+            if (typeToken)
+            {
+                DataType *type = currentScope->GetDataType(dtToken);
+
+                Symbol *symbol = nullptr;
+
+                if (type->GetType() == DataType::Type::STRUCT)
+                {
+                    auto sType = dynamic_cast<StructDataType *>(type);
+                    symbol = dynamic_cast<Symbol *>(sType);
+                }
+                else if (type->GetType() == DataType::Type::UNION)
+                {
+                    auto uType = dynamic_cast<UnionDataType *>(type);
+                    symbol = dynamic_cast<Symbol *>(uType);
+                }
+                else if (type->GetType() == DataType::Type::ENUM)
+                {
+                    auto eType = dynamic_cast<EnumDataType *>(type);
+                    symbol = dynamic_cast<Symbol *>(eType);
+                }
+                assert(symbol);
+
+                auto oldToken = dtToken->tokens.tokens[index];
+                auto newToken =
+                    gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+                *newToken = *(oldToken);
+                newToken->lexeme = symbol->uid;
+                dtToken->tokens.tokens[index] = newToken;
+                index++;
+                // check for <>><><><
+                if (dtToken->tokens.tokens[index]->GetType() ==
+                    TokenType::LEFT_ANGLE_SQUARE)
+                {
+                    dtToken->tokens.tokens.erase(
+                        dtToken->tokens.tokens.begin() + (int64_t)index);
+                    dtToken->tokens.endPos--;
+                    size_t layer = 1;
+                    while (layer != 0)
+                    {
+                        if (dtToken->tokens.tokens[index]->GetType() ==
+                            TokenType::LEFT_ANGLE_SQUARE)
+                        {
+                            layer++;
+                        }
+                        else if (dtToken->tokens.tokens[index]->GetType() ==
+                                 TokenType::RIGHT_SQUARE_ANGLE)
+                        {
+                            layer--;
+                        }
+                        PrintMSG(dtToken->tokens.tokens[index]->lexeme);
+                        dtToken->tokens.tokens.erase(
+                            dtToken->tokens.tokens.begin() + (int64_t)index);
+                        dtToken->tokens.endPos--;
+                    }
+                }
+            }
+
+            break;
+        }
+    }
+}
+void SemanticAnalyzer::ReplaceGenericTypesInStatement(
+    Tokens &tokens, Generic *generic, std::vector<Token *> &processTokens,
+    std::unordered_map<std::string, DataTypeToken *> &dataTypesMap)
+{
+    long long i = 0;
+    size_t layer = 0;
+
+    // Replace all generic types with provided types
+    while (i != tokens.endPos)
+    {
+        auto itr = std::find_if(
+            generic->types.begin(), generic->types.end(),
+            [&](DataTypeToken *t) -> bool
+            { return t->ToString() == processTokens[i]->GetLexeme(); });
+        if (itr != generic->types.end())
+        {
+            auto dtToken = dataTypesMap[processTokens[i]->GetLexeme()];
+            bool first = true;
+            for (size_t index = dtToken->tokens.startPos;
+                 index < dtToken->tokens.endPos; index++)
+            {
+                auto oldToken = processTokens[i];
+                auto newToken =
+                    gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+                *newToken = *(oldToken);
+                newToken->type = dtToken->tokens.tokens[index]->GetType();
+                newToken->lexeme = dtToken->tokens.tokens[index]->lexeme;
+                if (first)
+                {
+                    first = false;
+                    processTokens[i] = newToken;
+                }
+                else
+                {
+                    processTokens.insert(
+                        processTokens.begin() + (long long)i + 1, newToken);
+                    i++;
+                    tokens.endPos++;
+                }
+            }
+        }
+        i++;
+    }
+}
 DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 {
     std::string typeStr = dataTypeToken->ToString();
+
+    if (semanticAnalyzer->uidToSymbolMap.contains(typeStr))
+    {
+        auto symbol = semanticAnalyzer->uidToSymbolMap[typeStr];
+        DataType *res = nullptr;
+        if (dynamic_cast<StructDataType *>(symbol))
+        {
+            res = dynamic_cast<DataType *>(
+                dynamic_cast<StructDataType *>(symbol));
+        }
+        else if (dynamic_cast<UnionDataType *>(symbol))
+        {
+            res =
+                dynamic_cast<DataType *>(dynamic_cast<UnionDataType *>(symbol));
+        }
+        else if (dynamic_cast<EnumDataType *>(symbol))
+        {
+            res =
+                dynamic_cast<DataType *>(dynamic_cast<EnumDataType *>(symbol));
+        }
+        assert(res);
+        return res;
+    }
 
     DataType *result = nullptr;
     if (typeStr.empty())
@@ -201,7 +386,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 
     Scope *currentScope = this;
 
-    if (dataTypeToken->libToken && dataTypeToken->pkgToken)
+    if ((dataTypeToken->libToken && dataTypeToken->pkgToken))
     {
         Library *libFound = nullptr;
         for (auto lib : semanticAnalyzer->libraries)
@@ -254,11 +439,12 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 
         if (!semanticAnalyzer->pkgToScopeMap.contains(pkgFound))
         {
-            auto tempPkg = semanticAnalyzer->currentPackage;
-            auto tempScope = semanticAnalyzer->currentScope;
-            semanticAnalyzer->AnalyzePackage(pkgFound);
-            semanticAnalyzer->currentPackage = tempPkg;
-            semanticAnalyzer->currentScope = tempScope;
+            assert(0);
+            // auto tempPkg = semanticAnalyzer->currentPackage;
+            // auto tempScope = semanticAnalyzer->currentScope;
+            // semanticAnalyzer->AnalyzePackage(pkgFound);
+            // semanticAnalyzer->currentPackage = tempPkg;
+            // semanticAnalyzer->currentScope = tempScope;
         }
 
         currentScope = semanticAnalyzer->pkgToScopeMap[pkgFound];
@@ -320,11 +506,12 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 
         if (!semanticAnalyzer->pkgToScopeMap.contains(pkgFound))
         {
-            auto tempPkg = semanticAnalyzer->currentPackage;
-            auto tempScope = semanticAnalyzer->currentScope;
-            semanticAnalyzer->AnalyzePackage(pkgFound);
-            semanticAnalyzer->currentPackage = tempPkg;
-            semanticAnalyzer->currentScope = tempScope;
+            assert(0);
+            // auto tempPkg = semanticAnalyzer->currentPackage;
+            // auto tempScope = semanticAnalyzer->currentScope;
+            // semanticAnalyzer->AnalyzePackage(pkgFound);
+            // semanticAnalyzer->currentPackage = tempPkg;
+            // semanticAnalyzer->currentScope = tempScope;
         }
 
         currentScope = semanticAnalyzer->pkgToScopeMap[pkgFound];
@@ -419,12 +606,17 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 }
                 return name;
             };
+            for (auto t : dataTypeToken->generic->types)
+            {
+                currentScope->GetDataType(t);
+            }
+
             currentScope = dataTypeToken->pkgToken
                                ? currentScope
                                : semanticAnalyzer->currentScope;
+            genericTypeName = genName(dataTypeToken);
             if (auto foundSymbol = currentScope->GetSymbol(
-                    genName(dataTypeToken), dataTypeToken->GetCodeErrString(),
-                    true))
+                    genericTypeName, dataTypeToken->GetCodeErrString(), true))
             {
                 if (structType)
                 {
@@ -449,73 +641,57 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                 // remove generics tokens
                 std::vector<Token *> processTokens = tokens.tokens;
 
-                // replace types
-                for (size_t i = tokens.startPos; i < tokens.endPos; i++)
-                {
-                    auto itr = std::find_if(
-                        generic->types.begin(), generic->types.end(),
-                        [&](DataTypeToken *t) -> bool {
-                            return t->ToString() ==
-                                   processTokens[i]->GetLexeme();
-                        });
+                // set scope
+                auto tmp = semanticAnalyzer->currentScope;
+                semanticAnalyzer->currentScope = currentScope;
+                semanticAnalyzer->ReplaceGenericTypes(dataTypesMap);
+                semanticAnalyzer->currentScope = tmp;
+                semanticAnalyzer->ReplaceGenericTypesInStatement(
+                    tokens, generic, processTokens, dataTypesMap);
 
-                    if (itr != generic->types.end())
-                    {
-                        auto dtToken =
-                            dataTypesMap[processTokens[i]->GetLexeme()];
-                        bool first = true;
-                        for (size_t index = dtToken->tokens.startPos;
-                             index < dtToken->tokens.endPos; index++)
-                        {
-
-                            auto oldToken = processTokens[i];
-                            auto newToken = gZtoonArena.Allocate<Token>(
-                                TokenType::IDENTIFIER);
-                            *newToken = *(oldToken);
-                            newToken->type =
-                                dtToken->tokens.tokens[index]->GetType();
-                            newToken->lexeme =
-                                dtToken->tokens.tokens[index]->lexeme;
-                            if (first)
-                            {
-                                first = false;
-                                processTokens[i] = newToken;
-                            }
-                            else
-                            {
-                                processTokens.insert(processTokens.begin() +
-                                                         (long long)i,
-                                                     newToken);
-                                i++;
-                                tokens.endPos++;
-                            }
-                        }
-                    }
-                }
+                bool renamed = false;
                 for (auto itr =
                          processTokens.begin() + (long long)tokens.startPos;
                      itr != processTokens.begin() + (long long)tokens.endPos;
                      itr++)
                 {
-                    if ((*itr)->GetType() == TokenType::IDENTIFIER)
+                    if ((*itr)->GetType() == TokenType::IDENTIFIER && !renamed)
                     {
+                        renamed = true;
                         auto oldID = *itr;
                         *itr =
                             gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
                         *(*itr) = *oldID;
-                        (*itr)->lexeme = genName(dataTypeToken);
+                        (*itr)->lexeme = genericTypeName;
                     }
                     if ((*itr)->GetType() == TokenType::LEFT_ANGLE_SQUARE)
                     {
+                        size_t layer = 1;
                         itr = processTokens.erase(itr);
-                        while ((*itr)->GetType() !=
-                               TokenType::RIGHT_SQUARE_ANGLE)
+                        while (layer != 0)
                         {
+                            if ((*itr)->GetType() ==
+                                TokenType::LEFT_ANGLE_SQUARE)
+                            {
+                                layer++;
+                            }
+                            else if ((*itr)->GetType() ==
+                                     TokenType::RIGHT_SQUARE_ANGLE)
+                            {
+                                layer--;
+                            }
+
                             itr = processTokens.erase(itr);
                         }
-                        itr = processTokens.erase(itr);
                         break;
                     }
+                }
+                PrintMSG(std::format("{}:", genericTypeName));
+
+                for (size_t i = structType->structStmt->tokens.startPos;
+                     i < structType->structStmt->tokens.endPos; i++)
+                {
+                    PrintMSG(processTokens[i]->GetLexeme());
                 }
 
                 Parser parser(processTokens);
@@ -983,10 +1159,15 @@ Symbol *Scope::GetSymbol(std::string name, CodeErrString codeErrString,
 {
     Symbol *symbol = nullptr;
     Scope const *current = this;
+
+    if (semanticAnalyzer->uidToSymbolMap.contains(name))
+    {
+        return semanticAnalyzer->uidToSymbolMap[name];
+    }
+
     while (!symbol)
     {
         std::string _name = std::format("{}::{}", current->name, name);
-
         if (current->symbolsMap.contains(_name))
         {
             symbol = current->symbolsMap.at(_name);
@@ -1070,8 +1251,9 @@ void Scope::AddSymbol(Symbol *symbol, CodeErrString codeErrString)
     }
     else
     {
-
         symbolsMap[symbolName] = symbol;
+        symbol->uid = std::format("{}_{}", symbol->GetName(), (size_t)symbol);
+        semanticAnalyzer->uidToSymbolMap[symbol->uid] = symbol;
     }
 }
 
@@ -1212,88 +1394,116 @@ SemanticAnalyzer::SemanticAnalyzer(std::vector<Package *> _packages,
                                    std::vector<Library *> _libraries)
     : packages(_packages), libraries(_libraries)
 {
+    for (auto l : libraries)
+    {
+        PrintMSG(l->name);
+    }
+
     currentStage = Stage::SEMANTIC_ANALYZER;
-
-    std::function<void(Library * lib)> analyzeLib;
-    analyzeLib = [&](Library *lib)
+    for (auto l : libraries)
     {
-        Analyze(lib->packages);
-        for (auto l : lib->libs)
+        for (auto pkg : l->packages)
         {
-            analyzeLib(l);
-        }
-        lib->analyed = true;
-    };
-
-    for (auto lib : libraries)
-    {
-        LibraryDataType *libType = gZtoonArena.Allocate<LibraryDataType>();
-        libType->type = DataType::Type::LIBRARY;
-        libType->name = lib->name;
-        libType->lib = lib;
-        libToDataTypeMap[lib] = libType;
-        if (!lib->analyed)
-            analyzeLib(lib);
-    }
-
-    Analyze(packages);
-}
-SemanticAnalyzer::~SemanticAnalyzer() {}
-void SemanticAnalyzer::AnalyzePackage(Package *pkg)
-{
-    if (pkgToScopeMap.contains(pkg))
-    {
-        currentPackage = pkg;
-        currentScope = pkgToScopeMap[pkg];
-        return;
-    }
-    PackageDataType *pkgType = gZtoonArena.Allocate<PackageDataType>();
-
-    pkgToDataTypeMap[pkg] = pkgType;
-
-    pkgType->type = PackageDataType::Type::PACKAGE;
-    pkgType->name = pkg->identifier->GetLexeme();
-    pkgType->pkg = pkg;
-
-    currentScope = gZtoonArena.Allocate<Scope>(
-        this,
-        std::format("{}_{}", pkg->GetIdentifier()->GetLexeme(), (size_t)pkg));
-    pkgToScopeMap[pkg] = currentScope;
-
-    CodeErrString ces;
-    ces.firstToken = pkg->identifier;
-    ces.str = ces.firstToken->GetLexeme();
-    pkgType->isPublic = true;
-    currentScope->AddSymbol(pkgType, ces);
-    currentPackage = pkg;
-
-    for (auto stmt : pkg->GetStatements())
-    {
-        if (dynamic_cast<ImportStatement *>(stmt))
-        {
-            auto importStmt = dynamic_cast<ImportStatement *>(stmt);
-            AnalyzeImportStatement(importStmt);
+            AnalyzePackage(pkg, true, false, false, false);
         }
     }
 
-    AnalyzePackageGlobalTypes(pkg);
-    AnalyzePackageGlobalFuncsAndVars(pkg);
-    AnalyzePackageGlobalTypeBodies(pkg);
-}
-void SemanticAnalyzer::Analyze(std::vector<Package *> &packages)
-{
     for (auto pkg : packages)
     {
-        AnalyzePackage(pkg);
-        AnalyzePackageVarAndFuncBodies(pkg);
+        AnalyzePackage(pkg, true, false, false, false);
     }
 
+    for (auto l : libraries)
+    {
+        for (auto pkg : l->packages)
+        {
+            AnalyzePackage(pkg, false, true, false, false);
+        }
+    }
+    for (auto pkg : packages)
+    {
+        AnalyzePackage(pkg, false, true, false, false);
+    }
+    for (auto l : libraries)
+    {
+        for (auto pkg : l->packages)
+        {
+            AnalyzePackage(pkg, false, false, true, false);
+        }
+    }
+    for (auto pkg : packages)
+    {
+        AnalyzePackage(pkg, false, false, true, false);
+    }
+    for (auto l : libraries)
+    {
+        for (auto pkg : l->packages)
+        {
+            AnalyzePackage(pkg, false, false, false, true);
+        }
+    }
+    for (auto pkg : packages)
+    {
+        AnalyzePackage(pkg, false, false, false, true);
+    }
     for (auto toAdd : stmtsToAdd)
     {
         toAdd.statements.insert(toAdd.statements.begin() + toAdd.index,
                                 toAdd.stmt);
     }
 }
+SemanticAnalyzer::~SemanticAnalyzer() {}
+void SemanticAnalyzer::AnalyzePackage(Package *pkg, bool analyzeTypes,
+                                      bool analyzeFnVar, bool analyzeTypeBody,
+                                      bool analyzeFnVarBody)
+{
+    if (pkgToScopeMap.contains(pkg))
+    {
+        currentPackage = pkg;
+        currentScope = pkgToScopeMap[pkg];
+    }
+    if (analyzeTypes)
+    {
+
+        PackageDataType *pkgType = gZtoonArena.Allocate<PackageDataType>();
+
+        pkgToDataTypeMap[pkg] = pkgType;
+
+        pkgType->type = PackageDataType::Type::PACKAGE;
+        pkgType->name = pkg->identifier->GetLexeme();
+        pkgType->pkg = pkg;
+
+        currentScope = gZtoonArena.Allocate<Scope>(
+            this, std::format("{}_{}", pkg->GetIdentifier()->GetLexeme(),
+                              (size_t)pkg));
+        pkgToScopeMap[pkg] = currentScope;
+
+        CodeErrString ces;
+        ces.firstToken = pkg->identifier;
+        ces.str = ces.firstToken->GetLexeme();
+        pkgType->isPublic = true;
+        currentScope->AddSymbol(pkgType, ces);
+        currentPackage = pkg;
+        AnalyzePackageGlobalTypes(pkg);
+    }
+    if (analyzeFnVar)
+    {
+        for (auto stmt : pkg->GetStatements())
+        {
+            if (dynamic_cast<ImportStatement *>(stmt))
+            {
+                auto importStmt = dynamic_cast<ImportStatement *>(stmt);
+                AnalyzeImportStatement(importStmt);
+            }
+        }
+        AnalyzePackageGlobalFuncsAndVars(pkg);
+    }
+    if (analyzeTypeBody)
+        AnalyzePackageGlobalTypeBodies(pkg);
+    if (analyzeFnVarBody)
+        AnalyzePackageVarAndFuncBodies(pkg);
+}
+void SemanticAnalyzer::Analyze(std::vector<Package *> &packages) {}
 
 void SemanticAnalyzer::AnalyzePackageGlobalTypes(Package *pkg)
 {
@@ -1577,14 +1787,14 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
             currentFunction = fp;
 
             auto tempScope = currentScope;
-
             currentScope = gZtoonArena.Allocate<Scope>(
                 this,
                 fnStmt->IsPrototype()
                     ? ""
                     : std::format("{}_{}", fnStmt->GetIdentifier()->GetLexeme(),
                                   (size_t)fnStmt),
-                tempScope);
+                nullptr);
+
             currentScope->parent = tempScope;
             if (isMethod && fnStmt->IsPrototype())
             {
@@ -1611,7 +1821,6 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
     {
         Function *fp = dynamic_cast<Function *>(currentScope->GetSymbol(
             fnStmt->GetIdentifier()->GetLexeme(), fnStmt->GetCodeErrString()));
-
         Function *temp = currentFunction;
         currentFunction = fp;
         AnalyzeStatement(fnStmt->blockStatement);
@@ -2933,21 +3142,27 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
                         peRight->GetCodeErrString());
         }
 
-        if (!lib->analyed)
+        // if (!lib->analyed)
+        // {
+        //     assert(0);
+        //     auto tempPackages = packages;
+        //     auto tempPkg = currentPackage;
+        //     auto temp = currentLibrary;
+        //     currentLibrary = lib;
+        //     packages = tempPackages;
+        //     Analyze(lib->packages);
+        //     currentLibrary = temp;
+        //     lib->analyed = true;
+        //     currentPackage = tempPkg;
+        //     currentScope = pkgToScopeMap[tempPkg];
+        //     packages = tempPackages;
+        // }
+        auto pkgScope = pkgToScopeMap[pkg];
+        if (!pkgScope)
         {
-            auto tempPackages = packages;
-            auto tempPkg = currentPackage;
-            auto temp = currentLibrary;
-            currentLibrary = lib;
-            packages = tempPackages;
-            Analyze(lib->packages);
-            currentLibrary = temp;
-            lib->analyed = true;
-            currentPackage = tempPkg;
-            currentScope = pkgToScopeMap[tempPkg];
-            packages = tempPackages;
+            PrintMSG("Internal error: pkg is not analyzed!");
         }
-        currentScope->importedPackages.push_back(pkgToScopeMap[pkg]);
+        currentScope->importedPackages.push_back(pkgScope);
     }
     else if (pe && pe->GetPrimary()->GetType() == TokenType::IDENTIFIER)
     {
@@ -2989,11 +3204,12 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
             // check if package is analyzed
             if (!pkgToScopeMap.contains(importedPkg))
             {
-                auto tempPkg = currentPackage;
-                auto tempScope = currentScope;
-                AnalyzePackage(importedPkg);
-                currentScope = tempScope;
-                currentPackage = tempPkg;
+                assert(0);
+                // auto tempPkg = currentPackage;
+                // auto tempScope = currentScope;
+                // AnalyzePackage(importedPkg);
+                // currentScope = tempScope;
+                // currentPackage = tempPkg;
             }
             auto importedPkgScope = pkgToScopeMap[importedPkg];
             pkgToScopeMap[currentPackage]->importedPackages.push_back(
@@ -3001,20 +3217,21 @@ void SemanticAnalyzer::AnalyzeImportStatement(ImportStatement *importStmt)
         }
         else if (importedLibrary)
         {
-            if (!importedLibrary->analyed)
-            {
-                auto tempPackages = packages;
-                auto tempPkg = currentPackage;
-                auto temp = currentLibrary;
-                currentLibrary = importedLibrary;
-                packages = tempPackages;
-                Analyze(importedLibrary->packages);
-                currentLibrary = temp;
-                importedLibrary->analyed = true;
-                currentPackage = tempPkg;
-                currentScope = pkgToScopeMap[tempPkg];
-                packages = tempPackages;
-            }
+            // if (!importedLibrary->analyed)
+            // {
+            //     assert(0);
+            //     auto tempPackages = packages;
+            //     auto tempPkg = currentPackage;
+            //     auto temp = currentLibrary;
+            //     currentLibrary = importedLibrary;
+            //     packages = tempPackages;
+            //     Analyze(importedLibrary->packages);
+            //     currentLibrary = temp;
+            //     importedLibrary->analyed = true;
+            //     currentPackage = tempPkg;
+            //     currentScope = pkgToScopeMap[tempPkg];
+            //     packages = tempPackages;
+            // }
             for (auto impPkg : importedLibrary->packages)
             {
                 auto importedPkgScope = pkgToScopeMap[impPkg];
@@ -3679,16 +3896,19 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
         std::string newName = fn->GetName();
         for (auto dtToken : fnCallExpr->generic->types)
         {
-
-            newName += std::format("_{}",
-
-                                   dtToken->ToString());
+            newName += std::format("_{}", dtToken->ToString());
         }
 
         Token *newID = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
         *newID = *pe->primary;
         newID->lexeme = newName;
         pe->primary = newID;
+
+        for (auto t : fnCallExpr->generic->types)
+        {
+            currentScope->GetDataType(t);
+        }
+
         if (Symbol *fnFound = currentScope->GetSymbol(
                 newName, fnCallExpr->GetCodeErrString(), true))
         {
@@ -3705,48 +3925,24 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
                     fnCallExpr->generic->types[i];
             }
             auto tokens = fn->fnStmt->tokens;
-            // remove generics tokens
             std::vector<Token *> processTokens = tokens.tokens;
             auto generic = fn->fnStmt->generic;
-            // replace types
-            for (size_t i = tokens.startPos; i < tokens.endPos; i++)
+            PrintMSG(std::format("Raw {}:", newName));
+            for (size_t i = fn->fnStmt->tokens.startPos;
+                 i < fn->fnStmt->tokens.endPos; i++)
             {
+                PrintMSG(processTokens[i]->GetLexeme());
+            }
+            ReplaceGenericTypes(dataTypesMap);
 
-                auto itr = std::find_if(
-                    generic->types.begin(), generic->types.end(),
-                    [&](DataTypeToken *t) -> bool
-                    { return t->ToString() == processTokens[i]->GetLexeme(); });
+            ReplaceGenericTypesInStatement(tokens, generic, processTokens,
+                                           dataTypesMap);
 
-                if (itr != generic->types.end())
-                {
-                    auto dtToken = dataTypesMap[processTokens[i]->GetLexeme()];
-                    bool first = true;
-                    for (size_t index = dtToken->tokens.startPos;
-                         index < dtToken->tokens.endPos; index++)
-                    {
-
-                        auto oldToken = processTokens[i];
-                        auto newToken =
-                            gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
-                        *newToken = *(oldToken);
-                        newToken->type =
-                            dtToken->tokens.tokens[index]->GetType();
-                        newToken->lexeme =
-                            dtToken->tokens.tokens[index]->lexeme;
-                        if (first)
-                        {
-                            first = false;
-                            processTokens[i] = newToken;
-                        }
-                        else
-                        {
-                            processTokens.insert(
-                                processTokens.begin() + (long long)i, newToken);
-                            i++;
-                            tokens.endPos++;
-                        }
-                    }
-                }
+            PrintMSG(std::format("Replaced types in {}:", newName));
+            for (size_t i = fn->fnStmt->tokens.startPos;
+                 i < fn->fnStmt->tokens.endPos; i++)
+            {
+                PrintMSG(processTokens[i]->GetLexeme());
             }
             for (auto itr = processTokens.begin() + (long long)tokens.startPos;
                  itr != processTokens.begin() + (long long)tokens.endPos; itr++)
@@ -3754,12 +3950,22 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
                 bool doneRemoving = false;
                 if ((*itr)->GetType() == TokenType::LEFT_ANGLE_SQUARE)
                 {
+                    size_t layer = 1;
                     itr = processTokens.erase(itr);
-                    while ((*itr)->GetType() != TokenType::RIGHT_SQUARE_ANGLE)
+                    while (layer != 0)
                     {
+                        if ((*itr)->GetType() == TokenType::LEFT_ANGLE_SQUARE)
+                        {
+                            layer++;
+                        }
+                        else if ((*itr)->GetType() ==
+                                 TokenType::RIGHT_SQUARE_ANGLE)
+                        {
+                            layer--;
+                        }
+
                         itr = processTokens.erase(itr);
                     }
-                    itr = processTokens.erase(itr);
                     doneRemoving = true;
                 }
                 if (doneRemoving && (*itr)->GetType() == TokenType::IDENTIFIER)
@@ -3771,11 +3977,19 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
                     break;
                 }
             }
+
+            PrintMSG(std::format("renamed {}:", newName));
+            for (size_t i = fn->fnStmt->tokens.startPos;
+                 i < fn->fnStmt->tokens.endPos; i++)
+            {
+                PrintMSG(processTokens[i]->GetLexeme());
+            }
             Parser parser(processTokens);
             parser.currentIndex = tokens.startPos;
 
             FnStatement *newStatement = dynamic_cast<FnStatement *>(
                 parser.ParseFnStatement(structType));
+
             if (newStatement->method)
             {
                 Parser::AddSelfParam(newStatement,
@@ -3981,11 +4195,12 @@ void SemanticAnalyzer::AnalyzeMemberAccessExpression(
             // See if pkg is analyzed
             if (!pkgToScopeMap.contains(pkgFound))
             {
-                auto tempPkg = currentPackage;
-                auto tempScope = currentScope;
-                AnalyzePackage(pkgFound);
-                currentPackage = tempPkg;
-                currentScope = tempScope;
+                assert(0);
+                // auto tempPkg = currentPackage;
+                // auto tempScope = currentScope;
+                // AnalyzePackage(pkgFound);
+                // currentPackage = tempPkg;
+                // currentScope = tempScope;
             }
             CodeErrString ces;
             ces.firstToken = pkgFound->GetIdentifier();

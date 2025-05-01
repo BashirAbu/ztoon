@@ -10,6 +10,7 @@
 #include <iostream>
 #include <regex>
 #include <sstream>
+#include <stack>
 #include <vector>
 #include <yaml-cpp/yaml.h>
 std::string basicZtoonExeMainFile =
@@ -612,15 +613,6 @@ void Compiler::BuildProject(Project &project)
     auto packages = lexerAndParseProject(project);
     auto libs = goOverDeps(project);
 
-    // for (auto p : packages)
-    // {
-    //     printf("Package %s:\n", p->GetIdentifier()->GetLexeme().c_str());
-    //     for (auto s : p->GetStatements())
-    //     {
-    //         printf("%s\n", s->GetCodeErrString().str.c_str());
-    //     }
-    // }
-
     for (auto lib : libs)
     {
         for (auto otherLib : libs)
@@ -650,7 +642,32 @@ void Compiler::BuildProject(Project &project)
             }
         }
     }
-    SemanticAnalyzer semanticAnalyzer(packages, libs);
+    std::vector<std::string> ulibNames;
+    std::vector<Library *> ulibs;
+    for (auto lib : libs)
+    {
+        std::stack<Library *> libs;
+        libs.push(lib);
+        while (!libs.empty())
+        {
+            Library *l = libs.top();
+            libs.pop();
+
+            for (auto il : l->libs)
+            {
+                libs.push(il);
+            }
+
+            if (std::find(ulibNames.begin(), ulibNames.end(), l->name) ==
+                ulibNames.end())
+            {
+                ulibNames.push_back(l->name);
+                ulibs.push_back(l);
+            }
+        }
+    }
+
+    SemanticAnalyzer semanticAnalyzer(packages, ulibs);
     CodeGen codeGen(semanticAnalyzer);
     PrintMSG("Compiling...");
     codeGen.Compile(project, printIRcode);

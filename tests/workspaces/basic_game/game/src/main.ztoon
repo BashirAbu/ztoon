@@ -3,32 +3,75 @@ import core::core;
 
 import sdl3;
 
+struct list<[T]>
+{
+    item: T;
+    next: list<[T]>*;
+
+    fn add(self*, item: T)
+    {
+        n: list<[T]>* = self.next;
+        while n as u64 != 0 as u64 {
+            n = n.next;
+        }
+        n = mem_alloc<[list<[T]>]>();
+        n.item = item;
+        if (self.next as u64 == 0 as u64) {
+            self.next = n;
+        }
+    }
+
+    fn print(self*)
+    {
+        printf("hi\n");
+        n: list<[T]>* = self.next;
+        printf("hi\n");
+        while n as u64 != 0 as u64 {
+            printf("hi\n");
+            n.item.print();
+            n = n.next;
+        }
+    }
+}
+
 
 fn main() -> i32
 {
-    result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);
+    //ii : list<[i32]>* = mem_alloc<[i32]>();
 
-    if !result {
-        printf("Failed to initialize SDL: %s", SDL3::get_error());
-        ret 1;
-    }
+    l: list<[Data]>;
+    d: core::Data;
+    d.i[0] = 33;
+    l.add(d);
+    l.print();
+    // while (l.next as u64) != (0 as u64) {
+    //     printf("%d: \n", l.next.item);
+    //     l.next = l.next.next;
+    // }
 
-    window: u8* = SDL3::create_window("Ztoon", 1280, 720,
-     window_flags::SDL_WINDOW_OPENGL | window_flags::SDL_WINDOW_RESIZABLE);
+    // result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);
 
-    if !(window as bool) {
-        printf("Failed to create window. Err: %s", SDL3::get_error());
-        ret 1;
-    }
-    done: bool = false;
-    while !done {
-        event: SDL3::event;
-        while SDL3::poll_event(&event) {
-            if (event.type == SDL3::event_type::SDL_EVENT_QUIT)
-            {
-                done = true;  
-            }
-        }
-    }
+    // if !result {
+    //     printf("Failed to initialize SDL: %s", SDL3::get_error());
+    //     ret 1;
+    // }
+
+    // window: u8* = SDL3::create_window("Ztoon", 1280, 720,
+    //  window_flags::SDL_WINDOW_OPENGL | window_flags::SDL_WINDOW_RESIZABLE);
+
+    // if !(window as bool) {
+    //     printf("Failed to create window. Err: %s", SDL3::get_error());
+    //     ret 1;
+    // }
+    // done: bool = false;
+    // while !done {
+    //     event: SDL3::event;
+    //     while SDL3::poll_event(&event) {
+    //         if (event.type == SDL3::event_type::SDL_EVENT_QUIT)
+    //         {
+    //             done = true;  
+    //         }
+    //     }
+    // }
     ret 0;
 }

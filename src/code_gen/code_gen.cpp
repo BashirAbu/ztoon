@@ -44,6 +44,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/Reassociate.h"
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -133,12 +134,13 @@ IRType CodeGen::ZtoonTypeToLLVMType(DataType *type)
     {
         auto structZtoonType = dynamic_cast<StructDataType *>(type);
 
-        llvm::StructType *structIRType = llvm::StructType::getTypeByName(
-            *ctx, structZtoonType->GetFullName());
+        llvm::StructType *structIRType =
+            llvm::StructType::getTypeByName(*ctx, structZtoonType->GetUID());
+        // assert(structIRType);
         if (!structIRType)
         {
             structIRType =
-                llvm::StructType::create(*ctx, structZtoonType->GetFullName());
+                llvm::StructType::create(*ctx, structZtoonType->GetUID());
             std::vector<llvm::Type *> bodyFields;
             for (DataType *fieldType : structZtoonType->fields)
             {
@@ -474,27 +476,34 @@ void CodeGen::Compile(Project &project, bool printIR)
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
 
-    std::function<void(Library * lib, bool genSymbol, bool genSymbolBody)>
+    std::function<void(Library * lib, bool genTypeSymbol, bool genFnAndVarBody,
+                       bool genSymoblBody)>
         GenLibIR;
-    GenLibIR = [&](Library *lib, bool genSymbol, bool genSymbolBody)
+    GenLibIR = [&](Library *lib, bool genTypeSymbol, bool genFnAndVarBody,
+                   bool genSymoblBody)
     {
-        GenIR(lib->packages, genSymbol, genSymbolBody);
+        GenIR(lib->packages, genTypeSymbol, genFnAndVarBody, genSymoblBody);
         for (auto l : lib->libs)
         {
-            GenLibIR(l, genSymbol, genSymbolBody);
+            GenLibIR(l, genTypeSymbol, genFnAndVarBody, genSymoblBody);
         }
-        lib->analyed = true;
     };
 
     for (auto lib : semanticAnalyzer.libraries)
     {
-        GenLibIR(lib, true, false);
+        GenLibIR(lib, true, false, false);
     }
+    GenIR(semanticAnalyzer.packages, true, false, false);
     for (auto lib : semanticAnalyzer.libraries)
     {
-        GenLibIR(lib, false, true);
+        GenLibIR(lib, false, true, false);
     }
-    GenIR(semanticAnalyzer.packages, true, true);
+    GenIR(semanticAnalyzer.packages, false, true, false);
+    for (auto lib : semanticAnalyzer.libraries)
+    {
+        GenLibIR(lib, false, false, true);
+    }
+    GenIR(semanticAnalyzer.packages, false, false, true);
     if (llvm::verifyModule(*module, &llvm::errs()))
     {
         llvm::errs() << "Module verification failed\n";
@@ -1192,22 +1201,24 @@ void CodeGen::AssignValueToVarStruct(IRValue ptr, Expression *expr,
 }
 CodeGen::~CodeGen() {}
 
-void CodeGen::GenIR(std::vector<Package *> &packages, bool genSymbol,
-                    bool genSymbolBody)
+void CodeGen::GenIR(std::vector<Package *> &packages, bool genTypeSymbol,
+                    bool genFnAndVarSymbol, bool genTypeBody)
 {
-    if (genSymbol)
+    if (genTypeSymbol)
     {
         for (auto pkg : packages)
         {
             GenPackageGlobalTypesIR(pkg);
         }
+    }
+    if (genFnAndVarSymbol)
+    {
         for (auto pkg : packages)
         {
             GenPackageGlobalFuncsAndVarsIR(pkg);
         }
     }
-
-    if (genSymbolBody)
+    if (genTypeBody)
     {
         for (auto pkg : packages)
         {
@@ -1225,12 +1236,12 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
 
     genStructIR = [&](StructDataType *structZtoonType)
     {
-        llvm::StructType *structIRType = llvm::StructType::getTypeByName(
-            *ctx, structZtoonType->GetFullName());
+        llvm::StructType *structIRType =
+            llvm::StructType::getTypeByName(*ctx, structZtoonType->GetUID());
         if (!structIRType)
         {
             structIRType =
-                llvm::StructType::create(*ctx, structZtoonType->GetFullName());
+                llvm::StructType::create(*ctx, structZtoonType->GetUID());
             std::vector<llvm::Type *> bodyFields;
             for (DataType *fieldType : structZtoonType->fields)
             {
@@ -1242,13 +1253,13 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
 
                     llvm::StructType *structFieldIRType =
                         llvm::StructType::getTypeByName(
-                            *ctx, fieldStructType->GetFullName());
+                            *ctx, fieldStructType->GetUID());
                     if (!structFieldIRType)
                     {
                         genStructIR(fieldStructType);
                     }
                     structFieldIRType = llvm::StructType::getTypeByName(
-                        *ctx, fieldStructType->GetFullName());
+                        *ctx, fieldStructType->GetUID());
                     bodyFields.push_back(structFieldIRType);
                 }
                 else if (fieldType->GetType() == DataType::Type::UNION)

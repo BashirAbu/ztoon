@@ -5,12 +5,3 @@ fn sqrt(v: f64) -> f64;
 
 
 
-pub struct Vector2 <[T, B]>
-{
-    x: T;
-    y: B;
-    fn<[C]> Len(self) -> C
-    {
-        ret sqrt((self.x * self.x + self.y * self.y) as f64) as C ;
-    }
-}

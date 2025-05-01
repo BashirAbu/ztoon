@@ -72,9 +72,12 @@ class Symbol
     virtual std::string GetName() = 0;
     virtual DataType *GetDataType() = 0;
     bool IsPublic() { return isPublic; }
+    std::string GetUID() { return uid; }
 
   protected:
     bool isPublic = false;
+    std::string uid = "";
+    friend class Scope;
     friend class SemanticAnalyzer;
 };
 
@@ -294,7 +297,6 @@ struct Library
     std::string name;
     std::vector<Package *> packages;
     std::vector<Library *> libs;
-    bool analyed = false;
 };
 
 struct TopVarDecl
@@ -319,7 +321,8 @@ class SemanticAnalyzer
 
   private:
     void Analyze(std::vector<Package *> &packages);
-    void AnalyzePackage(Package *pkg);
+    void AnalyzePackage(Package *pkg, bool analyzeTypes, bool analyzeFnVar,
+                        bool analyzeTypeBody, bool analyzeFnVarBody);
     void AnalyzePackageGlobalTypes(Package *pkg);
     void AnalyzePackageGlobalFuncsAndVars(Package *pkg);
 
@@ -376,6 +379,13 @@ class SemanticAnalyzer
 
     DataType::Type DecideDataType(Expression **left, Expression **right);
     void AnalyzeExpression(Expression *expression);
+
+    void ReplaceGenericTypes(
+        std::unordered_map<std::string, DataTypeToken *> &dataTypesMap);
+    void ReplaceGenericTypesInStatement(
+        Tokens &tokens, Generic *generic, std::vector<Token *> &processTokens,
+        std::unordered_map<std::string, DataTypeToken *> &dataTypesMap);
+
     Scope *currentScope = nullptr;
     StructStatement *currentStruct = nullptr;
     std::unordered_map<Library *, LibraryDataType *> libToDataTypeMap;
@@ -387,6 +397,7 @@ class SemanticAnalyzer
     std::unordered_map<Expression *, Expression *> methodToCallerMap;
     std::unordered_map<Function *, std::vector<TopVarDecl>> fnToVarDeclsMap;
     std::unordered_map<Function *, std::vector<TopAggTypeDecl>> fnToAggDeclsMap;
+    std::unordered_map<std::string, Symbol *> uidToSymbolMap;
     std::vector<Package *> packages;
     std::vector<Library *> libraries;
     Package *currentPackage = nullptr;

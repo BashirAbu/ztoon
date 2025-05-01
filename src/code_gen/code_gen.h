@@ -87,8 +87,8 @@ class CodeGen
   public:
     CodeGen(SemanticAnalyzer &semanticAnalyzer);
     ~CodeGen();
-    void GenIR(std::vector<Package *> &packages, bool genSymbol,
-               bool genSymbolBody);
+    void GenIR(std::vector<Package *> &packages, bool genTypeSymbol,
+               bool genFnAndVarSymbol, bool genTypeBody);
     void Compile(Project &project, bool printIR = false);
     static void Link(Project &project);
     void AddIRSymbol(IRSymbol *irSymbol);

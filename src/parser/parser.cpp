@@ -368,6 +368,7 @@ DataTypeToken *Parser::ParseDataType(bool check)
         ptrType->dataType = dataType->dataType;
         ptrType->pointerDesc = ptrDesc;
         ptrType->readOnly = dataType->readOnly;
+        ptrType->tokens = dataType->tokens;
         dataType->readOnly = nullptr;
         dataType = ptrType;
     }

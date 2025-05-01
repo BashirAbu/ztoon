@@ -905,7 +905,14 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 Scope::Scope(SemanticAnalyzer *semanticAnalyzer, std::string name,
              Scope *parent)
 {
-    this->name = name;
+    if (parent)
+    {
+        this->name = std::format("{}::{}", parent->name, name);
+    }
+    else
+    {
+        this->name = name;
+    }
     this->parent = parent;
     this->semanticAnalyzer = semanticAnalyzer;
     datatypesMap["i8"] = gZtoonArena.Allocate<DataType>();
@@ -1727,6 +1734,7 @@ void SemanticAnalyzer::AnalyzeBlockStatement(BlockStatement *blockStmt)
                     if (deferredStatementsMap.contains(currentLeaf))
                     {
                         doneDefer = true;
+
                         for (int64_t index =
                                  (int64_t)deferredStatementsMap[currentLeaf]
                                      .size() -
@@ -1735,9 +1743,12 @@ void SemanticAnalyzer::AnalyzeBlockStatement(BlockStatement *blockStmt)
                         {
                             auto stmt =
                                 deferredStatementsMap[currentLeaf][index];
+                            BlockStatement *newBlock =
+                                gZtoonArena.Allocate<BlockStatement>();
+                            newBlock->GetStatements().push_back(stmt);
                             blockStmt->statements.insert(
                                 blockStmt->statements.begin() + (int64_t)i,
-                                stmt);
+                                newBlock);
                         }
                     }
 

@@ -491,7 +491,8 @@ Statement *Parser::ParseStatement()
         dynamic_cast<StructStatement *>(statement) ||
         dynamic_cast<UnionStatement *>(statement) ||
         dynamic_cast<EnumStatement *>(statement) ||
-        dynamic_cast<SwitchStatement *>(statement))
+        dynamic_cast<SwitchStatement *>(statement) ||
+        dynamic_cast<DeferStatement *>(statement))
     {
         return statement;
     }
@@ -1497,7 +1498,7 @@ Statement *Parser::ParseDeferStatement()
     {
         DeferStatement *deferStmt = gZtoonArena.Allocate<DeferStatement>();
         deferStmt->token = Prev();
-        deferStmt->statement = ParseBlockStatement();
+        deferStmt->statement = ParseStatement();
         if (!deferStmt->statement)
         {
             CodeErrString ces;

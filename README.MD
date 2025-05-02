@@ -1,4 +1,41 @@
-## Introduction
+# Ztoon Project Status ⚠️
+
+**Ztoon is currently in a very early development stage.**
+
+* Core language features and compiler infrastructure are experimental and subject to significant change.
+* Stability, performance, and API design are actively under development.
+
+Use Ztoon with caution in production environments and stay tuned for updates as the project matures.
+
+# Ztoon Language Roadmap
+
+The following features are planned for addition to Ztoon as the language evolves:
+
+1. **Debug Symbols**
+   Emit DWARF or PDB debug information to enable source-level debugging in IDEs and debuggers.
+
+2. **Compile-Time Functions**
+   Support `const fn`-style functions that are evaluated at compile time for optimized performance and metaprogramming.
+
+3. **Procedural Macros**
+   Introduce Rust-like procedural macros for code generation and compile-time transformations.
+
+4. **Full UTF-8 Support**
+   Extend the type system and I/O facilities to handle full Unicode strings and characters seamlessly.
+
+5. **SOA (Struct-of-Arrays) Datatypes**
+   Provide built-in constructs for struct-of-arrays layouts to improve data locality and performance in numeric and game applications.
+
+6. **Conditional Compilation**
+   Implement `#if`, `#ifdef`, or `cfg`-style directives to compile code selectively based on platform, build flags, or custom features.
+
+7. **Core Library**
+    Develop a foundational core library that offers essential modules (e.g., data structures, math utilities, string manipulation) tightly integrated with the compiler, serving as the base for higher‑level libraries.
+
+8. **Language Server Protocol (LSP) Support**
+    Provide a language server implementation for editor integrations: code completion, diagnostics, and refactoring.
+
+# Introduction
 
 Ztoon is a modern alternative to C designed for simplicity and strong typing. It aims to:
 
@@ -16,29 +53,27 @@ Ztoon’s design emphasizes ease of learning for C programmers while introducing
 
 ## Creating a Workspace & “Hello, World!” Example
 
-1. **Create a workspace**
+### 1. **Create a workspace**
 
    ```sh
    ztoon -new hello_world_workspace
    ```
-
    This command generates the directory `hello_world_workspace/` with:
 
-   * `ztoon.yaml`
-   * `src/` and `tests/` folders
-
-2. **Add your project**
+### 2. **Add your project**
 
    In `hello_world_workspace/ztoon.yaml`, list your project:
 
    ```yaml
    projects:
      - hello
+        relative_path: hello/
+        type: exe
    ```
 
    > All source files for a project must reside under `<project_name>/src/`.
 
-3. **Write the program**
+### 3. **Write the program**
 
    Create the file `hello_world_workspace/hello/src/hello.ztoon` with:
 
@@ -54,7 +89,7 @@ Ztoon’s design emphasizes ease of learning for C programmers while introducing
 
    > **Note:** Prototypes (`fn printf(...)`) are primarily used for external functions such as C library calls or forward declarations.
 
-4. **Build & Run**
+### 4. **Build & Run**
 
    The compiler executable is `ztoon`.
 
@@ -132,9 +167,9 @@ After building the compiler and enabling tests, run the Google Test binary direc
 cd tests/workspaces/
 ../../build\tests\ztests
 ```
-## Workspaces & Compiler Arguments
+# Workspaces & Compiler Arguments
 
-### Workspace Configuration (`ztoon.yaml`)
+## Workspace Configuration (`ztoon.yaml`)
 
 At the root of your workspace, define `ztoon.yaml`:
 
@@ -158,7 +193,7 @@ workspace:
     * `static-lib` — a static C-compatible library (for other languages)
     * `shared-lib` — a shared/dynamic C-compatible library (for other languages)
 
-### Project Configuration (`<project>/ztoon.yaml`)
+## Project Configuration (`<project>/ztoon.yaml`)
 
 Each project’s `ztoon.yaml` resides in its directory. Example (`hello/ztoon.yaml`):
 
@@ -184,7 +219,7 @@ hello:
 
 > **C Runtime Libraries**: Controlled by `no_crt` and `crt_link_type`. If `no_crt` is `false` (default), Ztoon automatically links the C runtime libraries. The `crt_link_type` setting (`static` or `dynamic`) determines whether the CRT is linked statically or dynamically.
 
-### Available Compiler Flags
+## Available Compiler Flags
 
 * `-new <name>`: create a new workspace
 * `-build`: build all projects
@@ -195,7 +230,7 @@ hello:
 * `-v`, `-verbose`: enable verbose output
 * `-q`, `-quiet`: suppress informational messages
 
-### Workflow
+## Workflow
 
 1. Initialize: `ztoon -new <workspace>`
 2. Configure: edit `ztoon.yaml` files
@@ -204,14 +239,14 @@ hello:
 
 ---
 
-## Basic Syntax & Types
+# Basic Syntax & Types
 
-### Comments
+## Comments
 
 * Single-line: `// comment`
 * Multi-line: `/* comment */`
 
-### String Literals
+## String Literals
 
 Ztoon supports two forms of string literals:
 
@@ -237,7 +272,7 @@ Common escape sequences:
 * `\"` (double-quote)
 * `\'` (single-quote)
 
-### Numbers
+## Numbers
 
 Numeric literals in Ztoon follow strict syntax:
 
@@ -251,7 +286,7 @@ a_binary: i32 = 0b101010
 pi_value: f64 = 3.14
 ```
 
-### Variable Declarations
+## Variable Declarations
 
 ```ztoon
 x: i32 = 10
@@ -259,7 +294,7 @@ ratio: f64 = 2.718
 flag: bool = true
 ```
 
-### Assignment Statements
+## Assignment Statements
 
 Ztoon supports simple and compound assignments:
 
@@ -286,7 +321,7 @@ count <<= 2;
 count >>= 1;
 ```
 
-### Constant Declarations
+## Constant Declarations
 
 Use `readonly` for immutables:
 
@@ -300,7 +335,7 @@ pi: readonly f64 = 3.1415926535;
 
 Parentheses around conditions and loop headers are optional in Ztoon.
 
-#### If / Else
+### If / Else
 
 ```ztoon
 if x > 0 {
@@ -312,13 +347,13 @@ if x > 0 {
 }
 ```
 
-#### Ternary Expression
+### Ternary Expression
 
 ```ztoon
 result: i32 = x > 0 ? 1 : -1;
 ```
 
-#### Switch Statement
+### Switch Statement
 
 Only integer and enum types; cases can list multiple values with a block:
 
@@ -336,7 +371,7 @@ switch code {
 }
 ```
 
-#### For Loop
+### For Loop
 
 ```ztoon
 for i: i32 = 0; i < 10; i += 1 {
@@ -344,7 +379,7 @@ for i: i32 = 0; i < 10; i += 1 {
 }
 ```
 
-#### While Loop
+### While Loop
 
 ```ztoon
 while n > 0 {
@@ -402,7 +437,7 @@ fn invoke(f: (fn(i32, i32) -> i32), a: i32, b: i32) -> i32 {
 sum: i32 = invoke(add, 2, 3);
 ```
 
-### Casting
+## Casting
 
 Ztoon requires explicit casts between types using the `as` operator. Implicit conversions are limited to safe, widening integer promotions. The semantic analyzer enforces compatibility at compile time.
 
@@ -432,7 +467,7 @@ flag_neg: bool = neg as bool;    // true
 
 ---
 
-### Operators
+## Operators
 
 Ztoon supports most standard C operators with identical precedence and associativity. Examples:
 
@@ -494,11 +529,11 @@ x %= 2;
 ```
 
 
-# Global Variables
+## Global Variables
 
 Global variables in Ztoon are declared at the top level, outside of any function or type definition. They are zero-initialized by default if no initializer is provided.
 
-## Declaration & Initialization
+### Declaration & Initialization
 
 ```ztoon
 // A global 32-bit integer initialized to 100
@@ -511,7 +546,7 @@ flag: bool;
 buffer: u8[256];
 ```
 
-## Usage
+### Usage
 
 Global variables can be read and written from any function:
 
@@ -527,7 +562,128 @@ fn main() -> i32 {
 }
 ```
 
-### Struct Types
+# The `defer` Statement
+
+Ztoon supports a `defer` statement for scheduling an expression to execute when the nearest enclosing block exits. This is useful for cleanup or post‑block actions.
+
+## Syntax
+
+```ztoon
+defer <expression>;
+```
+
+* The deferred expression is executed after the surrounding `{ ... }` block finishes, regardless of how the block is exited.
+* Multiple `defer` statements in the same block execute in last‑in, first‑out (LIFO) order.
+
+## Example
+
+```ztoon
+package mainPkg;
+
+fn main() -> i32 {
+  
+    num: i32 = 0;
+
+    {
+        // num == 0
+
+        defer num++;
+
+        // num == 0
+    }
+
+    // After the inner block, num has been incremented once
+    // num == 1
+
+    ret 0;
+}
+```
+
+## Arrays
+
+Ztoon provides first-class support for fixed-size arrays, offering C-like semantics with strong static typing.
+
+### Declaration & Initialization
+
+```ztoon
+arr: i32[10];
+c_arr: i32* = arr as i32*;
+```
+
+### Typed vs Raw Pointers
+
+```ztoon
+// Pointer to fixed-size array (includes size in type)
+arr: i32[10];
+arr_ptr: i32[10]* = &arr;
+
+// Raw pointer to element type (size not tracked)
+arr_ptr_raw: i32* = arr as i32*;
+```
+
+* `i32[10]*` retains the array length in its type, enabling compile-time size checks in operations involving `arr_ptr`.
+* `i32*` is a raw pointer to `i32`, analogous to C’s `int*`; it does **not** track array length, so bounds must be managed manually.
+
+---
+
+### Indexing
+
+Access and assign elements using bracket syntax:
+
+```ztoon
+first: i32 = nums[0];
+nums[2] = 42;
+```
+
+> The subscript operator `[...]` works on both arrays and pointers (i.e. `ptr[i]` is equivalent to `*(ptr + i)`).
+
+### Array Operations
+
+* **Length**: Compile-time constant via `array.len`.
+* **Iteration**:
+
+  ```ztoon
+  for i: i32 = 0; i < nums.len; i += 1 {
+      printf("%d\n", nums[i]);
+  }
+  ```
+* **Copying**: Assigning arrays copies all elements:
+
+  ```ztoon
+  other: i32[5] = nums;
+  ```
+* **Slices**: Use pointer + length:
+
+  ```ztoon
+  slice_ptr: i32* = &nums[1];
+  slice_len: i32 = 3;
+  for i: i32 = 0; i < slice_len; i += 1 {
+      printf("%d\n", slice_ptr[i]);
+  }
+  ```
+
+### Multidimensional Arrays
+
+```ztoon
+matrix: f32[2][3] = {
+    {1.0, 2.0, 3.0},
+    {4.0, 5.0, 6.0},
+};
+
+// Access row 1, col 2
+elem: f32 = matrix[1][2];
+```
+
+### C Array Compatibility
+
+To interoperate with C, cast an array to a pointer to its first element:
+
+```ztoon
+arr: i32[10];
+c_arr: i32* = arr as i32*;
+```
+
+## Struct Types
 
 Structs in Ztoon are user-defined aggregate types with fields and methods. Struct definitions end with a semicolon.
 
@@ -560,7 +716,7 @@ When declaring methods, `self` can be specified in three ways:
 
 * `self`: method receives a copy of the struct values.
 * `self*`: method receives a pointer to the struct, allowing in-place modification.
-* `readonly self`: method receives a copy of the struct, and its fields cannot be modified.
+* `readonly self` or `readonly self*`: method receives a copy or reference of the struct, and its fields cannot be modified.
 
 ### Initialization
 
@@ -600,52 +756,6 @@ p2: Point = p.translate(5.0, -2.0);
 
 // Call static-like method
 p3: Point = Point::create(1.0, 2.0);
-```
-
-## Struct Types
-
-Ztoon’s `struct` aggregates related fields into a single type. Struct definitions end with a semicolon, and methods are declared within the definition:
-
-```ztoon
-struct Point {
-    x: f64;
-    y: f64;
-
-    fn magnitude(self) -> f64 {
-        ret sqrt(self.x * self.x + self.y * self.y);
-    }
-
-    fn translate(self, dx: f64, dy: f64) -> Point {
-        point: Point = {self.x + dx, self.y + dy};
-        ret point;
-    }
-
-    fn create(x: f64, y: f64) -> Point {
-        point: Point = {x, y};
-        ret point;
-    }
-};
-```
-
-### Usage Examples
-
-```ztoon
-// 1. Initialize a struct with field values
-p: Point = {1.0, 3.0};
-
-// 2. Reset all fields to zero
-p = {};
-
-// 3. Copy one instance to another
-p2: Point = {44.0, 33.0};
-p = p2;
-
-// 4. Obtain a pointer to a struct
-ptr: Point* = &p;
-
-// 5. Access fields with the '.' operator (works for both variables and pointers)
-x_val: f64 = p.x;
-y_val: f64 = ptr.y;
 ```
 
 ## Union Types
@@ -818,13 +928,13 @@ fn main() -> i32 {
 * Only anonymous `union` types may be declared inside `struct` definitions.
 * Only anonymous `struct` types may be declared inside `union` definitions.
 
-### Generics
+## Generics
 
 Ztoon’s generics system enables compile-time type-safe code reuse through explicit type parameters. Generics are monomorphized, producing specialized versions for each instantiation. Monomorphization is the process where the compiler generates concrete, type-specific implementations for generic code by replacing type parameters with actual types, eliminating generic overhead at runtime.
 
 ---
 
-## Declaration Syntax
+### Declaration Syntax
 
 * **Functions:** Prefix the function name with `fn<[T, ...]>` where `T` is a type parameter:
 
@@ -852,7 +962,7 @@ Ztoon’s generics system enables compile-time type-safe code reuse through expl
 
 ---
 
-## Instantiation & Calls
+### Instantiation & Calls
 
 When invoking, specify concrete types inside `<[ ... ]>`:
 
@@ -873,7 +983,7 @@ v.y = 2;
 
 ---
 
-## Key Characteristics
+### Key Characteristics
 
 * **Explicit Parameters:** Requires `<[...]>` for clarity.
 * **Compile-Time Checks:** Type mismatches are caught during monomorphization.
@@ -882,95 +992,11 @@ v.y = 2;
 
 ---
 
-## Arrays in Ztoon
-
-Ztoon provides first-class support for fixed-size arrays, offering C-like semantics with strong static typing.
-
-## Declaration & Initialization
-
-```ztoon
-arr: i32[10];
-c_arr: i32* = arr as i32*;
-```
-
-## Typed vs Raw Pointers
-
-```ztoon
-// Pointer to fixed-size array (includes size in type)
-arr: i32[10];
-arr_ptr: i32[10]* = &arr;
-
-// Raw pointer to element type (size not tracked)
-arr_ptr_raw: i32* = arr as i32*;
-```
-
-* `i32[10]*` retains the array length in its type, enabling compile-time size checks in operations involving `arr_ptr`.
-* `i32*` is a raw pointer to `i32`, analogous to C’s `int*`; it does **not** track array length, so bounds must be managed manually.
-
----
-
-## Indexing
-
-Access and assign elements using bracket syntax:
-
-```ztoon
-first: i32 = nums[0];
-nums[2] = 42;
-```
-
-> The subscript operator `[...]` works on both arrays and pointers (i.e. `ptr[i]` is equivalent to `*(ptr + i)`).
-
-## Array Operations
-
-* **Length**: Compile-time constant via `array.len`.
-* **Iteration**:
-
-  ```ztoon
-  for i: i32 = 0; i < nums.len; i += 1 {
-      printf("%d\n", nums[i]);
-  }
-  ```
-* **Copying**: Assigning arrays copies all elements:
-
-  ```ztoon
-  other: i32[5] = nums;
-  ```
-* **Slices**: Use pointer + length:
-
-  ```ztoon
-  slice_ptr: i32* = &nums[1];
-  slice_len: i32 = 3;
-  for i: i32 = 0; i < slice_len; i += 1 {
-      printf("%d\n", slice_ptr[i]);
-  }
-  ```
-
-## Multidimensional Arrays
-
-```ztoon
-matrix: f32[2][3] = {
-    {1.0, 2.0, 3.0},
-    {4.0, 5.0, 6.0},
-};
-
-// Access row 1, col 2
-elem: f32 = matrix[1][2];
-```
-
-## C Array Compatibility
-
-To interoperate with C, cast an array to a pointer to its first element:
-
-```ztoon
-arr: i32[10];
-c_arr: i32* = arr as i32*;
-```
-
 # Packages & Libraries
 
 Ztoon’s packaging system organizes code into reusable modules (packages) and links both Ztoon and native libraries seamlessly. Below is a generic example.
 
-## 1. Source File Packaging
+## Source File Packaging
 
 Every Ztoon source file must start with a 'package <name>' declaration at the top. Files sharing the same package name are compiled together as a single unit. This allows organizing code logically within packages:
 
@@ -990,7 +1016,7 @@ fn helper() {
 }
 ```
 
-## 2. Workspace Structure
+## Workspace Structure
 
 ```
 my_workspace/
@@ -1010,7 +1036,7 @@ my_workspace/
         └── include/, lib/
 ```
 
-## 3. Consuming Packages
+## Consuming Packages
 
 In your application (`my_app`), import package modules:
 
@@ -1032,7 +1058,7 @@ fn main() -> i32 {
 
 The compiler builds all `zlib` packages before linking the `exe` project.
 
-## 4. Import Syntax
+## Import Syntax
 
 Ztoon supports several forms of import statements:
 
@@ -1051,7 +1077,7 @@ lib::pkg::member;  // e.g., core::log
 
 > Only members declared as `pub` in their package are accessible outside that package; all others are private by default.
 
-### Declaring Public Members
+## Declaring Public Members
 
 Use the `pub` keyword to expose structs and functions:
 
@@ -1071,7 +1097,7 @@ pub fn add(x: i32, y: i32) -> i32 {
 
 Non-`pub` items remain private to their package and cannot be imported or accessed externally.
 
-## 5. Linking Native Libraries Linking Native Libraries
+## Linking Native Libraries Linking Native Libraries
 
 For C libraries under `libs/`, reference them in your app’s `ztoon.yaml`:
 
@@ -1088,3 +1114,10 @@ my_app:
 The compiler appends the correct platform extension (e.g., `.so`, `.dll`, `.dylib`).
 
 ---
+# Dependencies
+
+The Ztoon project uses the following third-party libraries:
+
+* **yaml-cpp**: Parses `ztoon.yaml` files for workspace and project configurations.
+* **LLVM**: Provides the backend infrastructure (code generation, optimizations, and linking via LLD).
+* **Google Test (GTest)**: Framework for unit and integration tests in the `tests/` directory.

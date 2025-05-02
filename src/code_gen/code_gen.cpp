@@ -2428,7 +2428,8 @@ llvm::CmpInst::Predicate
 CodeGen::CMPZtoonTypeToCMPLLVM(TokenType type, IRValue value, bool isNaN)
 {
     bool isSigned = value.type.isSigned;
-    bool isInteger = value.type.type->isIntegerTy();
+    bool isInteger = value.value->getType()->isIntegerTy() ||
+                     value.value->getType()->isPointerTy();
     switch (type)
     {
     case TokenType::EQUAL_EQUAL:
@@ -3179,13 +3180,7 @@ IRValue CodeGen::GenUnaryExpressionIR(UnaryExpression *unaryExpr, bool isWrite)
     case TokenType::BITWISE_AND:
     {
         irValue = GenExpressionIR(unaryExpr->GetRightExpression(), true);
-        auto constValue = llvm::isa<llvm::Constant>(irValue.value);
-        if (constValue)
-        {
-            ReportError(
-                std::format("Cannot dereference a compile time expression"),
-                unaryExpr->GetRightExpression()->GetCodeErrString());
-        }
+
         break;
     }
     default:
@@ -3423,6 +3418,15 @@ IRValue CodeGen::GenPrimaryExpressionIR(PrimaryExpression *primaryExpr,
     {
         auto integerType = semanticAnalyzer.exprToDataTypeMap[primaryExpr];
         uint64_t value = 0;
+        if (dynamic_cast<TokenLiteral<int32_t> const *>(
+                primaryExpr->GetPrimary()))
+        {
+            auto const *literal = dynamic_cast<TokenLiteral<int32_t> const *>(
+                primaryExpr->GetPrimary());
+            value = literal->GetValue();
+            irValue.value = llvm::ConstantInt::get(irValue.type.type, value);
+            break;
+        }
         switch (integerType->GetType())
         {
         case DataType::Type::I32:

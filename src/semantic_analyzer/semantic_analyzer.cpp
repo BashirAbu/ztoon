@@ -95,7 +95,8 @@ std::string DataType::ToString()
     case DataType::Type::STRUCT:
     {
         auto structType = dynamic_cast<StructDataType *>(this);
-        str += structType->name;
+        // str += structType->GetName();
+        str += structType->GetUID();
         break;
     }
     case DataType::Type::ENUM:
@@ -583,30 +584,32 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                     dataTypeToken->GetCodeErrString());
             }
 
-            std::function<std::string(DataTypeToken *)> genName = nullptr;
-            genName = [](DataTypeToken *dataTypeToken) -> std::string
-            {
-                std::string name = dataTypeToken->dataType->GetLexeme();
-                for (auto dtToken : dataTypeToken->generic->types)
-                {
-
-                    name += std::format("_{}",
-
-                                        dtToken->ToString());
-                }
-                return name;
-            };
-            for (auto t : dataTypeToken->generic->types)
-            {
-                currentScope->GetDataType(t);
-            }
-
             currentScope = dataTypeToken->pkgToken
                                ? currentScope
                                : semanticAnalyzer->currentScope;
-            genericTypeName = genName(dataTypeToken);
-            if (auto foundSymbol = currentScope->GetSymbol(
-                    genericTypeName, dataTypeToken->GetCodeErrString(), true))
+            std::vector<DataType *> gTypes;
+            for (auto t : dataTypeToken->generic->types)
+            {
+                gTypes.push_back(currentScope->GetDataType(t));
+            }
+
+            std::function<std::string(std::string, std::vector<DataType *> &)>
+                genName = nullptr;
+            genName = [](std::string typeName,
+                         std::vector<DataType *> &gTypes) -> std::string
+            {
+                std::string name = typeName;
+                for (auto type : gTypes)
+                {
+                    name += std::format("_{}", type->ToString());
+                }
+                return name;
+            };
+
+            genericTypeName = genName(genericTypeName, gTypes);
+            auto foundSymbol = currentScope->GetSymbol(
+                genericTypeName, dataTypeToken->GetCodeErrString(), true);
+            if (foundSymbol)
             {
                 if (structType)
                 {
@@ -690,6 +693,7 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
                         ReportError("Failed to generate generic type",
                                     dataTypeToken->GetCodeErrString());
                     }
+
                     newStatement = newStructStatement;
                 }
                 else if (unionType)
@@ -941,6 +945,7 @@ Scope::Scope(SemanticAnalyzer *semanticAnalyzer, std::string name,
 
     datatypesMap["f32"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["f32"]->type = DataType::Type::F32;
+
     datatypesMap["f64"] = gZtoonArena.Allocate<DataType>();
     datatypesMap["f64"]->type = DataType::Type::F64;
 
@@ -1026,6 +1031,7 @@ bool DataType::IsNumerical()
     case Type::F32:
     case Type::F64:
     case Type::ENUM:
+    case Type::POINTER:
         return true;
     default:
         return false;
@@ -2144,11 +2150,41 @@ void SemanticAnalyzer::AnalyzeVarDeclStatement(VarDeclStatement *varDeclStmt,
                 dt = exprToDataTypeMap[varExpr];
                 Expression *variableRawExpression = varExpr;
 
+                // {
+                //     auto l = exprToDataTypeMap[variableRawExpression];
+                //     auto r = exprToDataTypeMap[varDeclStmt->expression];
+
+                //     auto ls = dynamic_cast<Symbol *>(
+                //         dynamic_cast<StructDataType *>(l));
+                //     auto rs = dynamic_cast<Symbol *>(
+                //         dynamic_cast<StructDataType *>(r));
+
+                //     PrintMSG("//////////////////////TO_STRING()////////////////"
+                //              "/////////////");
+                //     PrintMSG(std::format("Left: {}", l->ToString()));
+                //     PrintMSG(std::format("Right: {}", r->ToString()));
+                //     PrintMSG("/////////////////////SYMBOL/////////////////"
+                //              "/////////////");
+                //     if (ls && rs)
+                //     {
+                //         PrintMSG(std::format("Left: {}", ls->GetName()));
+                //         PrintMSG(std::format("Right: {}", rs->GetName()));
+                //     }
+                //     PrintMSG(
+                //         "////////////////////////UID///////////////////////");
+                //     if (ls && rs)
+                //     {
+                //         PrintMSG(std::format("Left: {}", ls->GetUID()));
+                //         PrintMSG(std::format("Right: {}", rs->GetUID()));
+                //     }
+                // }
+
                 // check if types are compatible.
                 DataType::Type dataType = DecideDataType(
                     &(variableRawExpression), &varDeclStmt->expression);
                 if (dataType == DataType::Type::UNKNOWN)
                 {
+
                     ReportError(
                         std::format(
                             "Cannot assign value of type '{}' to "
@@ -2190,9 +2226,9 @@ void SemanticAnalyzer::AnalyzeVarAssignmentStatement(
     {
         stmtToDataTypeMap[varAssignmentStmt] =
             exprToDataTypeMap[varAssignmentStmt->GetLValue()];
-        if (stmtToDataTypeMap[varAssignmentStmt]->IsReadOnly())
+        auto lType = stmtToDataTypeMap[varAssignmentStmt];
+        if (lType->IsReadOnly())
         {
-
             ReportError("Cannot assign value to readonly variable",
                         varAssignmentStmt->GetCodeErrString());
         }
@@ -2310,6 +2346,11 @@ void SemanticAnalyzer::AnalyzeElseStatement(ElseStatement *elseStmt)
 }
 void SemanticAnalyzer::AnalyzeSwitchStatement(SwitchStatement *switchStmt)
 {
+    if (switchStmt->GetCases().empty() && !switchStmt->defualtCase)
+    {
+        ReportError("Cannot have empty switch statement",
+                    switchStmt->GetCodeErrString());
+    }
     if (switchStmt->GetCases().empty() && switchStmt->defualtCase)
     {
         ReportError("Cannot have only default case",
@@ -2495,6 +2536,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
             aggType.structStmt = structStmt;
             fnToAggDeclsMap[currentFunction].push_back(aggType);
         }
+
         StructDataType *structType = gZtoonArena.Allocate<StructDataType>();
         structType->structStmt = structStmt;
         structType->type = DataType::Type::STRUCT;
@@ -2522,6 +2564,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
             structType->generic->currentPackage = currentPackage;
             structType->generic->currentScope = currentScope;
         }
+
         currentScope->datatypesMap[structType->name] = structType;
         structType->isPublic = structStmt->IsPublic();
         currentScope->AddSymbol(structType, structStmt->GetCodeErrString());
@@ -2604,9 +2647,9 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
                         for (auto f : structStmt->GetFields())
                         {
                             auto fStructType = dynamic_cast<StructDataType *>(
-                                currentScope->GetDataType(f->GetDataType()));
+                                stmtToDataTypeMap[f]);
                             auto fUnionType = dynamic_cast<UnionDataType *>(
-                                currentScope->GetDataType(f->GetDataType()));
+                                stmtToDataTypeMap[f]);
                             if (fStructType)
                             {
                                 nestedField.push_back(f);
@@ -2647,9 +2690,9 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
                             if (!f)
                                 continue;
                             auto fStructType = dynamic_cast<StructDataType *>(
-                                currentScope->GetDataType(f->GetDataType()));
+                                stmtToDataTypeMap[f]);
                             auto fUnionType = dynamic_cast<UnionDataType *>(
-                                currentScope->GetDataType(f->GetDataType()));
+                                stmtToDataTypeMap[f]);
                             if (fStructType)
                             {
                                 nestedField.push_back(f);
@@ -2752,6 +2795,7 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         exprToDataTypeMap[structType->defaultValuesList] = listType;
         for (auto method : structStmt->methods)
         {
+
             AnalyzeFnStatement(method, false, true, false, true);
         }
 
@@ -3990,11 +4034,6 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
             FnStatement *newStatement = dynamic_cast<FnStatement *>(
                 parser.ParseFnStatement(structType));
 
-            if (newStatement->method)
-            {
-                Parser::AddSelfParam(newStatement,
-                                     structType->structStmt->identifier);
-            }
             if (!newStatement)
             {
                 ReportError("Failed to generate generic type",
@@ -4728,10 +4767,15 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
             exprToDataTypeMap[*right] = leftDataType;
             rightDataType = leftDataType;
         }
+        else if (dynamic_cast<PointerDataType *>(leftDataType)->isNullPtr)
+        {
+            exprToDataTypeMap[*left] = rightDataType;
+            leftDataType = rightDataType;
+        }
     }
-
     std::string leftDataTypeStr = leftDataType->ToString();
     std::string rightDataTypeStr = rightDataType->ToString();
+
     removeReadonlyPrefix(leftDataTypeStr);
     removeReadonlyPrefix(rightDataTypeStr);
 
@@ -4741,6 +4785,7 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                 (rightDataType->IsInteger()) ||
             rightDataType->IsFloat())
         {
+
             TokenType leftVarDataType = leftDataType->ToTokenType();
             TokenType rightLiteralDataType = rightDataType->ToTokenType();
             if (IsInteger(leftVarDataType) && IsInteger(rightLiteralDataType))
@@ -4758,8 +4803,8 @@ DataType::Type SemanticAnalyzer::DecideDataType(Expression **left,
                         ? gZtoonArena.Allocate<Token>(TokenType::READONLY)
                         : nullptr;
                 exprToDataTypeMap[castExpr] = leftDataType;
-                exprToDataTypeMap[castExpr]->isReadOnly =
-                    rightDataType->IsReadOnly();
+                // exprToDataTypeMap[castExpr]->isReadOnly =
+                //     rightDataType->IsReadOnly();
                 *right = castExpr;
                 return leftDataType->type;
             }

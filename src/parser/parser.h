@@ -719,6 +719,7 @@ class FnStatement : public Statement
     Tokens tokens;
     friend class Parser;
     friend class SemanticAnalyzer;
+    friend class Scope;
 };
 
 class FnExpression : public Expression
@@ -1144,7 +1145,7 @@ class Parser
 
     DataTypeToken *ParseDataType(bool check = false);
 
-    static void AddSelfParam(FnStatement *method, const Token *dataType);
+    void AddSelfParam(FnStatement *method, const Token *dataType);
     Generic *ParseGeneric();
     bool Consume(TokenType type);
     Token const *Peek();

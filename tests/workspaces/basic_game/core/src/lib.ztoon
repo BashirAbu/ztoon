@@ -13,8 +13,14 @@ pub fn<[T]> mem_free(ptr: T*)
     free(ptr as i8*);
 }
 
+pub fn<[T]> mem_copy(dest: T*, src: T*) -> T*
+{
+    ret memcpy(dest as i8*, src as i8*, sizeof(T)) as T*;
+}
+
 fn malloc(size: u64) -> i8*;
 fn free(ptr: i8*);
+fn memcpy(dest: i8*, src: i8*, count: u64) -> i8*;
 
 
 

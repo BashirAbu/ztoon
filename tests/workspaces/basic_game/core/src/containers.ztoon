@@ -1,0 +1,77 @@
+package containers
+import core;
+
+
+pub struct list<[T]>
+{
+    item: T*;
+    next: list<[T]>*;
+    size: u64;
+
+    fn add(self*, item: T)
+    {
+        if self.item == nullptr
+        {
+            self.item = mem_alloc<[T]>();
+            mem_copy<[T]>(self.item, &item);
+        }
+        else 
+        {
+            n: list<[T]>* = self;
+            while n.next != nullptr
+            {
+                n = n.next;
+            }
+    
+            n.next = mem_alloc<[list<[T]>]>();
+            n.next.item = mem_alloc<[T]>();
+            mem_copy<[T]>(n.next.item, &item);
+           
+        }
+        self.size++;
+        
+    }
+
+    fn get(self*, index: u64) -> T 
+    {
+        if index > self.size {
+            printf("index out of bound");
+        }
+        i: u64 = 0;
+        n: list<[T]>* = self;
+        while i < index 
+        {
+            n = n.next;
+            i++;
+        }
+        ret *n.item;
+    }
+    //remove
+    fn remove(self*) 
+    {
+        if self.size != 0
+        {
+            i: u64 = 1;
+            n: list<[T]>* = self;
+            while i < (self.size)
+            {
+                n = n.next;
+                i++;
+            }
+            mem_free<[T]>(n.item);
+            mem_free<[list<[T]>]>(n.next);
+            self.size--;
+        }
+
+    }
+
+    fn clean(self*)
+    {
+        size: u64 = self.size;
+        for i: u64 = 0; i < size; i++ {
+            self.remove();
+        }
+        
+    }
+    //remove_at
+}

@@ -41,6 +41,11 @@ class DataType
     bool IsFloat();
     bool IsSigned();
     bool IsReadOnly() { return isReadOnly; }
+    bool IsAggregate()
+    {
+        return type == DataType::Type::ENUM || type == DataType::Type::UNION ||
+               type == DataType::Type::STRUCT;
+    }
     TokenType ToTokenType();
 
     Type type;

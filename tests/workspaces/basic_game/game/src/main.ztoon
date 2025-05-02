@@ -1,54 +1,221 @@
 package mainPkg;
 import core::core;
-
+import core::containers;
 import sdl3;
+struct vec2<[T]>
+{
+    union 
+    {
+        elements: T[2];
+        struct {
+            x: T;
+            y: T;
+        }
+    }
+
+    fn create(x: T, y: T) -> vec2<[T]>
+    {
+        v: vec2<[T]>;
+        v.x = x;
+        v.y = y;
+        ret v;
+    }
+}
+
+
+struct block
+{
+    pos: vec2<[i32]>;
+    w: i32 = 25;
+    h: i32 = 25;
+}
+enum direction : u32 
+{
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT
+}
+struct snake {
+    dir: direction = direction::RIGHT;
+    pos: vec2<[i32]>;
+    step: i32 = 25;
+    w: i32 = 25;
+    h: i32 = 25;
+
+    body_blocks: list<[block]>;
+
+    length: i32 = 1;
+
+    fn draw(self*)
+    {
+        renderer.set_draw_color(255, 255, 255, 255);
+        rect: SDL3::rect<[f32]> = {self.pos.x as f32, self.pos.y as f32,
+                                     self.w as f32, self.h as f32};
+        renderer.fill_rect(&rect);
+    }
+
+    fn move(self*)
+    {
+        switch self.dir
+        {
+            case direction::RIGHT:
+            {
+                self.pos.x += self.step;
+            }
+            case direction::LEFT:
+            {
+                self.pos.x -= self.step;;
+            }
+            case direction::UP:
+            {
+                self.pos.y -= self.step;;
+            }
+            case direction::DOWN:
+            {
+                self.pos.y += self.step;;
+            }
+        }
+
+
+        if self.pos.x > window_width - self.w 
+        {
+            self.pos.x = 0;
+        }
+        else if self.pos.x < 0
+        {
+            self.pos.x = window_width;
+        }
+
+
+        if self.pos.y > window_height - self.h
+        {
+            self.pos.y = 0;
+        }
+        else if self.pos.y < 0
+        {
+            self.pos.y = window_width;
+        }
+
+
+        if self.pos.x == player_food.pos.x && self.pos.y == player_food.pos.y {
+            self.length++;
+            printf("Points: %d\n", self.length);
+            player_food.spawn();
+        }
+    }
+}
+
+struct food 
+{
+    pos: vec2<[i32]>;
+    w: i32 = 25;
+    h: i32 = 25;
+    render: bool = true;
+    fn spawn(self*) 
+    {
+        self.pos.x = SDL3::rand(window_width / 25) * 25;
+        self.pos.y = SDL3::rand(window_height / 25) * 25;
+    }
+
+    fn draw(self*) 
+    {
+        if self.render {
+            renderer.set_draw_color(255, 0, 0, 255);
+            rect: SDL3::rect<[f32]> = {self.pos.x as f32, self.pos.y as f32,
+                                         self.w as f32, self.h as f32};
+            renderer.fill_rect(&rect);
+        }
+    }
+}
+
+
+window_width : readonly i32 = 1000;
+window_height : readonly i32 = 1000;
+
+window: SDL3::window*;
+renderer: SDL3::renderer*;
+player: snake;
+player_food: food;
 
 
 
 fn main() -> i32
 {
-    
-    defer var: i32 = 1;
-
-    if true {
-        for i: i32 = 0; i < 10; i++
-        {
-            printf("begin\n");
-            defer {
-                printf("cont1\n");
-                printf("cont2\n");
-            };
-            if i < 5 {continue;}
-            
-        }
-
-    }
-
-    defer printf("hi defer2\n");
-
-    result: bool = SDL3::init(init_flags::SDL_INIT_VIDEO);
+    result: bool = SDL3::init(init_flags::SDL_INIT_EVERYTHING);
 
     if !result {
         printf("Failed to initialize SDL: %s", SDL3::get_error());
         ret 1;
     }
 
-    window: u8* = SDL3::create_window("Ztoon", 1280, 720,
-     window_flags::SDL_WINDOW_OPENGL | window_flags::SDL_WINDOW_RESIZABLE);
-
-    if !(window as bool) {
-        printf("Failed to create window. Err: %s", SDL3::get_error());
-        ret 1;
+    if !SDL3::create_window_and_renderer("Ztoon", window_width, window_height, 0 as SDL3::window_flags, &window, &renderer)
+    {
+        printf("Failed to create window and renderer. Err: %s", SDL3::get_error());
+         ret 1;
     }
+    
+
     done: bool = false;
+    player_food.spawn();
     while !done {
         event: SDL3::event;
         while SDL3::poll_event(&event) {
-            if (event.type == SDL3::event_type::SDL_EVENT_QUIT)
+            switch event.type
             {
-                done = true;  
+                case SDL3::event_type::SDL_EVENT_QUIT:
+                {
+                    done = true;
+                }
+                case SDL3::event_type::SDL_EVENT_KEY_DOWN:
+                {
+                    switch event.key.code
+                    {
+                        case key_code::RIGHT:
+                        {
+                            if player.dir != direction::LEFT 
+                            {
+                                player.dir = direction::RIGHT;
+                            }
+                        }
+                        case key_code::LEFT:
+                        {
+                            if player.dir != direction::RIGHT 
+                            {
+                                player.dir = direction::LEFT;
+                            }
+                            
+                        }
+                        case key_code::UP:
+                        {
+                            if player.dir != direction::DOWN 
+                            {
+                                player.dir = direction::UP;
+                            }
+                        }
+                        case key_code::DOWN:
+                        {
+                            if player.dir != direction::UP 
+                            {
+                                player.dir = direction::DOWN;
+                            }
+                        }
+                    }
+                }
             }
         }
+
+        renderer.set_draw_color(30, 30, 30, 255);
+        renderer.clear();
+
+        player.move();
+        player.draw();
+        player_food.draw();
+
+
+        renderer.present();
+        SDL3::delay(50);
     }
+    printf("done");
     ret 0;
 }

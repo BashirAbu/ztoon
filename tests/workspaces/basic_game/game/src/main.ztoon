@@ -53,7 +53,7 @@ struct snake {
         self.pos = {};
         self.old_pos = {};
         self.dir = direction::RIGHT;
-        self.length = 0;
+        self.length = 1;
     }
     fn draw(self*)
     {
@@ -75,7 +75,7 @@ struct snake {
         self.old_pos = self.pos;
         for i: u64 = 0; i < self.body_blocks.size; i++ {
             b: block* = (self.body_blocks.get(i));
-            b.old_pos = b.pos;
+            b.old_pos = self.body_blocks.get(i).pos;
         }
         switch self.dir
         {
@@ -197,6 +197,8 @@ player_food: food;
 
 game_over: bool = false;
 
+
+
 fn main() -> i32
 {
     result: bool = SDL3::init(init_flags::SDL_INIT_EVERYTHING);
@@ -206,7 +208,8 @@ fn main() -> i32
         ret 1;
     }
 
-    if !SDL3::create_window_and_renderer("Ztoon", window_width, window_height, 0 as SDL3::window_flags, &window, &renderer)
+    if !SDL3::create_window_and_renderer("Ztoon", window_width, window_height, 
+                                            0 as SDL3::window_flags, &window, &renderer)
     {
         printf("Failed to create window and renderer. Err: %s", SDL3::get_error());
          ret 1;
@@ -270,8 +273,6 @@ fn main() -> i32
                 }
             }
         }
-
-        
 
         if !game_over {
             renderer.set_draw_color(30, 30, 30, 255);

@@ -3972,20 +3972,36 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
                         fnCallExpr->GetCodeErrString());
         }
         std::string newName = fn->GetName();
-        for (auto dtToken : fnCallExpr->generic->types)
+        // for (auto dtToken : fnCallExpr->generic->types)
+        // {
+        //     newName += std::format("_{}", dtToken->ToString());
+        // }
+
+        std::vector<DataType *> gTypes;
+        for (auto t : fnCallExpr->generic->types)
         {
-            newName += std::format("_{}", dtToken->ToString());
+            gTypes.push_back(currentScope->GetDataType(t));
         }
+
+        std::function<std::string(std::string, std::vector<DataType *> &)>
+            genName = nullptr;
+        genName = [](std::string typeName,
+                     std::vector<DataType *> &gTypes) -> std::string
+        {
+            std::string name = typeName;
+            for (auto type : gTypes)
+            {
+                name += std::format("_{}", type->ToString());
+            }
+            return name;
+        };
+
+        newName = genName(newName, gTypes);
 
         Token *newID = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
         *newID = *pe->primary;
         newID->lexeme = newName;
         pe->primary = newID;
-
-        for (auto t : fnCallExpr->generic->types)
-        {
-            currentScope->GetDataType(t);
-        }
 
         if (Symbol *fnFound = currentScope->GetSymbol(
                 newName, fnCallExpr->GetCodeErrString(), true))
@@ -4119,40 +4135,46 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
     }
     exprToDataTypeMap[fnCallExpr] = fnDataType->GetReturnDataType();
 
+    bool isMethod = (fnDataType->fn->fnStmt && fnDataType->fn->fnStmt->method);
+    if (isMethod /* &&
+        methodToCallerMap.contains(fnCallExpr->GetGetExpression()) */)
+    {
+        if (fnCallExpr->GetArgs().size() != fnDataType->GetParameters().size())
+        {
+
+            if (fnDataType->GetParameters()[0]->GetType() ==
+                DataType::Type::POINTER)
+            {
+                UnaryExpression *unaryExpr =
+                    gZtoonArena.Allocate<UnaryExpression>();
+                auto op = gZtoonArena.Allocate<Token>(TokenType::BITWISE_AND);
+                op->lexeme = "&";
+                unaryExpr->op = op;
+                unaryExpr->right =
+                    methodToCallerMap[fnCallExpr->GetGetExpression()];
+                PointerDataType *ptrDataType =
+                    gZtoonArena.Allocate<PointerDataType>();
+                ptrDataType->type = DataType::Type::POINTER;
+                ptrDataType->dataType = exprToDataTypeMap[unaryExpr->right];
+                exprToDataTypeMap[unaryExpr] = ptrDataType;
+                fnCallExpr->GetArgs().insert(fnCallExpr->GetArgs().begin(),
+                                             unaryExpr);
+            }
+            else
+            {
+                fnCallExpr->GetArgs().insert(
+                    fnCallExpr->GetArgs().begin(),
+                    methodToCallerMap[fnCallExpr->GetGetExpression()]);
+            }
+        }
+    }
     for (Expression *arg : fnCallExpr->args)
     {
         AnalyzeExpression(arg);
     }
 
-    if (fnDataType->IsMethod() &&
-        methodToCallerMap.contains(fnCallExpr->GetGetExpression()))
-    {
-        if (fnDataType->GetParameters()[0]->GetType() ==
-            DataType::Type::POINTER)
-        {
-            UnaryExpression *unaryExpr =
-                gZtoonArena.Allocate<UnaryExpression>();
-            auto op = gZtoonArena.Allocate<Token>(TokenType::BITWISE_AND);
-            op->lexeme = "&";
-            unaryExpr->op = op;
-            unaryExpr->right =
-                methodToCallerMap[fnCallExpr->GetGetExpression()];
-            PointerDataType *ptrDataType =
-                gZtoonArena.Allocate<PointerDataType>();
-            ptrDataType->type = DataType::Type::POINTER;
-            ptrDataType->dataType = exprToDataTypeMap[unaryExpr->right];
-            exprToDataTypeMap[unaryExpr] = ptrDataType;
-            fnCallExpr->GetArgs().insert(fnCallExpr->GetArgs().begin(),
-                                         unaryExpr);
-        }
-        else
-        {
-            fnCallExpr->GetArgs().insert(
-                fnCallExpr->GetArgs().begin(),
-                methodToCallerMap[fnCallExpr->GetGetExpression()]);
-        }
-    }
-
+    size_t fnSize = fnCallExpr->GetArgs().size();
+    size_t fnTypeSize = fnDataType->GetParameters().size();
     if (fnCallExpr->GetArgs().size() != fnDataType->GetParameters().size())
     {
         if (!fnDataType->IsVarArgs())

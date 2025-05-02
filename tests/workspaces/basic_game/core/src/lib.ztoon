@@ -23,4 +23,3 @@ fn free(ptr: i8*);
 fn memcpy(dest: i8*, src: i8*, count: u64) -> i8*;
 
 
-

@@ -22,17 +22,16 @@ pub struct list<[T]>
             {
                 n = n.next;
             }
-    
             n.next = mem_alloc<[list<[T]>]>();
             n.next.item = mem_alloc<[T]>();
+            n.next.next = nullptr;
             mem_copy<[T]>(n.next.item, &item);
-           
         }
         self.size++;
         
     }
 
-    fn get(self*, index: u64) -> T 
+    fn get(self*, index: u64) -> T*
     {
         if index > self.size {
             printf("index out of bound");
@@ -44,9 +43,8 @@ pub struct list<[T]>
             n = n.next;
             i++;
         }
-        ret *n.item;
+        ret n.item;
     }
-    //remove
     fn remove(self*) 
     {
         if self.size != 0
@@ -59,7 +57,9 @@ pub struct list<[T]>
                 i++;
             }
             mem_free<[T]>(n.item);
+            n.item = nullptr;
             mem_free<[list<[T]>]>(n.next);
+            n.next = nullptr;
             self.size--;
         }
 
@@ -71,7 +71,8 @@ pub struct list<[T]>
         for i: u64 = 0; i < size; i++ {
             self.remove();
         }
-        
+        self.item = nullptr;
+        self.next = nullptr;
     }
     //remove_at
 }

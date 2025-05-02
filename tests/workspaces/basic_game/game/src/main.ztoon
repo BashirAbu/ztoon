@@ -22,10 +22,10 @@ struct vec2<[T]>
     }
 }
 
-
 struct block
 {
     pos: vec2<[i32]>;
+    old_pos: vec2<[i32]>;
     w: i32 = 25;
     h: i32 = 25;
 }
@@ -39,6 +39,7 @@ enum direction : u32
 struct snake {
     dir: direction = direction::RIGHT;
     pos: vec2<[i32]>;
+    old_pos: vec2<[i32]>;
     step: i32 = 25;
     w: i32 = 25;
     h: i32 = 25;
@@ -47,16 +48,35 @@ struct snake {
 
     length: i32 = 1;
 
+    fn clean(self*) {
+        self.body_blocks.clean();
+        self.pos = {};
+        self.old_pos = {};
+        self.dir = direction::RIGHT;
+        self.length = 0;
+    }
     fn draw(self*)
     {
         renderer.set_draw_color(255, 255, 255, 255);
         rect: SDL3::rect<[f32]> = {self.pos.x as f32, self.pos.y as f32,
                                      self.w as f32, self.h as f32};
         renderer.fill_rect(&rect);
+
+        for i: u64 = 0; i < self.body_blocks.size; i++ {
+            b: block* = (self.body_blocks.get(i));
+            rect: SDL3::rect<[f32]> = {b.pos.x as f32, b.pos.y as f32,
+                b.w as f32, b.h as f32};
+            renderer.fill_rect(&rect);
+        }
     }
 
     fn move(self*)
     {
+        self.old_pos = self.pos;
+        for i: u64 = 0; i < self.body_blocks.size; i++ {
+            b: block* = (self.body_blocks.get(i));
+            b.old_pos = b.pos;
+        }
         switch self.dir
         {
             case direction::RIGHT:
@@ -65,15 +85,15 @@ struct snake {
             }
             case direction::LEFT:
             {
-                self.pos.x -= self.step;;
+                self.pos.x -= self.step;
             }
             case direction::UP:
             {
-                self.pos.y -= self.step;;
+                self.pos.y -= self.step;
             }
             case direction::DOWN:
             {
-                self.pos.y += self.step;;
+                self.pos.y += self.step;
             }
         }
 
@@ -97,15 +117,49 @@ struct snake {
             self.pos.y = window_width;
         }
 
-
+        for i: u64 = 0; i < self.body_blocks.size; i++ {
+            b: block* = (self.body_blocks.get(i));
+            if i == 0 
+            {
+                b.pos = self.old_pos;
+            }
+            else 
+            {
+                
+                ahead: block* = (self.body_blocks.get(i - 1));
+                b.pos = ahead.old_pos;
+            }   
+        }
         if self.pos.x == player_food.pos.x && self.pos.y == player_food.pos.y {
-            self.length++;
-            printf("Points: %d\n", self.length);
             player_food.spawn();
+            
+            self.grow();
+        }
+
+        for i: u64 = 0; i < self.body_blocks.size; i++ {
+            b: block* = (self.body_blocks.get(i));
+
+            if self.pos.x == b.pos.x && self.pos.y == b.pos.y {
+                game_over = true;
+            }
         }
     }
-}
 
+    fn grow(self*)
+    {
+        self.length++;
+        pos: vec2<[i32]>;
+        if self.body_blocks.size != 0 {
+            b: block* = (self.body_blocks.get(self.body_blocks.size - 1));
+            pos = b.old_pos;
+        }
+        else {
+            pos = self.old_pos;
+        }
+        new_block: block = {pos,{}, self.w, self.h};
+        self.body_blocks.add(new_block);
+    }
+}
 struct food 
 {
     pos: vec2<[i32]>;
@@ -114,6 +168,10 @@ struct food
     render: bool = true;
     fn spawn(self*) 
     {
+        self.pos = {};
+        self.w = 25;
+        self.h = 25;
+        self.render = true;
         self.pos.x = SDL3::rand(window_width / 25) * 25;
         self.pos.y = SDL3::rand(window_height / 25) * 25;
     }
@@ -129,7 +187,6 @@ struct food
     }
 }
 
-
 window_width : readonly i32 = 1000;
 window_height : readonly i32 = 1000;
 
@@ -138,7 +195,7 @@ renderer: SDL3::renderer*;
 player: snake;
 player_food: food;
 
-
+game_over: bool = false;
 
 fn main() -> i32
 {
@@ -154,7 +211,6 @@ fn main() -> i32
         printf("Failed to create window and renderer. Err: %s", SDL3::get_error());
          ret 1;
     }
-    
 
     done: bool = false;
     player_food.spawn();
@@ -171,6 +227,16 @@ fn main() -> i32
                 {
                     switch event.key.code
                     {
+                        case key_code::R:
+                        {
+                            if(game_over)
+                            {
+                                game_over = false;
+                                player.clean();
+                                player_food = {};
+                                player_food.spawn();
+                            }
+                        }
                         case key_code::RIGHT:
                         {
                             if player.dir != direction::LEFT 
@@ -205,15 +271,42 @@ fn main() -> i32
             }
         }
 
-        renderer.set_draw_color(30, 30, 30, 255);
-        renderer.clear();
+        
 
-        player.move();
-        player.draw();
-        player_food.draw();
+        if !game_over {
+            renderer.set_draw_color(30, 30, 30, 255);
+            renderer.clear();
 
+            renderer.set_draw_color(255, 255, 255, 255);
+            renderer.set_draw_scale(3.0, 3.0);
+            score_text: i8[25];
+            SDL_snprintf(score_text as i8*,25, "Score: %d\0", player.length - 1);
+            renderer.debug_text(10.0, 10.0, score_text as i8*);
+            renderer.set_draw_scale(1.0, 1.0);
+            renderer.set_draw_color(30, 30, 30, 255);
 
-        renderer.present();
+            player.move();
+            player.draw();
+            player_food.draw();
+            renderer.present();
+        }
+        if game_over {
+            renderer.set_draw_color(30, 30, 30, 255);
+            renderer.clear();
+            renderer.set_draw_color(255, 255, 255, 255);
+            renderer.set_draw_scale(3.0, 3.0);
+            score_text: i8[25];
+            SDL_snprintf(score_text as i8*,25, "Score: %d\0", player.length - 1);
+            renderer.debug_text(10.0, 10.0, score_text as i8*);
+            renderer.set_draw_color(255, 10, 10, 255);
+            renderer.set_draw_scale(10.0, 10.0);
+
+            renderer.debug_text(15.0 , 40.0, "GAME OVER");
+            renderer.set_draw_scale(5.0, 5.0);
+            renderer.debug_text(45.0 , 100.0, "'R' To Restart" );
+            renderer.present();
+        }
+
         SDL3::delay(50);
     }
     printf("done");

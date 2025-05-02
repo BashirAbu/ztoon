@@ -32,6 +32,15 @@ pub struct renderer
     {
         ret SDL_RenderFillRect(self, r) as bool;
     }
+
+    fn debug_text(self*, x: f32, y: f32, str: readonly i8*) -> bool
+    {
+        ret SDL_RenderDebugText(self, x, y, str) as bool;
+    }
+
+    fn set_draw_scale(self*, scale_x: f32, scale_y: f32) -> bool {
+        ret SDL_SetRenderScale(self, scale_x, scale_y) as bool;
+    }
 }
 
 
@@ -121,6 +130,21 @@ pub fn rand(n: i32) -> i32
 {
     ret SDL_rand(n);
 }
+
+
+fn SDL_GetTicks() -> u64;
+
+pub fn get_ticks() -> u64  
+{
+    ret SDL_GetTicks();
+}
+
+
+fn SDL_RenderDebugText(r: renderer*, x: f32, y: f32, str: readonly i8*) -> i32;
+
+fn SDL_SetRenderScale(r: renderer*, scale_x: f32, scale_y: f32) -> i32;
+
+pub fn SDL_snprintf(text : i8*, max_len: u64, fmt: readonly i8*, ...) -> i32;
 
 pub enum init_flags : u32
 {

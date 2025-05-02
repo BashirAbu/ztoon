@@ -102,13 +102,15 @@ std::string DataType::ToString()
     case DataType::Type::ENUM:
     {
         auto enumType = dynamic_cast<EnumDataType *>(this);
-        str += enumType->name;
+        str += enumType->GetUID();
+        // str += enumType->name;
         break;
     }
     case DataType::Type::UNION:
     {
         auto unionType = dynamic_cast<UnionDataType *>(this);
-        str += unionType->name;
+        str += unionType->GetUID();
+        // str += unionType->name;
         break;
     }
     case DataType::Type::POINTER:
@@ -3616,13 +3618,26 @@ void SemanticAnalyzer::AnalyzeCastExpression(CastExpression *castExpr)
 
     DataType *valueType = exprToDataTypeMap[castExpr->expression];
     DataType *castType = exprToDataTypeMap[castExpr];
+
+    if (valueType->GetType() == DataType::Type::STRUCT ||
+        castType->GetType() == DataType::Type::STRUCT ||
+        valueType->GetType() == DataType::Type::UNION ||
+        castType->GetType() == DataType::Type::UNION)
+    {
+        ReportError(
+            std::format("Invalid Casting from '{}' datatype to '{}' datatype",
+                        valueType->ToString(), castType->ToString()),
+            castExpr->GetCodeErrString());
+    }
+
     if (castType->GetType() == DataType::Type::BOOL)
     {
         if (exprToDataTypeMap[castExpr]->GetType() != DataType::Type::BOOL)
         {
             ReportError(
-                std::format("Cannot Cast from '{}' datatype to '{}' datatype",
-                            valueType->ToString(), castType->ToString()),
+                std::format(
+                    "Invalid Casting from '{}' datatype to '{}' datatype",
+                    valueType->ToString(), castType->ToString()),
                 castExpr->GetCodeErrString());
         }
     }

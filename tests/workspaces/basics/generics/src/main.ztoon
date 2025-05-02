@@ -1,23 +1,18 @@
 package mainPkg;
-// union Vec <[T, B]>
-// {
-//     elements: T[2];
-//     struct
-//     {
-//         x: T;
-//         y: B;
-//     }
-// }
-
-
+union Vec <[T, B]>
+{
+    elements: T[2];
+    struct
+    {
+        x: T;
+        y: B;
+    }
+}
 
 fn <[T, B]> add(a :T, b: T) -> T
 {
     ret a + b;
 }
-
-
-
 struct List<[T]>
 {
     item: T;
@@ -31,35 +26,21 @@ struct Data
 
 l: List<[Data]>;
 
-
-
-// struct List_Data
-// {
-//     item: T;
-//     next: List_Data*;
-// }
-
 fn main() -> i32
 {
 
     add<[i32, i32]>(1,3);
-        // pos: other::Vector2<[i32, i32]> = {30, 44};
-    // // printf("Len: %d", pos.Len());
-    // pos2: other::Vector2<[i32, i32]> = {100, 200};
+    
+           
 
-    // pos3: other::Vector2<[f64, f64]> = {455.0, 44.4};    
+    v2: Vec<[f64, i32]>;
+    v2.elements[1] = 12.04;
 
-    // v2: Vec<[f64, i32]>;
-    // v2.elements[1] = 12.04;
-
-    // other::printf("v2.y: %d\n", v2.y);
+    other::printf("v2.y: %d\n", v2.y);
         
-    // other::printf("pos: %d\n", pos.Len<[i32]>());
-    // other::printf("pos2: %lld\n", pos2.Len<[i64]>());
-    // other::printf("pos3: %f\n", pos3.Len<[f64]>());
   
     other::printf("add<[i32]>(12, 33) = %d\n", add<[i32,i32]>(12, 33));
     other::printf("add<[f64]>(12.5, 33.5) = %f\n", add<[f64, f64]>(12.5, 33.5));
     
-    ret 0;
+    ret 1;
 }

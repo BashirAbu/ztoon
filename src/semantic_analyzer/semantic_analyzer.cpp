@@ -3315,6 +3315,7 @@ void SemanticAnalyzer::AnalyzeFnExpression(FnExpression *fnExpr)
     fp->name = std::format("__anonymous_fn_{}", (size_t)fnExpr);
     fnExpr->name = fp->name;
     FnDataType *fpDataType = gZtoonArena.Allocate<FnDataType>();
+    fpDataType->fn = fp;
     fpDataType->type = DataType::Type::FN;
     fpDataType->returnDataType =
         currentScope->GetDataType(fnExpr->returnDataTypeToken);
@@ -4135,7 +4136,8 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
     }
     exprToDataTypeMap[fnCallExpr] = fnDataType->GetReturnDataType();
 
-    bool isMethod = (fnDataType->fn->fnStmt && fnDataType->fn->fnStmt->method);
+    bool isMethod = (fnDataType->fn && fnDataType->fn->fnStmt &&
+                     fnDataType->fn->fnStmt->method);
     if (isMethod /* &&
         methodToCallerMap.contains(fnCallExpr->GetGetExpression()) */)
     {

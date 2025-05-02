@@ -508,8 +508,6 @@ void CodeGen::Compile(Project &project, bool printIR)
     {
         llvm::errs() << "Module verification failed\n";
     }
-    if (printIR)
-        module->print(llvm::outs(), nullptr);
 
     std::string error;
     const llvm::Target *target =
@@ -595,6 +593,8 @@ void CodeGen::Compile(Project &project, bool printIR)
 
     pass.run(*module);
     objFile.flush();
+    if (printIR)
+        module->print(llvm::outs(), nullptr);
 }
 #ifdef __APPLE__
 #include <TargetConditionals.h>

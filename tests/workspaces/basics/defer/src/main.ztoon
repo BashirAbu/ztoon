@@ -1,0 +1,21 @@
+package mainPkg;
+fn main() -> i32
+{
+    c1:bool;
+    c2:bool;
+    c3:bool;
+    num: i32 = 0;
+    {
+        c1 = num == 0;
+    
+        defer num++;
+
+        c2 = num == 0;
+    }
+
+    c3 = num == 1;
+
+    all: bool = c1 && c2 && c3;
+    
+    ret all as i32;
+}

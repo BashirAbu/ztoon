@@ -107,3 +107,6 @@ workspace:
     - generics:
             relative_path: generics/
             type: exe
+    - defer:
+            relative_path: defer/
+            type: exe

@@ -828,3 +828,49 @@ TEST(ZtoonBasics, packages)
 
     std::filesystem::current_path(oldPath);
 }
+TEST(ZtoonBasics, generics)
+{
+    // call compiler, call binary, check ret value
+    auto oldPath = std::filesystem::current_path();
+    std::string workspace = "basics";
+    std::string project = "generics";
+    std::filesystem::current_path(workspace);
+
+    std::string compilerCommand =
+        ("..\\..\\..\\build\\ztoon -build -project " + project);
+
+    int compilerRet = std::system(compilerCommand.c_str());
+
+    EXPECT_EQ(compilerRet, 0);
+
+    std::string binaryCommand = "bin\\" + project;
+
+    int binaryRet = std::system(binaryCommand.c_str());
+
+    EXPECT_EQ(binaryRet, 1);
+
+    std::filesystem::current_path(oldPath);
+}
+TEST(ZtoonBasics, defer)
+{
+    // call compiler, call binary, check ret value
+    auto oldPath = std::filesystem::current_path();
+    std::string workspace = "basics";
+    std::string project = "defer";
+    std::filesystem::current_path(workspace);
+
+    std::string compilerCommand =
+        ("..\\..\\..\\build\\ztoon -build -project " + project);
+
+    int compilerRet = std::system(compilerCommand.c_str());
+
+    EXPECT_EQ(compilerRet, 0);
+
+    std::string binaryCommand = "bin\\" + project;
+
+    int binaryRet = std::system(binaryCommand.c_str());
+
+    EXPECT_EQ(binaryRet, 1);
+
+    std::filesystem::current_path(oldPath);
+}

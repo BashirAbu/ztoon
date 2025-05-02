@@ -2152,35 +2152,6 @@ void SemanticAnalyzer::AnalyzeVarDeclStatement(VarDeclStatement *varDeclStmt,
                 dt = exprToDataTypeMap[varExpr];
                 Expression *variableRawExpression = varExpr;
 
-                // {
-                //     auto l = exprToDataTypeMap[variableRawExpression];
-                //     auto r = exprToDataTypeMap[varDeclStmt->expression];
-
-                //     auto ls = dynamic_cast<Symbol *>(
-                //         dynamic_cast<StructDataType *>(l));
-                //     auto rs = dynamic_cast<Symbol *>(
-                //         dynamic_cast<StructDataType *>(r));
-
-                //     PrintMSG("//////////////////////TO_STRING()////////////////"
-                //              "/////////////");
-                //     PrintMSG(std::format("Left: {}", l->ToString()));
-                //     PrintMSG(std::format("Right: {}", r->ToString()));
-                //     PrintMSG("/////////////////////SYMBOL/////////////////"
-                //              "/////////////");
-                //     if (ls && rs)
-                //     {
-                //         PrintMSG(std::format("Left: {}", ls->GetName()));
-                //         PrintMSG(std::format("Right: {}", rs->GetName()));
-                //     }
-                //     PrintMSG(
-                //         "////////////////////////UID///////////////////////");
-                //     if (ls && rs)
-                //     {
-                //         PrintMSG(std::format("Left: {}", ls->GetUID()));
-                //         PrintMSG(std::format("Right: {}", rs->GetUID()));
-                //     }
-                // }
-
                 // check if types are compatible.
                 DataType::Type dataType = DecideDataType(
                     &(variableRawExpression), &varDeclStmt->expression);
@@ -4138,8 +4109,7 @@ void SemanticAnalyzer::AnalyzeFnCallExpression(FnCallExpression *fnCallExpr)
 
     bool isMethod = (fnDataType->fn && fnDataType->fn->fnStmt &&
                      fnDataType->fn->fnStmt->method);
-    if (isMethod /* &&
-        methodToCallerMap.contains(fnCallExpr->GetGetExpression()) */)
+    if (isMethod)
     {
         if (fnCallExpr->GetArgs().size() != fnDataType->GetParameters().size())
         {

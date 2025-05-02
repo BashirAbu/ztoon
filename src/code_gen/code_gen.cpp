@@ -41,6 +41,7 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/Reassociate.h"
@@ -468,6 +469,7 @@ void CodeGen::Compile(Project &project, bool printIR)
 
     ctx = std::make_unique<llvm::LLVMContext>();
     module = std::make_unique<llvm::Module>("ztoon module", *ctx);
+
     if (project.targetArch.empty())
     {
         project.targetArch = llvm::sys::getDefaultTargetTriple();
@@ -488,6 +490,33 @@ void CodeGen::Compile(Project &project, bool printIR)
             GenLibIR(l, genTypeSymbol, genFnAndVarBody, genSymoblBody);
         }
     };
+
+    llvm::Triple triple(module->getTargetTriple());
+
+    if (triple.isOSWindows())
+    {
+        project.platform = Project::Platform::WINDOWS;
+    }
+    else if (triple.isOSLinux())
+    {
+        project.platform = Project::Platform::LINUX;
+    }
+    else if (triple.isMacOSX())
+    {
+        project.platform = Project::Platform::MACOS;
+    }
+    else if (triple.isiOS())
+    {
+        project.platform = Project::Platform::IOS;
+    }
+    else if (triple.isAndroid())
+    {
+        project.platform = Project::Platform::ANDROID;
+    }
+    else if (triple.isWasm())
+    {
+        project.platform = Project::Platform::WASM;
+    }
 
     for (auto lib : semanticAnalyzer.libraries)
     {
@@ -605,209 +634,233 @@ void CodeGen::Link(Project &project)
 
     std::string output = std::format("bin/{}", project.name);
 
-    std::vector<const char *> lldArgs;
+    std::vector<std::string> lldArgs;
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+    if (project.platform == Project::Platform::WINDOWS)
+    {
 
-    lldArgs.push_back("lld-link");
-    switch (project.type)
-    {
-    case Project::Type::EXE:
-    {
-        output = output + ".exe";
-    }
-    break;
-    case Project::Type::ZLIB:
-    {
-        assert(0);
-        break;
-    }
-    break;
-    case Project::Type::STATIC_LIB:
-    {
-        output = output + ".lib";
-        lldArgs.push_back("/lib");
-    }
-    break;
-    case Project::Type::SHARED_LIB:
-    {
-        output = output + ".dll";
-        lldArgs.push_back("/DLL");
-        std::string impLib = std::format("/implib:{}.lib", project.name);
-        lldArgs.push_back(impLib.c_str());
-        if (project.linkerFlags.entry.empty())
+        for (auto &nl : project.linkerFlags.nativeLibs)
         {
-            lldArgs.push_back("/entry:DLLMain");
+            nl.relative_path = nl.relative_path.generic_string() + ".lib";
         }
-    }
-    break;
-    }
-    lldArgs.push_back(objFileName.c_str());
-    std::vector<std::string> libPaths;
-    for (auto &libPath : project.linkerFlags.nativeLibs)
-    {
-        libPaths.push_back(libPath.relative_path.generic_string());
-        lldArgs.push_back(libPaths[libPaths.size() - 1].c_str());
-    }
-    if (!project.linkerFlags.noCRT && project.type != Project::Type::STATIC_LIB)
-    {
-        switch (project.linkerFlags.crtLinkType)
+
+        lldArgs.push_back("lld-link");
+        switch (project.type)
         {
-
-        case Project::LinkerFlags::CRT_LinkType::STATIC:
-            lldArgs.push_back("libcmt.lib");
-            break;
-        case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
-            lldArgs.push_back("msvcrt.lib");
-            break;
-        }
-    }
-
-    std::string out = std::format("/out:{}", output);
-    lldArgs.push_back(out.c_str());
-
-    std::string entry = std::format("/entry:{}", project.linkerFlags.entry);
-    if (!project.linkerFlags.entry.empty())
-    {
-        lldArgs.push_back(entry.c_str());
-    }
-    if (project.type == Project::Type::EXE)
-    {
-        switch (project.linkerFlags.type)
+        case Project::Type::EXE:
         {
-        case Project::LinkerFlags::Type::CONSOLE:
-            lldArgs.push_back("/subsystem:console");
-            break;
-        case Project::LinkerFlags::Type::WINDOW:
-            lldArgs.push_back("/subsystem:windows");
-            break;
-        }
-    }
-
-#elif __APPLE__
-
-    switch (project.type)
-    {
-    case Project::Type::EXE:
-    {
-        lldArgs.push_back("ld64.lld");
-        lldArgs.push_back("-o");
-        lldArgs.push_back(output.c_str());
-    }
-    break;
-    case Project::Type::ZLIB:
-    {
-        break;
-    }
-    break;
-    case Project::Type::STATIC_LIB:
-    {
-        lldArgs.push_back("llvm-ar");
-        lldArgs.push_back("rcs");
-        lldArgs.push_back(std::format("{}.a"), output).c_str());
-    }
-    break;
-    case Project::Type::SHARED_LIB:
-    {
-        lldArgs.push_back("ld64.lld");
-        lldArgs.push_back("-o");
-        lldArgs.push_back(std::format("{}.dylib", output).c_str());
-    }
-    break;
-    }
-    if (!project.linkerFlags.entry.empty())
-    {
-        lldArgs.push_back("-e");
-        lldArgs.push_back(project.linkerFlags.entry.c_str());
-    }
-    if (!project.linkerFlags.noCRT)
-    {
-        switch (project.linkerFlags.crtLinkType)
-        {
-        case Project::LinkerFlags::CRT_LinkType::STATIC:
-        {
-            lldArgs.push_back("/use/lib/libSystem.B.tbd");
+            output = output + ".exe";
         }
         break;
-        case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
+        case Project::Type::ZLIB:
         {
-            lldArgs.push_back("-lSystem");
-            lldArgs.push_back("-syslibroot $(xcrun --show-sdk-path)");
+            assert(0);
+            break;
+        }
+        break;
+        case Project::Type::STATIC_LIB:
+        {
+            output = output + ".lib";
+            lldArgs.push_back("/lib");
+        }
+        break;
+        case Project::Type::SHARED_LIB:
+        {
+            output = output + ".dll";
+            lldArgs.push_back("/DLL");
+            std::string impLib = std::format("/implib:{}.lib", project.name);
+            lldArgs.push_back(impLib.c_str());
+            if (project.linkerFlags.entry.empty())
+            {
+                lldArgs.push_back("/entry:DLLMain");
+            }
         }
         break;
         }
-    }
-#elif __linux__
-    switch (project.type)
-    {
-    case Project::Type::EXE:
-    {
-        lldArgs.push_back("ld.lld");
         lldArgs.push_back(objFileName.c_str());
-        lldArgs.push_back("-o");
-    }
-    break;
-    case Project::Type::ZLIB:
-    {
-        break;
-    }
-    break;
-    case Project::Type::STATIC_LIB:
-    {
-        lldArgs.push_back("llvm-ar");
-        lldArgs.push_back("rcs");
-        lldArgs.push_back(std::format("{}.a"), output).c_str());
-    }
-    break;
-    case Project::Type::SHARED_LIB:
-    {
-        lldArgs.push_back("ld.lld");
-        lldArgs.push_back("-shared");
-        lldArgs.push_back("-o");
-        lldArgs.push_back(std::format("{}.so", output).c_str());
-    }
-    break;
-    }
-    if (!project.linkerFlags.entry.empty())
-    {
-        lldArgs.push_back("-e");
-        lldArgs.push_back(project.linkerFlags.entry.c_str());
-    }
-    if (!project.linkerFlags.noCRT)
-    {
-        switch (project.linkerFlags.crtLinkType)
+        std::vector<std::string> libPaths;
+        for (auto &libPath : project.linkerFlags.nativeLibs)
         {
-        case Project::LinkerFlags::CRT_LinkType::STATIC:
+            libPaths.push_back(libPath.relative_path.generic_string());
+            lldArgs.push_back(libPaths[libPaths.size() - 1].c_str());
+        }
+        if (!project.linkerFlags.noCRT &&
+            project.type != Project::Type::STATIC_LIB)
         {
-            lldArgs.push_back("/usr/lib/crt1.o");
-            lldArgs.push_back("/usr/lib/crti.o");
-            lldArgs.push_back("-lc");
-            lldArgs.push_back("/usr/lib/crtn.o");
-        }
-        break;
-        case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
-        {
-            lldArgs.push_back("/usr/lib/crt1.o");
-            lldArgs.push_back("/usr/lib/crti.o");
-            lldArgs.push_back("-libc.so");
-            lldArgs.push_back("/usr/lib/crtn.o");
-        }
-        break;
-        }
-    }
-#else
-#error "Unknown platform"
-#endif
+            switch (project.linkerFlags.crtLinkType)
+            {
 
-    // printf("Building %s...\n", project.name.c_str());
-    // printf("Linker Flags: \n");
-    // for (auto f : lldArgs)
-    // {
-    //     printf("%s\n", f);
-    // }
-    // printf("\n\n");
+            case Project::LinkerFlags::CRT_LinkType::STATIC:
+                lldArgs.push_back("libcmt.lib");
+                break;
+            case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
+                lldArgs.push_back("msvcrt.lib");
+                break;
+            }
+        }
+
+        std::string out = std::format("/out:{}", output);
+        lldArgs.push_back(out.c_str());
+
+        std::string entry = std::format("/entry:{}", project.linkerFlags.entry);
+        if (!project.linkerFlags.entry.empty())
+        {
+            lldArgs.push_back(entry.c_str());
+        }
+        if (project.type == Project::Type::EXE)
+        {
+            switch (project.linkerFlags.type)
+            {
+            case Project::LinkerFlags::Type::CONSOLE:
+                lldArgs.push_back("/subsystem:console");
+                break;
+            case Project::LinkerFlags::Type::WINDOW:
+                lldArgs.push_back("/subsystem:windows");
+                break;
+            }
+        }
+    }
+    else if (project.platform == Project::Platform::MACOS)
+    {
+        for (auto &nl : project.linkerFlags.nativeLibs)
+        {
+            nl.relative_path = nl.relative_path.generic_string() + ".a";
+        }
+        switch (project.type)
+        {
+        case Project::Type::EXE:
+        {
+            lldArgs.push_back("ld64.lld");
+            lldArgs.push_back("-o");
+            lldArgs.push_back(output.c_str());
+        }
+        break;
+        case Project::Type::ZLIB:
+        {
+            break;
+        }
+        break;
+        case Project::Type::STATIC_LIB:
+        {
+            lldArgs.push_back("llvm-ar");
+            lldArgs.push_back("rcs");
+            lldArgs.push_back(std::format("{}.a", output).c_str());
+        }
+        break;
+        case Project::Type::SHARED_LIB:
+        {
+            lldArgs.push_back("ld64.lld");
+            lldArgs.push_back("-o");
+            lldArgs.push_back(std::format("{}.dylib", output).c_str());
+        }
+        break;
+        }
+        if (!project.linkerFlags.entry.empty())
+        {
+            lldArgs.push_back("-e");
+            lldArgs.push_back(project.linkerFlags.entry.c_str());
+        }
+        if (!project.linkerFlags.noCRT)
+        {
+            switch (project.linkerFlags.crtLinkType)
+            {
+            case Project::LinkerFlags::CRT_LinkType::STATIC:
+            {
+                lldArgs.push_back("/use/lib/libSystem.B.tbd");
+            }
+            break;
+            case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
+            {
+                lldArgs.push_back("-lSystem");
+                lldArgs.push_back("-syslibroot $(xcrun --show-sdk-path)");
+            }
+            break;
+            }
+        }
+    }
+    else if (project.platform == Project::Platform::LINUX)
+    {
+        for (auto &nl : project.linkerFlags.nativeLibs)
+        {
+            nl.relative_path = nl.relative_path.generic_string() + ".a";
+        }
+        switch (project.type)
+        {
+        case Project::Type::EXE:
+        {
+            lldArgs.push_back("ld.lld");
+            lldArgs.push_back(objFileName.c_str());
+            lldArgs.push_back("-o");
+        }
+        break;
+        case Project::Type::ZLIB:
+        {
+            break;
+        }
+        break;
+        case Project::Type::STATIC_LIB:
+        {
+            lldArgs.push_back("llvm-ar");
+            lldArgs.push_back("rcs");
+            lldArgs.push_back(std::format("{}.a", output).c_str());
+        }
+        break;
+        case Project::Type::SHARED_LIB:
+        {
+            lldArgs.push_back("ld.lld");
+            lldArgs.push_back("-shared");
+            lldArgs.push_back("-o");
+            lldArgs.push_back(std::format("{}.so", output).c_str());
+        }
+        break;
+        }
+        if (!project.linkerFlags.entry.empty())
+        {
+            lldArgs.push_back("-e");
+            lldArgs.push_back(project.linkerFlags.entry.c_str());
+        }
+        if (!project.linkerFlags.noCRT)
+        {
+            switch (project.linkerFlags.crtLinkType)
+            {
+            case Project::LinkerFlags::CRT_LinkType::STATIC:
+            {
+                lldArgs.push_back("/usr/lib/crt1.o");
+                lldArgs.push_back("/usr/lib/crti.o");
+                lldArgs.push_back("-lc");
+                lldArgs.push_back("/usr/lib/crtn.o");
+            }
+            break;
+            case Project::LinkerFlags::CRT_LinkType::DYNAMIC:
+            {
+                lldArgs.push_back("/usr/lib/crt1.o");
+                lldArgs.push_back("/usr/lib/crti.o");
+                lldArgs.push_back("-libc.so");
+                lldArgs.push_back("/usr/lib/crtn.o");
+            }
+            break;
+            }
+        }
+    }
+    else
+    {
+        PrintError("Unsupported target platform");
+    }
+
+    std::vector<const char *> lldArgs_cstr;
+    for (auto &arg : lldArgs)
+    {
+        lldArgs_cstr.push_back(arg.c_str());
+    }
+    printf("Building %s...\n", project.name.c_str());
+    printf("Linker Flags: \n");
+    for (auto f : lldArgs_cstr)
+    {
+        printf("%s\n", f);
+    }
+    printf("\n\n");
     lld::Result result =
-        lld::lldMain(lldArgs, llvm::outs(), llvm::errs(), LLD_ALL_DRIVERS);
+        lld::lldMain(lldArgs_cstr, llvm::outs(), llvm::errs(), LLD_ALL_DRIVERS);
     if (result.retCode)
     {
         PrintError("Failed to link obj files.");

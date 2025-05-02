@@ -4,7 +4,7 @@ sdl3:
     native_libs:
       - sdl3:
           type: static-lib
-          relative_path: deps/SDL3.lib
+          relative_path: deps/SDL3
   deps:
     - core:
         relative_path: ../core

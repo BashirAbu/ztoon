@@ -1,7 +1,0 @@
-workspace: 
-  name: workspace
-  projects:
-    - proj1:
-        relative_path: proj1/
-    - zSDL:
-        relative_path: zSDL/

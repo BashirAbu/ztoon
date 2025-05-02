@@ -1,5 +1,4 @@
 #pragma once
-#include "parser/parser.h"
 #include <cstdio>
 #include <filesystem>
 #include <vector>
@@ -60,6 +59,18 @@ class ArgParser
 
 struct Project
 {
+    enum class Platform
+    {
+        NONE,
+        WINDOWS,
+        LINUX,
+        MACOS,
+        IOS,
+        ANDROID,
+        WASM,
+
+    };
+    Platform platform = Platform::NONE;
     enum class Type
     {
         ZLIB,

@@ -8,6 +8,7 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
@@ -470,6 +471,8 @@ void CodeGen::Compile(Project &project, bool printIR)
     ctx = std::make_unique<llvm::LLVMContext>();
     module = std::make_unique<llvm::Module>("ztoon module", *ctx);
 
+    project.targetArch = LLVM_HOST_TRIPLE;
+    ;
     if (project.targetArch.empty())
     {
         project.targetArch = llvm::sys::getDefaultTargetTriple();

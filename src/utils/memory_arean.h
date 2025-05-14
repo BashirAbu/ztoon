@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <new>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <vector>
 struct IArenaMember
 {
@@ -15,7 +18,7 @@ template <typename T>
 
 struct ArenaMember : IArenaMember
 {
-    ArenaMember(T *ptr) : ptr(ptr) {};
+    ArenaMember(T *ptr) : ptr(ptr){};
     void CallDestructor() override { ptr->~T(); }
     T *ptr;
 };

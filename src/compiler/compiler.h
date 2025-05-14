@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <vector>
 #include <yaml-cpp/yaml.h>
+#include <format>
 void PrintError(std::string err);
 void PrintMSG(std::string msg);
 class ArgTokenizer

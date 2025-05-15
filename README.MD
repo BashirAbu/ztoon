@@ -79,11 +79,11 @@ Ztoon’s design emphasizes ease of learning for C programmers while introducing
 
    ```ztoon
    package main_pkg;
-   fn printf(str: readonly i8*, ...) -> i32
+   fn printf(str: readonly i8*, ...) -> i32;
 
    fn main() -> i32 {
-       printf("Hello, World!\n")
-       ret 0
+       printf("Hello, World!\n");
+       ret 0;
    }
    ```
 

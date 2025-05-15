@@ -3,7 +3,9 @@
 #include "semantic_analyzer/semantic_analyzer.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constant.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -12,6 +14,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/Utils/ValueMapper.h"
 #include <memory>
 #include <unordered_map>
 struct IRType
@@ -96,9 +99,12 @@ class CodeGen
     std::unique_ptr<llvm::LLVMContext> ctx;
     std::unique_ptr<llvm::Module> module;
     std::unique_ptr<llvm::IRBuilder<>> irBuilder;
+    std::unique_ptr<llvm::DIBuilder> diBuilder;
     std::unique_ptr<llvm::DataLayout> moduleDataLayout;
 
   private:
+    llvm::DICompileUnit *GetDICompileUnit(std::string filepath);
+
     void AssignValueToVarArray(IRValue ptr, Expression *expr,
                                ArrayDataType *arrType,
                                std::vector<llvm::Value *> &index);
@@ -121,7 +127,7 @@ class CodeGen
     void GenStatementIR(Statement *statement);
 
     void GenBlockStatementIR(BlockStatement *blockStmt);
-    void GenFnStatementIR(FnStatement *fnStmt);
+    void GenFnStatementIR(FnStatement *fnStmt, bool genSymbol, bool genBody);
     void GenVarDeclStatementIR(VarDeclStatement *varDeclStmt, bool genSymbol,
                                bool genBody);
     void GenVarAssignmentStatementIR(VarAssignmentStatement *varAssignmentStmt);
@@ -185,4 +191,7 @@ class CodeGen
     std::unordered_map<Statement *, bool> globalStatementIRDoneMap;
     std::unordered_map<VarDeclStatement *, IRValue> globalConstsMap;
     std::unordered_map<Symbol *, IRSymbol *> symbolToIRSymobMap;
+    std::unordered_map<std::string, llvm::DICompileUnit *> filepathToCompUnit;
+
+    Project *project = nullptr;
 };

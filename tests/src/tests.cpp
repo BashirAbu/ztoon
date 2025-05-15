@@ -36,7 +36,7 @@ TEST(ZtoonBasics, BasicArithmetics)
     auto oldPath = std::filesystem::current_path();
 
     std::string workspace = "basics";
-    std::string project = "";
+    std::string project = "basic_arithmetics";
     std::filesystem::current_path(workspace);
 #ifdef _WIN32
     std::string compilerCommand =
@@ -66,14 +66,13 @@ TEST(ZtoonBasics, BooleanOps)
     std::string project = "boolean_ops";
     std::filesystem::current_path(workspace);
 
-   #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -96,14 +95,13 @@ TEST(ZtoonBasics, ShiftOps)
     std::string project = "shift_ops";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -126,14 +124,13 @@ TEST(ZtoonBasics, BitwiseOps)
     std::string project = "bitwise_ops";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -179,14 +176,13 @@ TEST(ZtoonBasics, ForLoopBreak)
     std::string project = "for_loop_break";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -209,14 +205,13 @@ TEST(ZtoonBasics, ForLoopContinue)
     std::string project = "for_loop_continue";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -239,14 +234,13 @@ TEST(ZtoonBasics, WhileLoop)
     std::string project = "while_loop";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -269,14 +263,13 @@ TEST(ZtoonBasics, WhileLoopContinue)
     std::string project = "while_loop_continue";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -299,14 +292,13 @@ TEST(ZtoonBasics, WhileLoopBreak)
     std::string project = "while_loop_break";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -329,14 +321,13 @@ TEST(ZtoonBasics, NestedLoops)
     std::string project = "nested_loops";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -359,14 +350,13 @@ TEST(ZtoonBasics, NestedLoopsBreakContinue)
     std::string project = "nested_loops_break_continue";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -390,14 +380,13 @@ TEST(ZtoonBasics, if_statement)
     std::string project = "if_statement";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -420,14 +409,13 @@ TEST(ZtoonBasics, IfStatement)
     std::string project = "if_statement";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -450,14 +438,13 @@ TEST(ZtoonBasics, TernaryExpression)
     std::string project = "ternary_expression";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -481,14 +468,13 @@ TEST(ZtoonBasics, UnaryMinus)
     std::string project = "unary_minus";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -511,14 +497,13 @@ TEST(ZtoonBasics, UnarySizeof)
     std::string project = "unary_sizeof";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -541,14 +526,13 @@ TEST(ZtoonBasics, CompoundAssignment)
     std::string project = "compound_assignment";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -572,14 +556,13 @@ TEST(ZtoonBasics, Casting)
     std::string project = "casting";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -602,14 +585,13 @@ TEST(ZtoonBasics, Functions)
     std::string project = "functions";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -632,14 +614,13 @@ TEST(ZtoonBasics, Recursion)
     std::string project = "recursion";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -662,14 +643,13 @@ TEST(ZtoonBasics, Pointers)
     std::string project = "pointers";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -692,14 +672,13 @@ TEST(ZtoonBasics, UninitializedVariables)
     std::string project = "uninitialized_variables";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -722,14 +701,13 @@ TEST(ZtoonBasics, GlobalVariables)
     std::string project = "global_variables";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -769,14 +747,13 @@ TEST(ZtoonBasics, Arrays)
     std::string project = "arrays";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -798,14 +775,13 @@ TEST(ZtoonBasics, ArrayMultidimensions)
     std::string project = "arrays_multi_dimensions";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -827,14 +803,13 @@ TEST(ZtoonBasics, Strings)
     std::string project = "strings";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -856,14 +831,13 @@ TEST(ZtoonBasics, FunctionPointers)
     std::string project = "function_pointers";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -885,14 +859,13 @@ TEST(ZtoonBasics, Structs)
     std::string project = "structs";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -914,14 +887,13 @@ TEST(ZtoonBasics, StructMethods)
     std::string project = "struct_methods";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -943,14 +915,13 @@ TEST(ZtoonBasics, Unions)
     std::string project = "unions";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -972,14 +943,13 @@ TEST(ZtoonBasics, Enums)
     std::string project = "enums";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -1001,14 +971,13 @@ TEST(ZtoonBasics, packages)
     std::string project = "packages";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -1030,14 +999,13 @@ TEST(ZtoonBasics, generics)
     std::string project = "generics";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 
@@ -1059,14 +1027,13 @@ TEST(ZtoonBasics, defer)
     std::string project = "defer";
     std::filesystem::current_path(workspace);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     std::string compilerCommand =
         "..\\..\\..\\build\\ztoon -build -project " + project;
 #else
     std::string compilerCommand =
         "../../../build/ztoon -build -project " + project;
 #endif
-
 
     int compilerRet = std::system(compilerCommand.c_str());
 

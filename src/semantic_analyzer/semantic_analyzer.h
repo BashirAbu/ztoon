@@ -416,7 +416,7 @@ class SemanticAnalyzer
     std::vector<Library *> libraries;
     Package *currentPackage = nullptr;
     Library *currentLibrary = nullptr;
-    // BlockStatement *currentBlockStatement = nullptr;
+    BlockStatement *currentBlockStatement = nullptr;
     BlockStatementLeaf *currentBlockLeaf = nullptr;
     Function *currentFunction = nullptr;
     size_t inLoop = 0;
@@ -431,5 +431,6 @@ class SemanticAnalyzer
     std::vector<StmtToAdd> stmtsToAdd;
 
     friend class CodeGen;
+    friend class DebugInfo;
     friend class Scope;
 };

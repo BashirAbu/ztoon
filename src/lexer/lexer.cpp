@@ -242,7 +242,7 @@ Lexer::Lexer()
 }
 
 Lexer::~Lexer() {}
-void Lexer::Tokenize(std::string sourceCode, std::string filename)
+void Lexer::Tokenize(std::string sourceCode, std::filesystem::path filepath)
 {
     size_t pos = 0;
     size_t oldPos = 0;
@@ -290,7 +290,8 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
 
                         token = gZtoonArena.Allocate<TokenLiteral<int32_t>>(
                             pattern.type, 0);
-                        token->filename = filename;
+                        token->filename = filepath.filename().string();
+                        token->filepath = filepath;
                         token->lineNumber = lineNumber;
                         token->lexeme = match.str();
                         token->lineStr = token->lexeme;
@@ -331,7 +332,8 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                                 gZtoonArena.Allocate<TokenLiteral<uint64_t>>(
                                     TokenType::INTEGER_LITERAL, 0);
                         }
-                        token->filename = filename;
+                        token->filename = filepath.filename().string();
+                        token->filepath = filepath;
                         token->lineNumber = lineNumber;
                         token->lexeme = match.str();
                         token->lineStr = token->lexeme;
@@ -374,7 +376,8 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                                 gZtoonArena.Allocate<TokenLiteral<uint64_t>>(
                                     TokenType::INTEGER_LITERAL, 0);
                         }
-                        token->filename = filename;
+                        token->filename = filepath.filename().string();
+                        token->filepath = filepath;
                         token->lineNumber = lineNumber;
                         token->lexeme = match.str();
                         token->lineStr = token->lexeme;
@@ -397,7 +400,8 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
 
                         token = gZtoonArena.Allocate<TokenLiteral<float>>(
                             pattern.type, 0);
-                        token->filename = filename;
+                        token->filename = filepath.filename().string();
+                        token->filepath = filepath;
                         token->lineNumber = lineNumber;
                         token->lexeme = match.str();
                         token->lineStr = token->lexeme;
@@ -523,7 +527,8 @@ void Lexer::Tokenize(std::string sourceCode, std::string filename)
                     token = gZtoonArena.Allocate<Token>(pattern.type);
                 }
 
-                token->filename = filename;
+                token->filename = filepath.filename().string();
+                token->filepath = filepath;
                 token->lineNumber = lineNumber;
                 token->colNumber = colNumber;
                 token->lexeme = match.str();

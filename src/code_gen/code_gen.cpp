@@ -1,5 +1,5 @@
-#include "code_gen.h"
 #include "compiler/compiler.h"
+#include "debug_info/debug_info.h"
 #include "error_report.h"
 #include "lexer/lexer.h"
 #include "lld/Common/Driver.h"
@@ -483,7 +483,7 @@ void CodeGen::Compile(Project &project, bool printIR)
     module->setTargetTriple(project.targetArch);
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
-    // diBuilder = std::make_unique<llvm::DIBuilder>(*module);
+    debugInfo = gZtoonArena.Allocate<DebugInfo>(this);
 
     llvm::Triple triple(module->getTargetTriple());
 
@@ -544,7 +544,7 @@ void CodeGen::Compile(Project &project, bool printIR)
         llvm::errs() << "Module verification failed\n";
     }
 
-    // diBuilder->finalize();
+    debugInfo->Finalize();
 
     std::string error;
     const llvm::Target *target =
@@ -628,10 +628,10 @@ void CodeGen::Compile(Project &project, bool printIR)
         PrintError("Target machine failed to emit object file");
     }
 
-    pass.run(*module);
-    objFile.flush();
     if (printIR)
         module->print(llvm::outs(), nullptr);
+    pass.run(*module);
+    objFile.flush();
 }
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -653,6 +653,11 @@ void CodeGen::Link(Project &project)
         }
 
         lldArgs.push_back("lld-link");
+        if (project.debugBuild)
+        {
+            lldArgs.push_back("/DEBUG");
+            lldArgs.push_back("/ignore:longsections");
+        }
         switch (project.type)
         {
         case Project::Type::EXE:
@@ -763,6 +768,10 @@ void CodeGen::Link(Project &project)
         }
         break;
         }
+        if (project.debugBuild)
+        {
+            lldArgs.push_back("-g");
+        }
         if (!project.linkerFlags.entry.empty())
         {
             lldArgs.push_back("-e");
@@ -821,6 +830,10 @@ void CodeGen::Link(Project &project)
             lldArgs.push_back(std::format("{}.so", output).c_str());
         }
         break;
+        }
+        if (project.debugBuild)
+        {
+            lldArgs.push_back("-g");
         }
         if (!project.linkerFlags.entry.empty())
         {
@@ -1293,6 +1306,9 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
 {
     semanticAnalyzer.currentPackage = pkg;
     semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
+
+    debugInfo->GetCU(pkg);
+
     std::function<void(StructDataType *)> genStructIR = nullptr;
     std::function<void(UnionDataType *)> genUnionIR = nullptr;
 
@@ -1873,13 +1889,18 @@ void CodeGen::GenStatementIR(Statement *statement)
 void CodeGen::GenBlockStatementIR(BlockStatement *blockStmt)
 {
     Scope *temp = semanticAnalyzer.currentScope;
+    BlockStatement *tempBlock = semanticAnalyzer.currentBlockStatement;
+    semanticAnalyzer.currentBlockStatement = blockStmt;
     semanticAnalyzer.currentScope = semanticAnalyzer.blockToScopeMap[blockStmt];
+    debugInfo->GenBlockStatementDI(semanticAnalyzer.currentBlockStatement);
     for (Statement *s : blockStmt->GetStatements())
     {
         GenStatementIR(s);
     }
 
     semanticAnalyzer.currentScope = temp;
+    semanticAnalyzer.currentBlockStatement = tempBlock;
+    debugInfo->GenBlockStatementDI(semanticAnalyzer.currentBlockStatement);
 }
 void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
                                bool genBody)
@@ -1916,6 +1937,8 @@ void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
         irFunc->fullName = fpName;
 
         AddIRSymbol(irFunc);
+
+        debugInfo->GenFnStatementDI(fnStmt, irFunc);
     }
     else if (genBody)
     {

@@ -447,8 +447,10 @@ class BlockStatement : public Statement
         return ces;
     }
     size_t index = 0;
+    Token const *GetFirstToken() { return firstToken; }
 
   private:
+    Token const *firstToken = nullptr;
     bool loopBlock = false;
     std::vector<Statement *> statements;
     friend class Parser;

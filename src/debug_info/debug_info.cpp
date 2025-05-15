@@ -106,6 +106,11 @@ llvm::DIType *DebugInfo::ZtoonTypeToDIType(DataType *type)
     }
     case DataType::Type::STRUCT:
     {
+        if (ztoonTypeToDITypeMap.contains(type->ToString()))
+        {
+            diType = ztoonTypeToDITypeMap[type->ToString()];
+            break;
+        }
         auto irStructType = llvm::dyn_cast<llvm::StructType>(
             codeGen->ZtoonTypeToLLVMType(type).type);
         std::vector<llvm::Metadata *> fields;
@@ -118,7 +123,9 @@ llvm::DIType *DebugInfo::ZtoonTypeToDIType(DataType *type)
             codeGen->moduleDataLayout->getTypeSizeInBits(irStructType);
         diType = diBuilder->createStructType(
             currentScope, ztoonStructType->GetFullName(),
-            GetDIFile(ztoonStructType->structStmt->GetIDToken()->GetFilename()),
+            GetDIFile(ztoonStructType->structStmt->GetIDToken()
+                          ->GetFilepath()
+                          .generic_string()),
             ztoonStructType->structStmt->GetIDToken()->GetLineNumber(),
             sizeInBits,
             codeGen->moduleDataLayout->getABITypeAlign(irStructType).value(),
@@ -193,18 +200,21 @@ DebugInfo::DebugInfo(CodeGen *codeGen)
 }
 DebugInfo::~DebugInfo() {}
 
+void DebugInfo::Finalize() { diBuilder->finalize(); }
+
 llvm::DICompileUnit *DebugInfo::GetCU(Package *pkg)
 {
     if (pkgToCompUnit.contains(pkg))
     {
         return pkgToCompUnit[pkg];
     }
-    std::filesystem::path path = pkg->GetIdentifier()->GetFilename();
+    std::filesystem::path path =
+        pkg->GetIdentifier()->GetFilepath().generic_string();
     auto file =
         diBuilder->createFile(path.filename().string(), path.generic_string());
     auto cu =
         diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C, file, "ztoon",
-                                     codeGen->project->debugBuild, "", 0);
+                                     !codeGen->project->debugBuild, "", 0);
     pkgToCompUnit[pkg] = cu;
     return cu;
 }
@@ -223,14 +233,53 @@ llvm::DIFile *DebugInfo::GetDIFile(std::string filepath)
 }
 void DebugInfo::GenFnStatementDI(FnStatement *fnStmt, IRFunction *irFunc)
 {
-    // auto filepath = fnStmt->GetIdentifier()->GetFilename();
-    // uint32_t lineNumber = fnStmt->GetIdentifier()->GetLineNumber();
-    // llvm::DIFile *file = GetDIFile(filepath);
-    // currentScope = file;
-    // llvm::DISubroutineType fnType =
-    // diBuilder->createSubroutineType(DITypeRefArray ParameterTypes)
-    // llvm::DISubprogram *sp = diBuilder->createFunction(
-    //     currentScope, irFunc->GetName(), irFunc->GetFullName(), file,
-    //     lineNumber, irFunc->GetType(), lineNumber);
+    auto filepath = fnStmt->GetIdentifier()->GetFilepath().generic_string();
+    uint32_t lineNumber = fnStmt->GetIdentifier()->GetLineNumber();
+    llvm::DIFile *file = GetDIFile(filepath);
+    currentScope = file;
+    auto ztoonType = dynamic_cast<Function *>(
+                         codeGen->semanticAnalyzer.currentScope->GetSymbol(
+                             irFunc->GetName(), fnStmt->GetCodeErrString()))
+                         ->GetFnDataTypeFromFnPTR();
+    auto fnType =
+        llvm::dyn_cast<llvm::DISubroutineType>(ZtoonTypeToDIType(ztoonType));
+    llvm::DISubprogram *sp = diBuilder->createFunction(
+        currentScope, irFunc->GetFullName(), "", file, lineNumber, fnType,
+        lineNumber, llvm::DINode::DIFlags::FlagZero,
+        fnStmt->IsPrototype()
+            ? llvm::DISubprogram::SPFlagZero
+            : llvm::DISubprogram::DISPFlags::SPFlagDefinition);
+
+    irFunc->fn->setSubprogram(sp);
 }
-void DebugInfo::GenBlockStatementDI(BlockStatement *blockStmt) {}
+
+void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
+                                      IRVariable *irVariable)
+{
+    
+}
+
+void DebugInfo::GenBlockStatementDI(BlockStatement *blockStmt)
+{
+    if (!blockStmt)
+    {
+        currentScope = GetCU(codeGen->semanticAnalyzer.currentPackage);
+        return;
+    }
+    if (blockStmtToDIScopeMap.contains(blockStmt))
+    {
+        currentScope = blockStmtToDIScopeMap[blockStmt];
+    }
+    else
+    {
+        llvm::DIScope *lexicalScope = diBuilder->createLexicalBlock(
+            currentScope,
+            GetDIFile(
+                blockStmt->GetFirstToken()->GetFilepath().generic_string()),
+            blockStmt->GetFirstToken()->GetLineNumber(),
+            blockStmt->GetFirstToken()->GetColNumber());
+
+        blockStmtToDIScopeMap[blockStmt] = lexicalScope;
+        currentScope = lexicalScope;
+    }
+}

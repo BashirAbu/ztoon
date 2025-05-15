@@ -505,7 +505,7 @@ Statement *Parser::ParseBlockStatement()
     if (Consume(TokenType::LEFT_CURLY_BRACKET))
     {
         BlockStatement *blockStatement = gZtoonArena.Allocate<BlockStatement>();
-
+        blockStatement->firstToken = Prev();
         while (!Consume(TokenType::RIGHT_CURLY_BRACKET))
         {
             blockStatement->statements.push_back(ParseStatement());

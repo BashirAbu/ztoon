@@ -543,10 +543,8 @@ void Compiler::BuildProject(Project &project)
                     std::stringstream ss;
                     ss << srcFile.rdbuf();
                     std::string content = ss.str();
-                    std::string filename =
-                        sourceFile.path().filename().generic_string();
                     Lexer lexer;
-                    lexer.Tokenize(content, filename);
+                    lexer.Tokenize(content, sourceFile.path());
                     lexer.EndProgram();
                     Parser parser(lexer.GetTokens());
                     auto packages = parser.Parse();

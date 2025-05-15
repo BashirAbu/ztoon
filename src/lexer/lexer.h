@@ -1,5 +1,6 @@
 #pragma once
 #include "utils/memory_arean.h"
+#include <filesystem>
 #include <regex>
 #include <string>
 #include <vector>
@@ -162,11 +163,13 @@ class Token
     size_t GetLineNumber() const { return lineNumber; }
     size_t GetColNumber() const { return colNumber; }
     std::string GetLineStr() const { return lineStr; }
+    std::filesystem::path GetFilepath() const { return filepath; }
 
   protected:
     TokenType type;
     std::string lexeme;
     std::string filename = "";
+    std::filesystem::path filepath;
     size_t lineNumber = 0;
     size_t colNumber = 0;
     std::string lineStr = "";
@@ -198,7 +201,7 @@ class Lexer
   public:
     Lexer();
     ~Lexer();
-    void Tokenize(std::string sourceCode, std::string filename);
+    void Tokenize(std::string sourceCode, std::filesystem::path filepath);
     void DebugPrint();
     std::vector<Token *> &GetTokens() { return tokens; }
     void EndProgram()

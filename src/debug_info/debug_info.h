@@ -2,6 +2,7 @@
 #include "code_gen/code_gen.h"
 #include "parser/parser.h"
 #include "llvm/IR/DebugInfoMetadata.h"
+#include <unordered_map>
 
 class DebugInfo
 {
@@ -9,12 +10,14 @@ class DebugInfo
     DebugInfo(CodeGen *codeGen);
     ~DebugInfo();
 
-    void Finialize();
+    void Finalize();
 
     llvm::DICompileUnit *GetCU(Package *pkg);
     llvm::DIFile *GetDIFile(std::string filepath);
 
     void GenFnStatementDI(FnStatement *fnStmt, IRFunction *irFunc);
+    void GenVarDeclStatementDI(VarDeclStatement *varStmt,
+                               IRVariable *irVariable);
     void GenBlockStatementDI(BlockStatement *blockStmt);
 
   private:
@@ -26,4 +29,6 @@ class DebugInfo
     std::unique_ptr<llvm::DIBuilder> diBuilder;
     std::unordered_map<Package *, llvm::DICompileUnit *> pkgToCompUnit;
     std::unordered_map<std::string, llvm::DIFile *> filepathToDIFile;
+    std::unordered_map<std::string, llvm::DIType *> ztoonTypeToDITypeMap;
+    std::unordered_map<BlockStatement *, llvm::DIScope *> blockStmtToDIScopeMap;
 };

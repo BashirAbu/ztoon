@@ -85,6 +85,7 @@ struct IRLoop
 
     Statement *loopStmt = nullptr;
 };
+
 class CodeGen
 {
   public:
@@ -99,12 +100,9 @@ class CodeGen
     std::unique_ptr<llvm::LLVMContext> ctx;
     std::unique_ptr<llvm::Module> module;
     std::unique_ptr<llvm::IRBuilder<>> irBuilder;
-    std::unique_ptr<llvm::DIBuilder> diBuilder;
     std::unique_ptr<llvm::DataLayout> moduleDataLayout;
 
   private:
-    llvm::DICompileUnit *GetDICompileUnit(std::string filepath);
-
     void AssignValueToVarArray(IRValue ptr, Expression *expr,
                                ArrayDataType *arrType,
                                std::vector<llvm::Value *> &index);
@@ -191,7 +189,7 @@ class CodeGen
     std::unordered_map<Statement *, bool> globalStatementIRDoneMap;
     std::unordered_map<VarDeclStatement *, IRValue> globalConstsMap;
     std::unordered_map<Symbol *, IRSymbol *> symbolToIRSymobMap;
-    std::unordered_map<std::string, llvm::DICompileUnit *> filepathToCompUnit;
 
     Project *project = nullptr;
+    friend class DebugInfo;
 };

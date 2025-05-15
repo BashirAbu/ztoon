@@ -875,22 +875,6 @@ void CodeGen::Link(Project &project)
     }
 }
 
-llvm::DICompileUnit *CodeGen::GetDICompileUnit(std::string filepath)
-{
-    if (filepathToCompUnit.contains(filepath))
-    {
-        return filepathToCompUnit[filepath];
-    }
-    std::filesystem::path path = filepath;
-    auto file =
-        diBuilder->createFile(path.filename().string(), path.generic_string());
-    auto cu =
-        diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_lo_user + 0x100, file,
-                                     "ztoon", project->debugBuild, "", 0);
-    filepathToCompUnit[filepath] = cu;
-    return cu;
-}
-
 llvm::Constant *
 CodeGen::InitListToArrayConstant(ArrayDataType *arrType,
                                  InitializerListExpression *listExpr)

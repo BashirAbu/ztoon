@@ -532,6 +532,8 @@ void Compiler::BuildProject(Project &project)
             {
                 if (sourceFile.path().extension() == ".ztoon")
                 {
+                    std::filesystem::path absPath =
+                        std::filesystem::absolute(sourceFile.path());
                     std::fstream srcFile(sourceFile.path());
                     if (!srcFile.is_open())
                     {
@@ -544,7 +546,7 @@ void Compiler::BuildProject(Project &project)
                     ss << srcFile.rdbuf();
                     std::string content = ss.str();
                     Lexer lexer;
-                    lexer.Tokenize(content, sourceFile.path());
+                    lexer.Tokenize(content, absPath);
                     lexer.EndProgram();
                     Parser parser(lexer.GetTokens());
                     auto packages = parser.Parse();

@@ -15,10 +15,12 @@ class DebugInfo
     llvm::DICompileUnit *GetCU(Package *pkg);
     llvm::DIFile *GetDIFile(std::string filepath);
 
-    void GenFnStatementDI(FnStatement *fnStmt, IRFunction *irFunc);
+    void GenFnStatementDI(FnStatement *fnStmt, FnExpression *fnExpr,
+                          IRFunction *irFunc);
     void GenVarDeclStatementDI(VarDeclStatement *varStmt,
-                               IRVariable *irVariable);
+                               IRVariable *irVariable, bool isGlobal);
     void GenBlockStatementDI(BlockStatement *blockStmt);
+    void SetDebugLocation(Token const *token);
 
   private:
     llvm::DIType *ZtoonTypeToDIType(DataType *type);

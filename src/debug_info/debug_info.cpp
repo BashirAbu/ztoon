@@ -1,10 +1,13 @@
 #include "debug_info.h"
+#include "parser/parser.h"
 #include "semantic_analyzer/semantic_analyzer.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
@@ -95,7 +98,7 @@ llvm::DIType *DebugInfo::ZtoonTypeToDIType(DataType *type)
     case DataType::Type::BOOL:
     {
         diType =
-            diBuilder->createBasicType("bool", 1, llvm::dwarf::DW_ATE_boolean);
+            diBuilder->createBasicType("bool", 8, llvm::dwarf::DW_ATE_boolean);
         break;
     }
     case DataType::Type::NOTYPE:
@@ -210,8 +213,8 @@ llvm::DICompileUnit *DebugInfo::GetCU(Package *pkg)
     }
     std::filesystem::path path =
         pkg->GetIdentifier()->GetFilepath().generic_string();
-    auto file =
-        diBuilder->createFile(path.filename().string(), path.generic_string());
+    auto file = diBuilder->createFile(path.filename().string(),
+                                      path.parent_path().generic_string());
     auto cu =
         diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C, file, "ztoon",
                                      !codeGen->project->debugBuild, "", 0);
@@ -226,39 +229,83 @@ llvm::DIFile *DebugInfo::GetDIFile(std::string filepath)
         return filepathToDIFile[filepath];
     }
     std::filesystem::path path = filepath;
-    auto file =
-        diBuilder->createFile(path.filename().string(), path.generic_string());
+    auto file = diBuilder->createFile(path.filename().string(),
+                                      path.parent_path().generic_string());
     filepathToDIFile[filepath] = file;
     return file;
 }
-void DebugInfo::GenFnStatementDI(FnStatement *fnStmt, IRFunction *irFunc)
+void DebugInfo::GenFnStatementDI(FnStatement *fnStmt, FnExpression *fnExpr,
+                                 IRFunction *irFunc)
 {
-    auto filepath = fnStmt->GetIdentifier()->GetFilepath().generic_string();
-    uint32_t lineNumber = fnStmt->GetIdentifier()->GetLineNumber();
+    auto filepath =
+        fnStmt ? fnStmt->GetIdentifier()->GetFilepath().generic_string()
+               : fnExpr->GetFirstToken()->GetFilepath().generic_string();
+    uint32_t lineNumber = fnStmt ? fnStmt->GetIdentifier()->GetLineNumber()
+                                 : fnExpr->GetFirstToken()->GetLineNumber();
     llvm::DIFile *file = GetDIFile(filepath);
     currentScope = file;
-    auto ztoonType = dynamic_cast<Function *>(
-                         codeGen->semanticAnalyzer.currentScope->GetSymbol(
-                             irFunc->GetName(), fnStmt->GetCodeErrString()))
-                         ->GetFnDataTypeFromFnPTR();
+    auto ztoonType =
+        dynamic_cast<Function *>(
+            codeGen->semanticAnalyzer.currentScope->GetSymbol(
+                irFunc->GetName(), fnStmt ? fnStmt->GetCodeErrString()
+                                          : fnExpr->GetCodeErrString()))
+            ->GetFnDataTypeFromFnPTR();
     auto fnType =
         llvm::dyn_cast<llvm::DISubroutineType>(ZtoonTypeToDIType(ztoonType));
     llvm::DISubprogram *sp = diBuilder->createFunction(
-        currentScope, irFunc->GetFullName(), "", file, lineNumber, fnType,
-        lineNumber, llvm::DINode::DIFlags::FlagZero,
+        currentScope, irFunc->GetName(), irFunc->GetFullName(), file,
+        lineNumber, fnType, lineNumber, llvm::DINode::DIFlags::FlagZero,
         fnStmt->IsPrototype()
             ? llvm::DISubprogram::SPFlagZero
             : llvm::DISubprogram::DISPFlags::SPFlagDefinition);
 
     irFunc->fn->setSubprogram(sp);
+    if (!fnStmt->IsPrototype())
+    {
+        currentScope = sp;
+    }
 }
 
 void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
-                                      IRVariable *irVariable)
+                                      IRVariable *irVariable, bool isGlobal)
 {
-    
+    auto ztoonType = codeGen->semanticAnalyzer.stmtToDataTypeMap[varStmt];
+    llvm::DIType *diType = ZtoonTypeToDIType(ztoonType);
+    llvm::DIFile *file =
+        GetDIFile(varStmt->GetIdentifier()->GetFilepath().generic_string());
+    std::string fullname = irVariable->GetName();
+    std::string name = varStmt->GetIdentifier()->GetLexeme();
+    uint32_t lineNumber = varStmt->GetIdentifier()->GetLineNumber();
+    uint32_t colNumber = varStmt->GetIdentifier()->GetColNumber();
+    if (isGlobal)
+    {
+        auto digv = diBuilder->createGlobalVariableExpression(
+            currentScope, name, fullname, file, lineNumber, diType, false);
+        auto gv = llvm::dyn_cast<llvm::GlobalVariable>(irVariable->value);
+        gv->addDebugInfo(digv);
+    }
+    else
+    {
+        auto div = diBuilder->createAutoVariable(currentScope, name, file,
+                                                 lineNumber, diType, false);
+        auto var = llvm::dyn_cast<llvm::AllocaInst>(irVariable->value);
+        diBuilder->insertDeclare(var, div, diBuilder->createExpression(),
+                                 llvm::DILocation::get(*codeGen->ctx,
+                                                       lineNumber, colNumber,
+                                                       currentScope),
+                                 codeGen->irBuilder->GetInsertBlock());
+    }
 }
 
+void DebugInfo::SetDebugLocation(Token const *token)
+{
+    uint32_t lineNumber = token->GetLineNumber();
+    uint32_t colNumber = token->GetColNumber();
+
+    llvm::DILocation *loc = llvm::DILocation::get(*codeGen->ctx, lineNumber,
+                                                  colNumber, currentScope);
+    codeGen->irBuilder->SetCurrentDebugLocation(loc);
+}
 void DebugInfo::GenBlockStatementDI(BlockStatement *blockStmt)
 {
     if (!blockStmt)

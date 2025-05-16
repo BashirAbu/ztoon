@@ -175,8 +175,9 @@ class BreakStatement : public Statement
         return ces;
     }
 
-  private:
     Token const *token = nullptr;
+
+  private:
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -193,8 +194,9 @@ class ContinueStatement : public Statement
         return ces;
     }
 
-  private:
     Token const *token = nullptr;
+
+  private:
     friend class Parser;
     friend class SemanticAnalyzer;
 };
@@ -348,6 +350,7 @@ class UnionStatement : public Statement
     const std::vector<VarDeclStatement *> &GetFields() { return fields; }
 
     bool IsPublic() { return (bool)pub; };
+    Token const *GetIDToken() { return identifier; }
 
   private:
     Token const *pub = nullptr;
@@ -603,8 +606,9 @@ class WhileLoopStatement : public Statement
         return ces;
     }
 
-  private:
     Token const *whileToken = nullptr;
+
+  private:
     Expression *condition = nullptr;
     BlockStatement *blockStatement = nullptr;
     friend class Parser;
@@ -630,8 +634,9 @@ class ForLoopStatement : public Statement
     Statement *GetUpdate() { return update; }
     Statement *GetInit() { return init; }
 
-  private:
     Token const *forToken = nullptr;
+
+  private:
     Expression *condition = nullptr;
     Statement *init = nullptr;
     Statement *update = nullptr;
@@ -654,8 +659,9 @@ class RetStatement : public Statement
         return ces;
     }
 
-  private:
     Token const *retToken = nullptr;
+
+  private:
     class Expression *expression = nullptr;
     friend class Parser;
     friend class SemanticAnalyzer;

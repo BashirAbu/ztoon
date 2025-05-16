@@ -26,6 +26,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
@@ -481,6 +482,9 @@ void CodeGen::Compile(Project &project, bool printIR)
         project.targetArch = LLVM_HOST_TRIPLE;
     }
     module->setTargetTriple(project.targetArch);
+    module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
+    module->addModuleFlag(llvm::Module::Warning, "Debug Info Version",
+                          llvm::DEBUG_METADATA_VERSION);
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
     irBuilder = std::make_unique<llvm::IRBuilder<>>(*ctx);
     debugInfo = gZtoonArena.Allocate<DebugInfo>(this);
@@ -555,6 +559,7 @@ void CodeGen::Compile(Project &project, bool printIR)
                                module->getTargetTriple()));
     }
     llvm::TargetOptions targetOpts;
+    targetOpts.DebuggerTuning = llvm::DebuggerKind::Default;
     std::optional<llvm::Reloc::Model> relocModel = llvm::Reloc::Model::PIC_;
     llvm::TargetMachine *targetMachine = target->createTargetMachine(
         module->getTargetTriple(), "generic", "", targetOpts, relocModel);
@@ -1567,6 +1572,8 @@ void CodeGen::GenGlobalVariableIR(VarDeclStatement *varDeclStatement)
             varDeclStatement->GetCodeErrString()));
     irVariable->irType = varDeclType;
     AddIRSymbol(irVariable);
+
+    debugInfo->GenVarDeclStatementDI(varDeclStatement, irVariable, true);
 }
 void CodeGen::GenPackageGlobalFuncsAndVarsIR(Package *pkg)
 {
@@ -1808,29 +1815,35 @@ void CodeGen::GenStatementIR(Statement *statement)
 {
     if (dynamic_cast<StructStatement *>(statement))
     {
-        GenStructStatementIR(dynamic_cast<StructStatement *>(statement), false,
-                             true);
+        auto structStmt = dynamic_cast<StructStatement *>(statement);
+        debugInfo->SetDebugLocation(structStmt->GetIDToken());
+        GenStructStatementIR(structStmt, false, true);
     }
     else if (dynamic_cast<EnumStatement *>(statement))
     {
         auto enumStmt = dynamic_cast<EnumStatement *>(statement);
+        debugInfo->SetDebugLocation(enumStmt->identifier);
         GenEnumStatementIR(enumStmt, true, true);
     }
     else if (dynamic_cast<UnionStatement *>(statement))
     {
         auto unionStmt = dynamic_cast<UnionStatement *>(statement);
+        debugInfo->SetDebugLocation(unionStmt->GetIDToken());
         GenUnionStatementIR(unionStmt, true, true);
     }
     else if (dynamic_cast<VarDeclStatement *>(statement))
     {
-        GenVarDeclStatementIR(dynamic_cast<VarDeclStatement *>(statement),
-                              false, true);
+        auto varDeclStmt = dynamic_cast<VarDeclStatement *>(statement);
+        debugInfo->SetDebugLocation(varDeclStmt->GetIdentifier());
+        GenVarDeclStatementIR(varDeclStmt, false, true);
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
     {
         // Need to check if ptr or variable.
         VarAssignmentStatement *varAssignmentStatement =
             dynamic_cast<VarAssignmentStatement *>(statement);
+        debugInfo->SetDebugLocation(
+            varAssignmentStatement->GetLValue()->GetFirstToken());
         GenVarAssignmentStatementIR(varAssignmentStatement);
     }
     else if (dynamic_cast<VarCompoundAssignmentStatement *>(statement))
@@ -1838,50 +1851,61 @@ void CodeGen::GenStatementIR(Statement *statement)
         VarCompoundAssignmentStatement *varComAssignStatement =
             dynamic_cast<VarCompoundAssignmentStatement *>(statement);
 
+        debugInfo->SetDebugLocation(
+            varComAssignStatement->GetLValue()->GetFirstToken());
         GenVarCompundAssignmentStatementIR(varComAssignStatement);
     }
     else if (dynamic_cast<ExpressionStatement *>(statement))
     {
         ExpressionStatement *exprStatement =
             dynamic_cast<ExpressionStatement *>(statement);
+        debugInfo->SetDebugLocation(
+            exprStatement->GetExpression()->GetFirstToken());
         GenExpressionStatementIR(exprStatement);
     }
     else if (dynamic_cast<BlockStatement *>(statement))
     {
         BlockStatement *blockStatement =
             dynamic_cast<BlockStatement *>(statement);
+        debugInfo->SetDebugLocation(blockStatement->GetFirstToken());
         GenBlockStatementIR(blockStatement);
     }
     else if (dynamic_cast<IfStatement *>(statement))
     {
         IfStatement *ifStatement = dynamic_cast<IfStatement *>(statement);
+        debugInfo->SetDebugLocation(ifStatement->ifToken);
         GenIfStatementIR(ifStatement);
     }
     else if (dynamic_cast<WhileLoopStatement *>(statement))
     {
         WhileLoopStatement *whileStatement =
             dynamic_cast<WhileLoopStatement *>(statement);
+        debugInfo->SetDebugLocation(whileStatement->whileToken);
         GenWhileLoopStatementIR(whileStatement);
     }
     else if (dynamic_cast<ForLoopStatement *>(statement))
     {
         ForLoopStatement *forLoopStatement =
             dynamic_cast<ForLoopStatement *>(statement);
+        debugInfo->SetDebugLocation(forLoopStatement->forToken);
         GenForLoopStatementIR(forLoopStatement);
     }
     else if (dynamic_cast<BreakStatement *>(statement))
     {
         auto bStmt = dynamic_cast<BreakStatement *>(statement);
+        debugInfo->SetDebugLocation(bStmt->token);
         GenBreakStatementIR(bStmt);
     }
     else if (dynamic_cast<ContinueStatement *>(statement))
     {
         auto cStmt = dynamic_cast<ContinueStatement *>(statement);
+        debugInfo->SetDebugLocation(cStmt->token);
         GenContinueStatementIR(cStmt);
     }
     else if (dynamic_cast<RetStatement *>(statement))
     {
         auto *retStmt = dynamic_cast<RetStatement *>(statement);
+        debugInfo->SetDebugLocation(retStmt->retToken);
         GenRetStatementIR(retStmt);
     }
 }
@@ -1938,7 +1962,7 @@ void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
 
         AddIRSymbol(irFunc);
 
-        debugInfo->GenFnStatementDI(fnStmt, irFunc);
+        debugInfo->GenFnStatementDI(fnStmt, nullptr, irFunc);
     }
     else if (genBody)
     {
@@ -2052,6 +2076,8 @@ void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
             semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
         irVariable->irType = varDeclType;
         AddIRSymbol(irVariable);
+
+        debugInfo->GenVarDeclStatementDI(varDeclStmt, irVariable, false);
     }
     if (genBody)
     {
@@ -2603,7 +2629,7 @@ IRValue CodeGen::GenFnExpressionIR(FnExpression *fnExpr, bool isWrite)
     irFunc->fullName = fpName;
 
     AddIRSymbol(irFunc);
-
+    debugInfo->GenFnStatementDI(nullptr, fnExpr, irFunc);
     // Go out of current block, save it then set it back;
     llvm::BasicBlock *tempBB = irBuilder->GetInsertBlock();
     llvm::BasicBlock *fnBB = llvm::BasicBlock::Create(
@@ -3646,59 +3672,69 @@ IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
     if (dynamic_cast<FnExpression *>(expression))
     {
         auto *fnExpr = dynamic_cast<FnExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenFnExpressionIR(fnExpr, isWrite);
     }
     else if (dynamic_cast<FnCallExpression *>(expression))
     {
         auto *fnCallExpr = dynamic_cast<FnCallExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenFnCallExpressionIR(fnCallExpr, isWrite);
     }
     else if (dynamic_cast<MemberAccessExpression *>(expression))
     {
         MemberAccessExpression *maExpr =
             dynamic_cast<MemberAccessExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenMemberAccessExpressionIR(maExpr, isWrite);
     }
     else if (dynamic_cast<SubscriptExpression *>(expression))
     {
         SubscriptExpression *subExpr =
             dynamic_cast<SubscriptExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenSubScriptExpressionIR(subExpr, isWrite);
     }
     else if (dynamic_cast<TernaryExpression *>(expression))
     {
         TernaryExpression *ternaryExpr =
             dynamic_cast<TernaryExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenTernaryExpressionIR(ternaryExpr, isWrite);
     }
     else if (dynamic_cast<BinaryExpression *>(expression))
     {
         BinaryExpression *binaryExpression =
             dynamic_cast<BinaryExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenBinaryExpressionIR(binaryExpression, isWrite);
     }
     else if (dynamic_cast<UnaryExpression *>(expression))
     {
         UnaryExpression *unaryExpression =
             dynamic_cast<UnaryExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenUnaryExpressionIR(unaryExpression, isWrite);
     }
     else if (dynamic_cast<GroupingExpression *>(expression))
     {
         GroupingExpression *groupingExpression =
             dynamic_cast<GroupingExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenGroupingExpressionIR(groupingExpression, isWrite);
     }
     else if (dynamic_cast<CastExpression *>(expression))
     {
         CastExpression *castExpression =
             dynamic_cast<CastExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenCastExpressionIR(castExpression, isWrite);
     }
     else if (dynamic_cast<PrimaryExpression *>(expression))
     {
         PrimaryExpression *primaryExpression =
             dynamic_cast<PrimaryExpression *>(expression);
+        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenPrimaryExpressionIR(primaryExpression, isWrite);
     }
     else

@@ -482,7 +482,6 @@ void CodeGen::Compile(Project &project, bool printIR)
         project.targetArch = LLVM_HOST_TRIPLE;
     }
     module->setTargetTriple(project.targetArch);
-    module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
     module->addModuleFlag(llvm::Module::Warning, "Debug Info Version",
                           llvm::DEBUG_METADATA_VERSION);
     moduleDataLayout = std::make_unique<llvm::DataLayout>(module.get());
@@ -494,6 +493,7 @@ void CodeGen::Compile(Project &project, bool printIR)
     if (triple.isOSWindows())
     {
         project.platform = Project::Platform::WINDOWS;
+        module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
     }
     else if (triple.isOSLinux())
     {
@@ -1312,7 +1312,7 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
     semanticAnalyzer.currentPackage = pkg;
     semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
 
-    debugInfo->GetCU(pkg);
+    debugInfo->SetScope(semanticAnalyzer.currentScope, true);
 
     std::function<void(StructDataType *)> genStructIR = nullptr;
     std::function<void(UnionDataType *)> genUnionIR = nullptr;
@@ -1427,6 +1427,7 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
             genStructIR(structZtoonType);
             auto temp = semanticAnalyzer.currentScope;
             semanticAnalyzer.currentScope = structZtoonType->scope;
+            debugInfo->SetScope(semanticAnalyzer.currentScope);
             for (auto method : structStmt->GetMethods())
             {
                 if (method->GetGeneric())
@@ -1437,6 +1438,7 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
                 GenFnStatementIR(fnStmt, true, false);
             }
             semanticAnalyzer.currentScope = temp;
+            debugInfo->SetScope(semanticAnalyzer.currentScope);
         }
         else if (dynamic_cast<UnionStatement *>(stmt))
         {
@@ -1580,6 +1582,7 @@ void CodeGen::GenPackageGlobalFuncsAndVarsIR(Package *pkg)
     semanticAnalyzer.currentPackage = pkg;
     semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
 
+    debugInfo->SetScope(semanticAnalyzer.currentScope, true);
     for (auto stmt : pkg->GetStatements())
     {
         if (dynamic_cast<VarDeclStatement *>(stmt))
@@ -1635,6 +1638,7 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
 {
     semanticAnalyzer.currentPackage = pkg;
     semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
+    debugInfo->SetScope(semanticAnalyzer.currentScope, true);
     for (auto stmt : pkg->GetStatements())
     {
         if (dynamic_cast<FnStatement *>(stmt))
@@ -1653,6 +1657,10 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
 
             IRFunction *irFunc = dynamic_cast<IRFunction *>(
                 GetIRSymbol(fnStmt->GetIdentifier()->GetLexeme()));
+
+            auto tempBlockStmt = semanticAnalyzer.currentBlockStatement;
+            semanticAnalyzer.currentBlockStatement =
+                fnStmt->GetBlockStatement();
             if (!fnStmt->IsPrototype())
             {
                 llvm::BasicBlock *fnBB = llvm::BasicBlock::Create(
@@ -1665,6 +1673,7 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 semanticAnalyzer.currentScope =
                     semanticAnalyzer
                         .blockToScopeMap[fnStmt->GetBlockStatement()];
+                debugInfo->SetScope(semanticAnalyzer.currentScope);
                 for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
                 {
                     auto temp = semanticAnalyzer.currentScope;
@@ -1681,9 +1690,12 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 for (auto varDecl : semanticAnalyzer.fnToVarDeclsMap[fn])
                 {
                     auto temp = semanticAnalyzer.currentScope;
+
                     semanticAnalyzer.currentScope = varDecl.currentScope;
+                    debugInfo->SetScope(semanticAnalyzer.currentScope);
                     GenVarDeclStatementIR(varDecl.varDecl, true, false);
                     semanticAnalyzer.currentScope = temp;
+                    debugInfo->SetScope(semanticAnalyzer.currentScope);
                 }
 
                 for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
@@ -1718,7 +1730,9 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 }
 
                 semanticAnalyzer.currentScope = tempScope;
+                debugInfo->SetScope(semanticAnalyzer.currentScope);
             }
+            semanticAnalyzer.currentBlockStatement = tempBlockStmt;
         }
         else if (dynamic_cast<StructStatement *>(stmt))
         {
@@ -1731,6 +1745,7 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 semanticAnalyzer.stmtToDataTypeMap[structStmt]);
             auto tempScope = semanticAnalyzer.currentScope;
             semanticAnalyzer.currentScope = structZtoonType->scope;
+            debugInfo->SetScope(semanticAnalyzer.currentScope);
             for (auto method : structStmt->GetMethods())
             {
 
@@ -1759,7 +1774,7 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 semanticAnalyzer.currentScope =
                     semanticAnalyzer
                         .blockToScopeMap[fnStmt->GetBlockStatement()];
-
+                debugInfo->SetScope(semanticAnalyzer.currentScope);
                 for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
                 {
                     GenVarDeclStatementIR(paramStmt, true, false);
@@ -1769,8 +1784,10 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 {
                     auto temp = semanticAnalyzer.currentScope;
                     semanticAnalyzer.currentScope = varDecl.currentScope;
+                    debugInfo->SetScope(semanticAnalyzer.currentScope);
                     GenVarDeclStatementIR(varDecl.varDecl, true, false);
                     semanticAnalyzer.currentScope = temp;
+                    debugInfo->SetScope(semanticAnalyzer.currentScope);
                 }
 
                 for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
@@ -1805,8 +1822,10 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 }
 
                 semanticAnalyzer.currentScope = tempScope;
+                debugInfo->SetScope(semanticAnalyzer.currentScope);
             }
             semanticAnalyzer.currentScope = tempScope;
+            debugInfo->SetScope(semanticAnalyzer.currentScope);
         }
     }
 }
@@ -1916,15 +1935,17 @@ void CodeGen::GenBlockStatementIR(BlockStatement *blockStmt)
     BlockStatement *tempBlock = semanticAnalyzer.currentBlockStatement;
     semanticAnalyzer.currentBlockStatement = blockStmt;
     semanticAnalyzer.currentScope = semanticAnalyzer.blockToScopeMap[blockStmt];
-    debugInfo->GenBlockStatementDI(semanticAnalyzer.currentBlockStatement);
+    debugInfo->SetScope(
+        semanticAnalyzer
+            .currentScope); // debugInfo->GenBlockStatementDI(semanticAnalyzer.currentBlockStatement);
     for (Statement *s : blockStmt->GetStatements())
     {
         GenStatementIR(s);
     }
 
     semanticAnalyzer.currentScope = temp;
+    debugInfo->SetScope(semanticAnalyzer.currentScope);
     semanticAnalyzer.currentBlockStatement = tempBlock;
-    debugInfo->GenBlockStatementDI(semanticAnalyzer.currentBlockStatement);
 }
 void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
                                bool genBody)
@@ -1986,6 +2007,7 @@ void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
         semanticAnalyzer.currentScope =
             semanticAnalyzer.blockToScopeMap[fnStmt->GetBlockStatement()];
 
+        debugInfo->SetScope(semanticAnalyzer.currentScope);
         for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
         {
             auto temp = semanticAnalyzer.currentScope;
@@ -2004,8 +2026,10 @@ void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
         {
             auto temp = semanticAnalyzer.currentScope;
             semanticAnalyzer.currentScope = varDecl.currentScope;
+            debugInfo->SetScope(semanticAnalyzer.currentScope);
             GenVarDeclStatementIR(varDecl.varDecl, true, false);
             semanticAnalyzer.currentScope = temp;
+            debugInfo->SetScope(semanticAnalyzer.currentScope);
         }
 
         for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
@@ -2038,6 +2062,7 @@ void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
         }
         irBuilder->SetInsertPoint(tempBB);
         semanticAnalyzer.currentScope = tempScope;
+        debugInfo->SetScope(semanticAnalyzer.currentScope);
     }
 }
 void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
@@ -2320,6 +2345,7 @@ void CodeGen::GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
         semanticAnalyzer.stmtToDataTypeMap[structStmt]);
     auto temp = semanticAnalyzer.currentScope;
     semanticAnalyzer.currentScope = structZtoonType->scope;
+    debugInfo->SetScope(semanticAnalyzer.currentScope);
     if (genSymbol)
     {
         for (auto method : structStmt->GetMethods())
@@ -2348,6 +2374,7 @@ void CodeGen::GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
     }
 
     semanticAnalyzer.currentScope = temp;
+    debugInfo->SetScope(semanticAnalyzer.currentScope);
 }
 void CodeGen::GenUnionStatementIR(UnionStatement *unionStmt, bool genSymbol,
                                   bool genBody)
@@ -2371,6 +2398,7 @@ void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
     bool useSigned = enumType->datatype->IsSigned();
     auto temp = semanticAnalyzer.currentScope;
     semanticAnalyzer.currentScope = enumType->scope;
+    debugInfo->SetScope(semanticAnalyzer.currentScope);
     for (auto f : enumStmt->fields)
     {
 
@@ -2428,6 +2456,7 @@ void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
         AddIRSymbol(irReadonlySymbol);
     }
     semanticAnalyzer.currentScope = temp;
+    debugInfo->SetScope(semanticAnalyzer.currentScope);
 }
 void CodeGen::GenRetStatementIR(RetStatement *retStmt)
 {
@@ -2640,11 +2669,11 @@ IRValue CodeGen::GenFnExpressionIR(FnExpression *fnExpr, bool isWrite)
     auto tempScope = semanticAnalyzer.currentScope;
     semanticAnalyzer.currentScope =
         semanticAnalyzer.blockToScopeMap[fnExpr->GetBlockStatement()];
+    debugInfo->SetScope(semanticAnalyzer.currentScope);
     size_t index = 0;
 
     for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
     {
-        auto temp = semanticAnalyzer.currentScope;
         if (aggType.structStmt)
         {
             GenStructStatementIR(aggType.structStmt, true, false);
@@ -2659,8 +2688,10 @@ IRValue CodeGen::GenFnExpressionIR(FnExpression *fnExpr, bool isWrite)
     {
         auto temp = semanticAnalyzer.currentScope;
         semanticAnalyzer.currentScope = varDecl.currentScope;
+        debugInfo->SetScope(semanticAnalyzer.currentScope);
         GenVarDeclStatementIR(varDecl.varDecl, true, false);
         semanticAnalyzer.currentScope = temp;
+        debugInfo->SetScope(semanticAnalyzer.currentScope);
     }
 
     for (VarDeclStatement *paramStmt : fnExpr->GetParameters())
@@ -2691,6 +2722,7 @@ IRValue CodeGen::GenFnExpressionIR(FnExpression *fnExpr, bool isWrite)
         }
     }
     semanticAnalyzer.currentScope = tempScope;
+    debugInfo->SetScope(semanticAnalyzer.currentScope);
     irBuilder->SetInsertPoint(tempBB);
     IRValue irValue;
     irValue.value = irFunc->GetValue();
@@ -3432,8 +3464,10 @@ IRValue CodeGen::GenMemberAccessExpressionIR(MemberAccessExpression *maExpr,
         {
             auto temp = semanticAnalyzer.currentScope;
             semanticAnalyzer.currentScope = structType->scope;
+            debugInfo->SetScope(semanticAnalyzer.currentScope);
             irValue = GenExpressionIR(maExpr->GetRightExpression());
             semanticAnalyzer.currentScope = temp;
+            debugInfo->SetScope(semanticAnalyzer.currentScope);
         }
     }
     else if (maExpr->accessType == MemberAccessExpression::AccessType::UNION)
@@ -3490,9 +3524,11 @@ IRValue CodeGen::GenMemberAccessExpressionIR(MemberAccessExpression *maExpr,
         semanticAnalyzer.currentScope =
             semanticAnalyzer.pkgToScopeMap[pgkType->pkg];
 
+        debugInfo->SetScope(semanticAnalyzer.currentScope);
         irValue = GenExpressionIR(maExpr->GetRightExpression());
 
         semanticAnalyzer.currentScope = temp;
+        debugInfo->SetScope(semanticAnalyzer.currentScope);
     }
 
     return irValue;

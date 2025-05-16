@@ -21,5 +21,6 @@ fn main() -> i32 {
         a = a + b;
         b++;
     }
+    say_msg("hi");
     ret (a == 10) as i32;
 }

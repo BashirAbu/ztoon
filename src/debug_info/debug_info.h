@@ -19,18 +19,18 @@ class DebugInfo
                           IRFunction *irFunc);
     void GenVarDeclStatementDI(VarDeclStatement *varStmt,
                                IRVariable *irVariable, bool isGlobal);
-    void GenBlockStatementDI(BlockStatement *blockStmt);
+    void SetScope(Scope *scope, bool isPkg = false);
     void SetDebugLocation(Token const *token);
+
+    llvm::DIScope *currentScope = nullptr;
 
   private:
     llvm::DIType *ZtoonTypeToDIType(DataType *type);
-
-    llvm::DIScope *currentScope = nullptr;
 
     CodeGen *codeGen = nullptr;
     std::unique_ptr<llvm::DIBuilder> diBuilder;
     std::unordered_map<Package *, llvm::DICompileUnit *> pkgToCompUnit;
     std::unordered_map<std::string, llvm::DIFile *> filepathToDIFile;
     std::unordered_map<std::string, llvm::DIType *> ztoonTypeToDITypeMap;
-    std::unordered_map<BlockStatement *, llvm::DIScope *> blockStmtToDIScopeMap;
+    std::unordered_map<Scope *, llvm::DIScope *> scopeToDIScopeMap;
 };

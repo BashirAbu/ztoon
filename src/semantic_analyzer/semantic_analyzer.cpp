@@ -909,7 +909,8 @@ DataType *Scope::GetDataType(DataTypeToken *dataTypeToken)
 }
 
 Scope::Scope(SemanticAnalyzer *semanticAnalyzer, std::string name,
-             Scope *parent)
+             SourceLocation location, Scope *parent)
+    : location(location)
 {
     if (parent)
     {
@@ -1435,8 +1436,12 @@ void SemanticAnalyzer::AnalyzePackage(Package *pkg, bool analyzeTypes,
         pkgType->pkg = pkg;
 
         currentScope = gZtoonArena.Allocate<Scope>(
-            this, std::format("{}_{}", pkg->GetIdentifier()->GetLexeme(),
-                              (size_t)pkg));
+            this,
+            std::format("{}_{}", pkg->GetIdentifier()->GetLexeme(),
+                        (size_t)pkg),
+            (SourceLocation){pkg->GetIdentifier()->GetFilepath(),
+                             (uint32_t)pkg->GetIdentifier()->GetLineNumber(),
+                             (uint32_t)pkg->GetIdentifier()->GetColNumber()});
         pkgToScopeMap[pkg] = currentScope;
 
         CodeErrString ces;
@@ -1563,6 +1568,8 @@ void SemanticAnalyzer::PreAnalyzeStatement(Statement *statement, size_t index)
     if (dynamic_cast<ForLoopStatement *>(statement))
     {
         BlockStatement *blockStatement = gZtoonArena.Allocate<BlockStatement>();
+        blockStatement->firstToken =
+            dynamic_cast<ForLoopStatement *>(statement)->forToken;
         blockStatement->statements.push_back(statement);
         currentPackage->statements.at(index) = blockStatement;
     }
@@ -1684,6 +1691,10 @@ void SemanticAnalyzer::AnalyzeBlockStatement(BlockStatement *blockStmt)
     {
         scope = gZtoonArena.Allocate<Scope>(
             this, std::format("block_statement_{}", (size_t)blockStmt),
+            (SourceLocation){
+                blockStmt->GetFirstToken()->GetFilepath(),
+                (uint32_t)blockStmt->GetFirstToken()->GetLineNumber(),
+                (uint32_t)blockStmt->GetFirstToken()->GetColNumber()},
             currentScope);
         blockToScopeMap[blockStmt] = scope;
     }
@@ -1699,6 +1710,7 @@ void SemanticAnalyzer::AnalyzeBlockStatement(BlockStatement *blockStmt)
     BlockStatementLeaf *tempBlock = currentBlockLeaf;
 
     BlockStatementLeaf *newBlock = gZtoonArena.Allocate<BlockStatementLeaf>();
+
     newBlock->blockStmt = blockStmt;
     newBlock->parent = currentBlockLeaf;
 
@@ -1753,6 +1765,7 @@ void SemanticAnalyzer::AnalyzeBlockStatement(BlockStatement *blockStmt)
                                 deferredStatementsMap[currentLeaf][index];
                             BlockStatement *newBlock =
                                 gZtoonArena.Allocate<BlockStatement>();
+                            newBlock->firstToken = blockStmt->firstToken;
                             newBlock->GetStatements().push_back(stmt);
                             blockStmt->statements.insert(
                                 blockStmt->statements.begin() + (int64_t)i,
@@ -1849,6 +1862,10 @@ void SemanticAnalyzer::AnalyzeFnStatement(FnStatement *fnStmt, bool isGlobal,
                     ? ""
                     : std::format("{}_{}", fnStmt->GetIdentifier()->GetLexeme(),
                                   (size_t)fnStmt),
+                (SourceLocation){
+                    fnStmt->GetIdentifier()->GetFilepath(),
+                    (uint32_t)fnStmt->GetIdentifier()->GetLineNumber(),
+                    (uint32_t)fnStmt->GetIdentifier()->GetColNumber()},
                 nullptr);
 
             currentScope->parent = tempScope;
@@ -2334,8 +2351,11 @@ void SemanticAnalyzer::AnalyzeSwitchStatement(SwitchStatement *switchStmt)
     bool first = true;
 
     auto tokenEQEQ = gZtoonArena.Allocate<Token>(TokenType::EQUAL_EQUAL);
+    *tokenEQEQ = *switchStmt->token;
+    tokenEQEQ->type = TokenType::EQUAL_EQUAL;
     tokenEQEQ->lexeme = "==";
     auto tokenOR = gZtoonArena.Allocate<Token>(TokenType::OR);
+    tokenEQEQ->type = TokenType::OR;
     tokenOR->lexeme = "||";
     for (auto c : switchStmt->GetCases())
     {
@@ -2547,6 +2567,10 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
         Scope *scope = gZtoonArena.Allocate<Scope>(
             this,
             std::format("{}_{}", structType->GetName(), (size_t)structType),
+            (SourceLocation){
+                structStmt->GetIDToken()->GetFilepath(),
+                (uint32_t)structStmt->GetIDToken()->GetLineNumber(),
+                (uint32_t)structStmt->GetIDToken()->GetColNumber()},
             currentScope);
         structType->scope = scope;
     }
@@ -2575,10 +2599,14 @@ void SemanticAnalyzer::AnalyzeStructStatement(StructStatement *structStmt,
             DataTypeToken *dataToken = gZtoonArena.Allocate<DataTypeToken>();
             auto dataTypeToken =
                 gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            *dataTypeToken = *uField->GetIDToken();
+            dataTypeToken->type = TokenType::IDENTIFIER;
             dataTypeToken->lexeme = uType->GetName();
             dataToken->dataType = dataTypeToken;
             var->dataTypeToken = dataToken;
             auto idToken = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            *idToken = *uField->GetIDToken();
+            idToken->type = TokenType::IDENTIFIER;
             idToken->lexeme = uType->GetName() + "_field";
             var->identifier = idToken;
 
@@ -2844,6 +2872,9 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
 
         Scope *scope = gZtoonArena.Allocate<Scope>(
             this, std::format("{}_{}", unionType->GetName(), (size_t)unionType),
+            (SourceLocation){unionStmt->GetIDToken()->GetFilepath(),
+                             (uint32_t)unionStmt->GetIDToken()->GetLineNumber(),
+                             (uint32_t)unionStmt->GetIDToken()->GetColNumber()},
             currentScope);
         Scope *temp = currentScope;
         currentScope = scope;
@@ -2865,13 +2896,16 @@ void SemanticAnalyzer::AnalyzeUnionStatement(UnionStatement *unionStmt,
             DataTypeToken *dataToken = gZtoonArena.Allocate<DataTypeToken>();
             auto dataTypeToken =
                 gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            *dataTypeToken = *sField->GetIDToken();
+            dataTypeToken->type = TokenType::IDENTIFIER;
             dataTypeToken->lexeme = sType->GetName();
             dataToken->dataType = dataTypeToken;
             var->dataTypeToken = dataToken;
             auto idToken = gZtoonArena.Allocate<Token>(TokenType::IDENTIFIER);
+            *idToken = *sField->GetIDToken();
+            idToken->type = TokenType::IDENTIFIER;
             idToken->lexeme = sType->GetName() + "_field";
             var->identifier = idToken;
-            // AnalyzeVarDeclStatement(var, true, true, false);
             long long loc = 0;
             for (long long i = 0; i < unionStmt->fieldsInOrder.size(); i++)
             {
@@ -3053,6 +3087,9 @@ void SemanticAnalyzer::AnalyzeEnumStatement(EnumStatement *enumStmt,
         enumType->isPublic = enumStmt->IsPublic();
         enumType->scope = gZtoonArena.Allocate<Scope>(
             this, std::format("{}_{}", enumType->GetName(), (size_t)enumType),
+            (SourceLocation){enumStmt->identifier->GetFilepath(),
+                             (uint32_t)enumStmt->identifier->GetLineNumber(),
+                             (uint32_t)enumStmt->identifier->GetColNumber()},
             currentScope);
         if (!enumType->datatype->IsInteger())
         {
@@ -3299,7 +3336,10 @@ void SemanticAnalyzer::AnalyzeFnExpression(FnExpression *fnExpr)
     auto tempScope = currentScope;
 
     currentScope = gZtoonArena.Allocate<Scope>(
-        this, std::format("{}_{}", fnExpr->GetName(), (size_t)fnExpr));
+        this, std::format("{}_{}", fnExpr->GetName(), (size_t)fnExpr),
+        (SourceLocation){fnExpr->GetFirstToken()->GetFilepath(),
+                         (uint32_t)fnExpr->GetFirstToken()->GetLineNumber(),
+                         (uint32_t)fnExpr->GetFirstToken()->GetColNumber()});
     currentScope->parent = pkgToScopeMap[currentPackage];
 
     blockToScopeMap[fnExpr->GetBlockStatement()] = currentScope;

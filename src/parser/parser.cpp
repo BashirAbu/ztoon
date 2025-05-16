@@ -717,7 +717,7 @@ Statement *Parser::ParseFnStatement(bool isMethod)
         {
             fnStmt->isPrototype = true;
             fnStmt->blockStatement = gZtoonArena.Allocate<BlockStatement>();
-
+            fnStmt->blockStatement->firstToken = Peek();
             for (Statement *s : fnStmt->parameters)
             {
                 fnStmt->blockStatement->statements.push_back(s);
@@ -1443,11 +1443,13 @@ Statement *Parser::ParseForLoopStatement()
         {
             BlockStatement *updataBlockStatement =
                 gZtoonArena.Allocate<BlockStatement>();
+            updataBlockStatement->firstToken = Peek();
             updataBlockStatement->statements.push_back(
                 forLoopStatement->update);
             forLoopStatement->update = updataBlockStatement;
         }
         BlockStatement *blockStatement = gZtoonArena.Allocate<BlockStatement>();
+        blockStatement->firstToken = Peek();
         blockStatement->statements.push_back(forLoopStatement);
 
         return blockStatement;
@@ -1806,7 +1808,7 @@ Expression *Parser::ParseFnExpression()
         {
             fnExpr->isPrototype = true;
             fnExpr->blockStatement = gZtoonArena.Allocate<BlockStatement>();
-
+            fnExpr->blockStatement->firstToken = Peek();
             for (Statement *s : fnExpr->parameters)
             {
                 fnExpr->blockStatement->statements.push_back(s);

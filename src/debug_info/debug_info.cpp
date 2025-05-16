@@ -11,6 +11,7 @@
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
+#include <cassert>
 #include <memory>
 
 llvm::DIType *DebugInfo::ZtoonTypeToDIType(DataType *type)
@@ -215,6 +216,8 @@ llvm::DICompileUnit *DebugInfo::GetCU(Package *pkg)
         pkg->GetIdentifier()->GetFilepath().generic_string();
     auto file = diBuilder->createFile(path.filename().string(),
                                       path.parent_path().generic_string());
+    filepathToDIFile[pkg->GetIdentifier()->GetFilepath().generic_string()] =
+        file;
     auto cu =
         diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C, file, "ztoon",
                                      !codeGen->project->debugBuild, "", 0);
@@ -243,7 +246,6 @@ void DebugInfo::GenFnStatementDI(FnStatement *fnStmt, FnExpression *fnExpr,
     uint32_t lineNumber = fnStmt ? fnStmt->GetIdentifier()->GetLineNumber()
                                  : fnExpr->GetFirstToken()->GetLineNumber();
     llvm::DIFile *file = GetDIFile(filepath);
-    currentScope = file;
     auto ztoonType =
         dynamic_cast<Function *>(
             codeGen->semanticAnalyzer.currentScope->GetSymbol(
@@ -253,22 +255,24 @@ void DebugInfo::GenFnStatementDI(FnStatement *fnStmt, FnExpression *fnExpr,
     auto fnType =
         llvm::dyn_cast<llvm::DISubroutineType>(ZtoonTypeToDIType(ztoonType));
     llvm::DISubprogram *sp = diBuilder->createFunction(
-        currentScope, irFunc->GetName(), irFunc->GetFullName(), file,
-        lineNumber, fnType, lineNumber, llvm::DINode::DIFlags::FlagZero,
+        file, irFunc->GetName(), irFunc->GetFullName(), file, lineNumber,
+        fnType, lineNumber, llvm::DINode::DIFlags::FlagZero,
         fnStmt->IsPrototype()
             ? llvm::DISubprogram::SPFlagZero
             : llvm::DISubprogram::DISPFlags::SPFlagDefinition);
 
     irFunc->fn->setSubprogram(sp);
-    if (!fnStmt->IsPrototype())
-    {
-        currentScope = sp;
-    }
+    // bool isPrototype = fnStmt ? fnStmt->IsPrototype() : false;
+    // if (!isPrototype)
+    // {
+    //     currentScope = sp;
+    // }
 }
 
 void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
                                       IRVariable *irVariable, bool isGlobal)
 {
+
     auto ztoonType = codeGen->semanticAnalyzer.stmtToDataTypeMap[varStmt];
     llvm::DIType *diType = ZtoonTypeToDIType(ztoonType);
     llvm::DIFile *file =
@@ -286,6 +290,10 @@ void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
     }
     else
     {
+        if (llvm::isa<llvm::DIFile>(currentScope))
+        {
+            assert(0);
+        }
         auto div = diBuilder->createAutoVariable(currentScope, name, file,
                                                  lineNumber, diType, false);
         auto var = llvm::dyn_cast<llvm::AllocaInst>(irVariable->value);
@@ -299,6 +307,11 @@ void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
 
 void DebugInfo::SetDebugLocation(Token const *token)
 {
+    if (llvm::isa<llvm::DIFile>(currentScope))
+    {
+            return;
+        assert(0);
+    }
     uint32_t lineNumber = token->GetLineNumber();
     uint32_t colNumber = token->GetColNumber();
 
@@ -306,27 +319,43 @@ void DebugInfo::SetDebugLocation(Token const *token)
                                                   colNumber, currentScope);
     codeGen->irBuilder->SetCurrentDebugLocation(loc);
 }
-void DebugInfo::GenBlockStatementDI(BlockStatement *blockStmt)
+void DebugInfo::SetScope(Scope *scope, bool isPkg)
 {
-    if (!blockStmt)
+    if (!isPkg && llvm::isa<llvm::DIFile>(currentScope))
     {
-        currentScope = GetCU(codeGen->semanticAnalyzer.currentPackage);
+        auto bb = codeGen->irBuilder->GetInsertBlock();
+        if (bb)
+        {
+            auto func = bb->getParent();
+            currentScope = func->getSubprogram();
+        }
+        else
+        {
+            return;
+        }
+    }
+    if (scopeToDIScopeMap.contains(scope))
+    {
+        currentScope = scopeToDIScopeMap[scope];
         return;
     }
-    if (blockStmtToDIScopeMap.contains(blockStmt))
+    else if (isPkg)
     {
-        currentScope = blockStmtToDIScopeMap[blockStmt];
+        GetCU(codeGen->semanticAnalyzer.currentPackage);
+        currentScope =
+            GetDIFile(scope->GetSourceLocation().filepath.generic_string());
     }
     else
     {
-        llvm::DIScope *lexicalScope = diBuilder->createLexicalBlock(
-            currentScope,
-            GetDIFile(
-                blockStmt->GetFirstToken()->GetFilepath().generic_string()),
-            blockStmt->GetFirstToken()->GetLineNumber(),
-            blockStmt->GetFirstToken()->GetColNumber());
-
-        blockStmtToDIScopeMap[blockStmt] = lexicalScope;
-        currentScope = lexicalScope;
+        if (llvm::isa<llvm::DIFile>(currentScope))
+        {
+            assert(0);
+        }
+        auto loc = scope->GetSourceLocation();
+        auto lexicalBlock = diBuilder->createLexicalBlock(
+            currentScope, GetDIFile(loc.filepath.generic_string()),
+            loc.lineNumber, loc.colNumber);
+        currentScope = lexicalBlock;
     }
+    scopeToDIScopeMap[scope] = currentScope;
 }

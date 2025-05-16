@@ -1,6 +1,7 @@
 #pragma once
 #include "lexer/lexer.h"
 #include "parser/parser.h"
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 class DataType
@@ -271,11 +272,18 @@ class Function : public Symbol
     friend class Scope;
 };
 
+struct SourceLocation
+{
+    std::filesystem::path filepath;
+    uint32_t lineNumber;
+    uint32_t colNumber;
+};
+
 class Scope
 {
   public:
     Scope(class SemanticAnalyzer *semanticAnalyzer, std::string name,
-          Scope *parent = nullptr);
+          SourceLocation location, Scope *parent = nullptr);
     Symbol *GetSymbol(std::string name, CodeErrString codeErrString,
                       bool check = false);
     void AddSymbol(Symbol *symbol, CodeErrString codeErrString);
@@ -283,6 +291,8 @@ class Scope
     Scope const *GetParent() const { return parent; }
 
     DataType *GetDataType(DataTypeToken *dataTypeToken);
+
+    SourceLocation GetSourceLocation() { return location; }
 
   private:
     std::string name;
@@ -292,6 +302,9 @@ class Scope
     bool lookUpParent = true;
     std::unordered_map<std::string, Symbol *> symbolsMap;
     std::unordered_map<std::string, DataType *> datatypesMap;
+
+    SourceLocation location;
+
     class SemanticAnalyzer *semanticAnalyzer;
     friend class SemanticAnalyzer;
     friend class CodeGen;

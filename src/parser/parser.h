@@ -309,7 +309,7 @@ class StructStatement : public Statement
 
     bool IsPublic() { return (bool)pub; };
 
-    Token const *GetIDToken() { return identifier; }
+    Token const *GetIDToken() { return identifier ? identifier : token; }
 
   private:
     Token const *pub = nullptr;

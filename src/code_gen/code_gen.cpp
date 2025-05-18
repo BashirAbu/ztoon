@@ -1312,10 +1312,6 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
     semanticAnalyzer.currentPackage = pkg;
     semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
 
-    debugInfo->GetCU(pkg);
-    debugInfo->currentScope = debugInfo->GetDIFile(
-        pkg->GetIdentifier()->GetFilepath().generic_string());
-
     std::function<void(StructDataType *)> genStructIR = nullptr;
     std::function<void(UnionDataType *)> genUnionIR = nullptr;
 
@@ -2031,7 +2027,7 @@ void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
 {
     if (genSymbol)
     {
-        debugInfo->SetDebugLoc(varDeclStmt->GetIdentifier());
+        // debugInfo->SetDebugLoc(varDeclStmt->GetIdentifier());
         UnionDataType *unionType = dynamic_cast<UnionDataType *>(
             semanticAnalyzer.stmtToDataTypeMap[varDeclStmt]);
         if (unionType)
@@ -2073,7 +2069,7 @@ void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
         StructDataType *structType = dynamic_cast<StructDataType *>(type);
         auto varDeclType = ZtoonTypeToLLVMType(type);
         IRVariable *irVariable = dynamic_cast<IRVariable *>(irSymbol);
-        debugInfo->SetDebugLoc(varDeclStmt->GetIdentifier());
+        // debugInfo->SetDebugLoc(varDeclStmt->GetIdentifier());
         if (varDeclStmt->GetExpression())
         {
             if (arrType)
@@ -2417,7 +2413,7 @@ void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
 }
 void CodeGen::GenRetStatementIR(RetStatement *retStmt)
 {
-    debugInfo->SetDebugLoc(retStmt->retToken);
+    // debugInfo->SetDebugLoc(retStmt->retToken);
     if (auto t = irBuilder->GetInsertBlock()->getTerminator())
     {
         if (llvm::isa<llvm::ReturnInst>(t))
@@ -3273,7 +3269,7 @@ IRValue CodeGen::GenUnaryExpressionIR(UnaryExpression *unaryExpr, bool isWrite)
 IRValue CodeGen::GenFnCallExpressionIR(FnCallExpression *fnCallExpr,
                                        bool isWrite)
 {
-    debugInfo->SetDebugLoc(fnCallExpr->GetFirstToken());
+    // debugInfo->SetDebugLoc(fnCallExpr->GetFirstToken());
     IRValue exprValue = GenExpressionIR(fnCallExpr->GetGetExpression());
 
     auto fnPtrType = dynamic_cast<PointerDataType *>(
@@ -3655,7 +3651,7 @@ IRValue CodeGen::GenPrimaryExpressionIR(PrimaryExpression *primaryExpr,
 }
 IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
 {
-    debugInfo->SetDebugLoc(expression->GetFirstToken());
+    // debugInfo->SetDebugLoc(expression->GetFirstToken());
     IRValue irValue = {};
     if (dynamic_cast<FnExpression *>(expression))
     {

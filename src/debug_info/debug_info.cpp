@@ -163,7 +163,8 @@ llvm::DIType *DebugInfo::ZtoonTypeToDIType(DataType *type)
     case DataType::Type::ENUM:
     {
         auto enumType = dynamic_cast<EnumDataType *>(type);
-        diType = ZtoonTypeToDIType(enumType->GetDataType());
+        auto derivedType = enumType->datatype;
+        diType = ZtoonTypeToDIType(derivedType);
     }
     break;
     case DataType::Type::UNION:
@@ -224,29 +225,19 @@ DebugInfo::DebugInfo(CodeGen *codeGen)
 {
     this->codeGen = codeGen;
     diBuilder = std::make_unique<llvm::DIBuilder>(*codeGen->module);
+
+    auto zPath = codeGen->project->relativePathToWorkSpace / "ztoon.yaml";
+
+    auto file = diBuilder->createFile(zPath.filename().string(),
+                                      zPath.parent_path().generic_string());
+    auto cu =
+        diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C, file, "ztoon",
+                                     !codeGen->project->debugBuild, "", 0);
+    currentScope = file;
 }
 DebugInfo::~DebugInfo() {}
 
 void DebugInfo::Finalize() { diBuilder->finalize(); }
-
-llvm::DICompileUnit *DebugInfo::GetCU(Package *pkg)
-{
-    if (pkgToCompUnit.contains(pkg))
-    {
-        return pkgToCompUnit[pkg];
-    }
-    std::filesystem::path path =
-        pkg->GetIdentifier()->GetFilepath().generic_string();
-    auto file = diBuilder->createFile(path.filename().string(),
-                                      path.parent_path().generic_string());
-    filepathToDIFile[pkg->GetIdentifier()->GetFilepath().generic_string()] =
-        file;
-    auto cu =
-        diBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C, file, "ztoon",
-                                     !codeGen->project->debugBuild, "", 0);
-    pkgToCompUnit[pkg] = cu;
-    return cu;
-}
 
 llvm::DIFile *DebugInfo::GetDIFile(std::string filepath)
 {
@@ -277,12 +268,13 @@ void DebugInfo::GenFnStatementDI(FnStatement *fnStmt, FnExpression *fnExpr,
             ->GetFnDataTypeFromFnPTR();
     auto fnType =
         llvm::dyn_cast<llvm::DISubroutineType>(ZtoonTypeToDIType(ztoonType));
+    bool flagZero = (fnStmt && !fnExpr && fnStmt->IsPrototype());
+
     llvm::DISubprogram *sp = diBuilder->createFunction(
         file, irFunc->GetName(), irFunc->GetFullName(), file, lineNumber,
         fnType, lineNumber, llvm::DINode::DIFlags::FlagZero,
-        fnStmt->IsPrototype()
-            ? llvm::DISubprogram::SPFlagZero
-            : llvm::DISubprogram::DISPFlags::SPFlagDefinition);
+        flagZero ? llvm::DISubprogram::SPFlagZero
+                 : llvm::DISubprogram::DISPFlags::SPFlagDefinition);
     irFunc->fn->setSubprogram(sp);
 }
 

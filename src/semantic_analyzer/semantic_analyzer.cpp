@@ -2355,7 +2355,7 @@ void SemanticAnalyzer::AnalyzeSwitchStatement(SwitchStatement *switchStmt)
     tokenEQEQ->type = TokenType::EQUAL_EQUAL;
     tokenEQEQ->lexeme = "==";
     auto tokenOR = gZtoonArena.Allocate<Token>(TokenType::OR);
-    tokenEQEQ->type = TokenType::OR;
+    tokenOR->type = TokenType::OR;
     tokenOR->lexeme = "||";
     for (auto c : switchStmt->GetCases())
     {
@@ -3599,6 +3599,8 @@ void SemanticAnalyzer::AnalyzeBinaryExpression(BinaryExpression *binaryExpr)
     {
         if (left->type != DataType::Type::BOOL)
         {
+            std::string leftStr = binaryExpr->left->GetCodeErrString().str;
+            std::string rightStr = binaryExpr->right->GetCodeErrString().str;
             ReportError(
                 std::format("Left expression of '{}' must be boolean type",
                             binaryExpr->op->GetLexeme()),

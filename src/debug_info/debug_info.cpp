@@ -2,6 +2,7 @@
 #include "parser/parser.h"
 #include "semantic_analyzer/semantic_analyzer.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -119,9 +120,30 @@ llvm::DIType *DebugInfo::ZtoonTypeToDIType(DataType *type)
             codeGen->ZtoonTypeToLLVMType(type).type);
         std::vector<llvm::Metadata *> fields;
         auto ztoonStructType = dynamic_cast<StructDataType *>(type);
+        uint32_t index = 0;
+        uint64_t offset = 0;
         for (auto field : ztoonStructType->fields)
         {
-            fields.push_back(ZtoonTypeToDIType(field));
+            auto memeberType = ZtoonTypeToDIType(field);
+            auto file = GetDIFile(ztoonStructType->structStmt->GetIDToken()
+                                      ->GetFilepath()
+                                      .generic_string());
+            auto token = ztoonStructType->structStmt->GetFields()[index]
+                             ->GetIdentifier();
+            uint32_t lineNumber = token->GetLineNumber();
+            std::string fName = token->GetLexeme();
+            auto irFieldType = codeGen->ZtoonTypeToLLVMType(field).type;
+            uint32_t fieldSize =
+                codeGen->moduleDataLayout->getTypeSizeInBits(irFieldType);
+            uint32_t fAlign =
+                codeGen->moduleDataLayout->getABITypeAlign(irFieldType)
+                    .value() *
+                8;
+            fields.push_back(diBuilder->createMemberType(
+                file, fName, file, lineNumber, fieldSize, fAlign, offset,
+                llvm::DINode::FlagZero, memeberType));
+            offset += fieldSize;
+            index++;
         }
         size_t sizeInBits =
             codeGen->moduleDataLayout->getTypeSizeInBits(irStructType);
@@ -132,7 +154,8 @@ llvm::DIType *DebugInfo::ZtoonTypeToDIType(DataType *type)
                           .generic_string()),
             ztoonStructType->structStmt->GetIDToken()->GetLineNumber(),
             sizeInBits,
-            codeGen->moduleDataLayout->getABITypeAlign(irStructType).value(),
+            codeGen->moduleDataLayout->getABITypeAlign(irStructType).value() *
+                8,
             llvm::DINode::DIFlags::FlagLittleEndian, nullptr,
             diBuilder->getOrCreateArray(fields));
     }
@@ -167,7 +190,7 @@ llvm::DIType *DebugInfo::ZtoonTypeToDIType(DataType *type)
             codeGen->moduleDataLayout->getTypeSizeInBits(irArrayType.type);
         llvm::Align align =
             codeGen->moduleDataLayout->getABITypeAlign(irArrayType.type);
-        uint32_t alignment = align.value();
+        uint32_t alignment = align.value() * 8;
         diType = diBuilder->createArrayType(
             size, alignment, ZtoonTypeToDIType(arrayType->dataType),
             diBuilder->getOrCreateArray(
@@ -260,13 +283,7 @@ void DebugInfo::GenFnStatementDI(FnStatement *fnStmt, FnExpression *fnExpr,
         fnStmt->IsPrototype()
             ? llvm::DISubprogram::SPFlagZero
             : llvm::DISubprogram::DISPFlags::SPFlagDefinition);
-
     irFunc->fn->setSubprogram(sp);
-    // bool isPrototype = fnStmt ? fnStmt->IsPrototype() : false;
-    // if (!isPrototype)
-    // {
-    //     currentScope = sp;
-    // }
 }
 
 void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
@@ -283,6 +300,7 @@ void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
     uint32_t colNumber = varStmt->GetIdentifier()->GetColNumber();
     if (isGlobal)
     {
+        currentScope = file;
         auto digv = diBuilder->createGlobalVariableExpression(
             currentScope, name, fullname, file, lineNumber, diType, false);
         auto gv = llvm::dyn_cast<llvm::GlobalVariable>(irVariable->value);
@@ -290,10 +308,11 @@ void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
     }
     else
     {
-        if (llvm::isa<llvm::DIFile>(currentScope))
-        {
-            assert(0);
-        }
+        currentScope =
+            codeGen->irBuilder->GetInsertBlock()->getParent()->getSubprogram();
+        assert(currentScope && "Scope is null!");
+        assert(isa<llvm::DILocalScope>(currentScope) &&
+               "Invalid scope for local variable!");
         auto div = diBuilder->createAutoVariable(currentScope, name, file,
                                                  lineNumber, diType, false);
         auto var = llvm::dyn_cast<llvm::AllocaInst>(irVariable->value);
@@ -304,58 +323,24 @@ void DebugInfo::GenVarDeclStatementDI(VarDeclStatement *varStmt,
                                  codeGen->irBuilder->GetInsertBlock());
     }
 }
-
-void DebugInfo::SetDebugLocation(Token const *token)
+void DebugInfo::SetDebugLoc(Token const *token)
 {
-    if (llvm::isa<llvm::DIFile>(currentScope))
+
+    auto bb = codeGen->irBuilder->GetInsertBlock();
+    if (bb)
     {
-            return;
-        assert(0);
+        currentScope = bb->getParent()->getSubprogram();
     }
+    else
+    {
+        return;
+    }
+
     uint32_t lineNumber = token->GetLineNumber();
     uint32_t colNumber = token->GetColNumber();
+    std::filesystem::path filepath = token->GetFilepath();
 
     llvm::DILocation *loc = llvm::DILocation::get(*codeGen->ctx, lineNumber,
                                                   colNumber, currentScope);
     codeGen->irBuilder->SetCurrentDebugLocation(loc);
-}
-void DebugInfo::SetScope(Scope *scope, bool isPkg)
-{
-    if (!isPkg && llvm::isa<llvm::DIFile>(currentScope))
-    {
-        auto bb = codeGen->irBuilder->GetInsertBlock();
-        if (bb)
-        {
-            auto func = bb->getParent();
-            currentScope = func->getSubprogram();
-        }
-        else
-        {
-            return;
-        }
-    }
-    if (scopeToDIScopeMap.contains(scope))
-    {
-        currentScope = scopeToDIScopeMap[scope];
-        return;
-    }
-    else if (isPkg)
-    {
-        GetCU(codeGen->semanticAnalyzer.currentPackage);
-        currentScope =
-            GetDIFile(scope->GetSourceLocation().filepath.generic_string());
-    }
-    else
-    {
-        if (llvm::isa<llvm::DIFile>(currentScope))
-        {
-            assert(0);
-        }
-        auto loc = scope->GetSourceLocation();
-        auto lexicalBlock = diBuilder->createLexicalBlock(
-            currentScope, GetDIFile(loc.filepath.generic_string()),
-            loc.lineNumber, loc.colNumber);
-        currentScope = lexicalBlock;
-    }
-    scopeToDIScopeMap[scope] = currentScope;
 }

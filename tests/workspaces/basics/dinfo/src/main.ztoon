@@ -1,0 +1,60 @@
+package mainPkg;
+
+
+struct Vector2
+{
+    x: f32 = 12.0;
+    y: f32 = 1.333;
+}
+
+fn printf(msg: readonly i8*, ...) ->i32;
+
+
+
+fn refVector(v: Vector2*)
+{
+    v.x = 123.0;
+    v.y = 678.0;
+}
+
+fn printVector(v: Vector2)
+{
+    printf("x: %f, y: %f", v.x as f64, v.y as f64);
+}
+
+fn add(x: i32, y: i32) -> i32
+{
+    ret x + y;
+}
+
+
+fn main() -> i32
+{
+
+    pi: f32 = 3.142;
+    numbers : i32[] = {1, 2, 3, 4};
+
+    msg: i8* = "my name is bashir";
+
+    d: f64 = 3.14324523523;
+    d = 98.234;
+
+    ptr_to_pi: f32* = &pi;
+
+    vec2: Vector2;
+
+    printVector(vec2);
+    refVector(&vec2);
+    printVector(vec2);
+
+    a: i32 = add(4,3);
+
+    for i: i32 = 0; i < 10; i++
+    {
+        i++;
+        i--;
+        printf("%d\n", i);
+    }
+    
+    ret 0;
+}

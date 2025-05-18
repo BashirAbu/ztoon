@@ -1312,7 +1312,9 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
     semanticAnalyzer.currentPackage = pkg;
     semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
 
-    debugInfo->SetScope(semanticAnalyzer.currentScope, true);
+    debugInfo->GetCU(pkg);
+    debugInfo->currentScope = debugInfo->GetDIFile(
+        pkg->GetIdentifier()->GetFilepath().generic_string());
 
     std::function<void(StructDataType *)> genStructIR = nullptr;
     std::function<void(UnionDataType *)> genUnionIR = nullptr;
@@ -1427,7 +1429,6 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
             genStructIR(structZtoonType);
             auto temp = semanticAnalyzer.currentScope;
             semanticAnalyzer.currentScope = structZtoonType->scope;
-            debugInfo->SetScope(semanticAnalyzer.currentScope);
             for (auto method : structStmt->GetMethods())
             {
                 if (method->GetGeneric())
@@ -1438,7 +1439,6 @@ void CodeGen::GenPackageGlobalTypesIR(Package *pkg)
                 GenFnStatementIR(fnStmt, true, false);
             }
             semanticAnalyzer.currentScope = temp;
-            debugInfo->SetScope(semanticAnalyzer.currentScope);
         }
         else if (dynamic_cast<UnionStatement *>(stmt))
         {
@@ -1574,15 +1574,12 @@ void CodeGen::GenGlobalVariableIR(VarDeclStatement *varDeclStatement)
             varDeclStatement->GetCodeErrString()));
     irVariable->irType = varDeclType;
     AddIRSymbol(irVariable);
-
-    debugInfo->GenVarDeclStatementDI(varDeclStatement, irVariable, true);
 }
 void CodeGen::GenPackageGlobalFuncsAndVarsIR(Package *pkg)
 {
     semanticAnalyzer.currentPackage = pkg;
     semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
 
-    debugInfo->SetScope(semanticAnalyzer.currentScope, true);
     for (auto stmt : pkg->GetStatements())
     {
         if (dynamic_cast<VarDeclStatement *>(stmt))
@@ -1638,7 +1635,6 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
 {
     semanticAnalyzer.currentPackage = pkg;
     semanticAnalyzer.currentScope = semanticAnalyzer.pkgToScopeMap[pkg];
-    debugInfo->SetScope(semanticAnalyzer.currentScope, true);
     for (auto stmt : pkg->GetStatements())
     {
         if (dynamic_cast<FnStatement *>(stmt))
@@ -1657,7 +1653,6 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
 
             IRFunction *irFunc = dynamic_cast<IRFunction *>(
                 GetIRSymbol(fnStmt->GetIdentifier()->GetLexeme()));
-
             auto tempBlockStmt = semanticAnalyzer.currentBlockStatement;
             semanticAnalyzer.currentBlockStatement =
                 fnStmt->GetBlockStatement();
@@ -1673,7 +1668,6 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 semanticAnalyzer.currentScope =
                     semanticAnalyzer
                         .blockToScopeMap[fnStmt->GetBlockStatement()];
-                debugInfo->SetScope(semanticAnalyzer.currentScope);
                 for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
                 {
                     auto temp = semanticAnalyzer.currentScope;
@@ -1692,10 +1686,8 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                     auto temp = semanticAnalyzer.currentScope;
 
                     semanticAnalyzer.currentScope = varDecl.currentScope;
-                    debugInfo->SetScope(semanticAnalyzer.currentScope);
                     GenVarDeclStatementIR(varDecl.varDecl, true, false);
                     semanticAnalyzer.currentScope = temp;
-                    debugInfo->SetScope(semanticAnalyzer.currentScope);
                 }
 
                 for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
@@ -1730,7 +1722,6 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 }
 
                 semanticAnalyzer.currentScope = tempScope;
-                debugInfo->SetScope(semanticAnalyzer.currentScope);
             }
             semanticAnalyzer.currentBlockStatement = tempBlockStmt;
         }
@@ -1745,7 +1736,6 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 semanticAnalyzer.stmtToDataTypeMap[structStmt]);
             auto tempScope = semanticAnalyzer.currentScope;
             semanticAnalyzer.currentScope = structZtoonType->scope;
-            debugInfo->SetScope(semanticAnalyzer.currentScope);
             for (auto method : structStmt->GetMethods())
             {
 
@@ -1774,7 +1764,6 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 semanticAnalyzer.currentScope =
                     semanticAnalyzer
                         .blockToScopeMap[fnStmt->GetBlockStatement()];
-                debugInfo->SetScope(semanticAnalyzer.currentScope);
                 for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
                 {
                     GenVarDeclStatementIR(paramStmt, true, false);
@@ -1784,10 +1773,8 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 {
                     auto temp = semanticAnalyzer.currentScope;
                     semanticAnalyzer.currentScope = varDecl.currentScope;
-                    debugInfo->SetScope(semanticAnalyzer.currentScope);
                     GenVarDeclStatementIR(varDecl.varDecl, true, false);
                     semanticAnalyzer.currentScope = temp;
-                    debugInfo->SetScope(semanticAnalyzer.currentScope);
                 }
 
                 for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
@@ -1822,10 +1809,8 @@ void CodeGen::GenPackageGlobalVarAndFuncBodiesIR(Package *pkg)
                 }
 
                 semanticAnalyzer.currentScope = tempScope;
-                debugInfo->SetScope(semanticAnalyzer.currentScope);
             }
             semanticAnalyzer.currentScope = tempScope;
-            debugInfo->SetScope(semanticAnalyzer.currentScope);
         }
     }
 }
@@ -1835,25 +1820,21 @@ void CodeGen::GenStatementIR(Statement *statement)
     if (dynamic_cast<StructStatement *>(statement))
     {
         auto structStmt = dynamic_cast<StructStatement *>(statement);
-        debugInfo->SetDebugLocation(structStmt->GetIDToken());
         GenStructStatementIR(structStmt, false, true);
     }
     else if (dynamic_cast<EnumStatement *>(statement))
     {
         auto enumStmt = dynamic_cast<EnumStatement *>(statement);
-        debugInfo->SetDebugLocation(enumStmt->identifier);
         GenEnumStatementIR(enumStmt, true, true);
     }
     else if (dynamic_cast<UnionStatement *>(statement))
     {
         auto unionStmt = dynamic_cast<UnionStatement *>(statement);
-        debugInfo->SetDebugLocation(unionStmt->GetIDToken());
         GenUnionStatementIR(unionStmt, true, true);
     }
     else if (dynamic_cast<VarDeclStatement *>(statement))
     {
         auto varDeclStmt = dynamic_cast<VarDeclStatement *>(statement);
-        debugInfo->SetDebugLocation(varDeclStmt->GetIdentifier());
         GenVarDeclStatementIR(varDeclStmt, false, true);
     }
     else if (dynamic_cast<VarAssignmentStatement *>(statement))
@@ -1861,8 +1842,6 @@ void CodeGen::GenStatementIR(Statement *statement)
         // Need to check if ptr or variable.
         VarAssignmentStatement *varAssignmentStatement =
             dynamic_cast<VarAssignmentStatement *>(statement);
-        debugInfo->SetDebugLocation(
-            varAssignmentStatement->GetLValue()->GetFirstToken());
         GenVarAssignmentStatementIR(varAssignmentStatement);
     }
     else if (dynamic_cast<VarCompoundAssignmentStatement *>(statement))
@@ -1870,61 +1849,52 @@ void CodeGen::GenStatementIR(Statement *statement)
         VarCompoundAssignmentStatement *varComAssignStatement =
             dynamic_cast<VarCompoundAssignmentStatement *>(statement);
 
-        debugInfo->SetDebugLocation(
-            varComAssignStatement->GetLValue()->GetFirstToken());
+        // varComAssignStatement->GetLValue()->GetFirstToken());
         GenVarCompundAssignmentStatementIR(varComAssignStatement);
     }
     else if (dynamic_cast<ExpressionStatement *>(statement))
     {
         ExpressionStatement *exprStatement =
             dynamic_cast<ExpressionStatement *>(statement);
-        debugInfo->SetDebugLocation(
-            exprStatement->GetExpression()->GetFirstToken());
+        // exprStatement->GetExpression()->GetFirstToken());
         GenExpressionStatementIR(exprStatement);
     }
     else if (dynamic_cast<BlockStatement *>(statement))
     {
         BlockStatement *blockStatement =
             dynamic_cast<BlockStatement *>(statement);
-        debugInfo->SetDebugLocation(blockStatement->GetFirstToken());
         GenBlockStatementIR(blockStatement);
     }
     else if (dynamic_cast<IfStatement *>(statement))
     {
         IfStatement *ifStatement = dynamic_cast<IfStatement *>(statement);
-        debugInfo->SetDebugLocation(ifStatement->ifToken);
         GenIfStatementIR(ifStatement);
     }
     else if (dynamic_cast<WhileLoopStatement *>(statement))
     {
         WhileLoopStatement *whileStatement =
             dynamic_cast<WhileLoopStatement *>(statement);
-        debugInfo->SetDebugLocation(whileStatement->whileToken);
         GenWhileLoopStatementIR(whileStatement);
     }
     else if (dynamic_cast<ForLoopStatement *>(statement))
     {
         ForLoopStatement *forLoopStatement =
             dynamic_cast<ForLoopStatement *>(statement);
-        debugInfo->SetDebugLocation(forLoopStatement->forToken);
         GenForLoopStatementIR(forLoopStatement);
     }
     else if (dynamic_cast<BreakStatement *>(statement))
     {
         auto bStmt = dynamic_cast<BreakStatement *>(statement);
-        debugInfo->SetDebugLocation(bStmt->token);
         GenBreakStatementIR(bStmt);
     }
     else if (dynamic_cast<ContinueStatement *>(statement))
     {
         auto cStmt = dynamic_cast<ContinueStatement *>(statement);
-        debugInfo->SetDebugLocation(cStmt->token);
         GenContinueStatementIR(cStmt);
     }
     else if (dynamic_cast<RetStatement *>(statement))
     {
         auto *retStmt = dynamic_cast<RetStatement *>(statement);
-        debugInfo->SetDebugLocation(retStmt->retToken);
         GenRetStatementIR(retStmt);
     }
 }
@@ -1935,16 +1905,12 @@ void CodeGen::GenBlockStatementIR(BlockStatement *blockStmt)
     BlockStatement *tempBlock = semanticAnalyzer.currentBlockStatement;
     semanticAnalyzer.currentBlockStatement = blockStmt;
     semanticAnalyzer.currentScope = semanticAnalyzer.blockToScopeMap[blockStmt];
-    debugInfo->SetScope(
-        semanticAnalyzer
-            .currentScope); // debugInfo->GenBlockStatementDI(semanticAnalyzer.currentBlockStatement);
     for (Statement *s : blockStmt->GetStatements())
     {
         GenStatementIR(s);
     }
 
     semanticAnalyzer.currentScope = temp;
-    debugInfo->SetScope(semanticAnalyzer.currentScope);
     semanticAnalyzer.currentBlockStatement = tempBlock;
 }
 void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
@@ -2001,13 +1967,11 @@ void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
             *ctx, std::format("{}FnBlock", fn->GetName()), irFunc->fn);
         irFunc->fnBB = fnBB;
         irBuilder->SetInsertPoint(fnBB);
-
         size_t index = 0;
         auto tempScope = semanticAnalyzer.currentScope;
         semanticAnalyzer.currentScope =
             semanticAnalyzer.blockToScopeMap[fnStmt->GetBlockStatement()];
 
-        debugInfo->SetScope(semanticAnalyzer.currentScope);
         for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
         {
             auto temp = semanticAnalyzer.currentScope;
@@ -2026,10 +1990,8 @@ void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
         {
             auto temp = semanticAnalyzer.currentScope;
             semanticAnalyzer.currentScope = varDecl.currentScope;
-            debugInfo->SetScope(semanticAnalyzer.currentScope);
             GenVarDeclStatementIR(varDecl.varDecl, true, false);
             semanticAnalyzer.currentScope = temp;
-            debugInfo->SetScope(semanticAnalyzer.currentScope);
         }
 
         for (VarDeclStatement *paramStmt : fnStmt->GetParameters())
@@ -2062,7 +2024,6 @@ void CodeGen::GenFnStatementIR(FnStatement *fnStmt, bool genSymbol,
         }
         irBuilder->SetInsertPoint(tempBB);
         semanticAnalyzer.currentScope = tempScope;
-        debugInfo->SetScope(semanticAnalyzer.currentScope);
     }
 }
 void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
@@ -2070,6 +2031,7 @@ void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
 {
     if (genSymbol)
     {
+        debugInfo->SetDebugLoc(varDeclStmt->GetIdentifier());
         UnionDataType *unionType = dynamic_cast<UnionDataType *>(
             semanticAnalyzer.stmtToDataTypeMap[varDeclStmt]);
         if (unionType)
@@ -2101,7 +2063,6 @@ void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
             semanticAnalyzer.stmtToDataTypeMap[varDeclStmt];
         irVariable->irType = varDeclType;
         AddIRSymbol(irVariable);
-
         debugInfo->GenVarDeclStatementDI(varDeclStmt, irVariable, false);
     }
     if (genBody)
@@ -2112,7 +2073,7 @@ void CodeGen::GenVarDeclStatementIR(VarDeclStatement *varDeclStmt,
         StructDataType *structType = dynamic_cast<StructDataType *>(type);
         auto varDeclType = ZtoonTypeToLLVMType(type);
         IRVariable *irVariable = dynamic_cast<IRVariable *>(irSymbol);
-
+        debugInfo->SetDebugLoc(varDeclStmt->GetIdentifier());
         if (varDeclStmt->GetExpression())
         {
             if (arrType)
@@ -2345,7 +2306,6 @@ void CodeGen::GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
         semanticAnalyzer.stmtToDataTypeMap[structStmt]);
     auto temp = semanticAnalyzer.currentScope;
     semanticAnalyzer.currentScope = structZtoonType->scope;
-    debugInfo->SetScope(semanticAnalyzer.currentScope);
     if (genSymbol)
     {
         for (auto method : structStmt->GetMethods())
@@ -2374,7 +2334,6 @@ void CodeGen::GenStructStatementIR(StructStatement *structStmt, bool genSymbol,
     }
 
     semanticAnalyzer.currentScope = temp;
-    debugInfo->SetScope(semanticAnalyzer.currentScope);
 }
 void CodeGen::GenUnionStatementIR(UnionStatement *unionStmt, bool genSymbol,
                                   bool genBody)
@@ -2398,7 +2357,6 @@ void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
     bool useSigned = enumType->datatype->IsSigned();
     auto temp = semanticAnalyzer.currentScope;
     semanticAnalyzer.currentScope = enumType->scope;
-    debugInfo->SetScope(semanticAnalyzer.currentScope);
     for (auto f : enumStmt->fields)
     {
 
@@ -2456,10 +2414,10 @@ void CodeGen::GenEnumStatementIR(EnumStatement *enumStmt, bool genSymbol,
         AddIRSymbol(irReadonlySymbol);
     }
     semanticAnalyzer.currentScope = temp;
-    debugInfo->SetScope(semanticAnalyzer.currentScope);
 }
 void CodeGen::GenRetStatementIR(RetStatement *retStmt)
 {
+    debugInfo->SetDebugLoc(retStmt->retToken);
     if (auto t = irBuilder->GetInsertBlock()->getTerminator())
     {
         if (llvm::isa<llvm::ReturnInst>(t))
@@ -2669,7 +2627,6 @@ IRValue CodeGen::GenFnExpressionIR(FnExpression *fnExpr, bool isWrite)
     auto tempScope = semanticAnalyzer.currentScope;
     semanticAnalyzer.currentScope =
         semanticAnalyzer.blockToScopeMap[fnExpr->GetBlockStatement()];
-    debugInfo->SetScope(semanticAnalyzer.currentScope);
     size_t index = 0;
 
     for (auto aggType : semanticAnalyzer.fnToAggDeclsMap[fn])
@@ -2688,10 +2645,8 @@ IRValue CodeGen::GenFnExpressionIR(FnExpression *fnExpr, bool isWrite)
     {
         auto temp = semanticAnalyzer.currentScope;
         semanticAnalyzer.currentScope = varDecl.currentScope;
-        debugInfo->SetScope(semanticAnalyzer.currentScope);
         GenVarDeclStatementIR(varDecl.varDecl, true, false);
         semanticAnalyzer.currentScope = temp;
-        debugInfo->SetScope(semanticAnalyzer.currentScope);
     }
 
     for (VarDeclStatement *paramStmt : fnExpr->GetParameters())
@@ -2722,7 +2677,6 @@ IRValue CodeGen::GenFnExpressionIR(FnExpression *fnExpr, bool isWrite)
         }
     }
     semanticAnalyzer.currentScope = tempScope;
-    debugInfo->SetScope(semanticAnalyzer.currentScope);
     irBuilder->SetInsertPoint(tempBB);
     IRValue irValue;
     irValue.value = irFunc->GetValue();
@@ -3319,6 +3273,7 @@ IRValue CodeGen::GenUnaryExpressionIR(UnaryExpression *unaryExpr, bool isWrite)
 IRValue CodeGen::GenFnCallExpressionIR(FnCallExpression *fnCallExpr,
                                        bool isWrite)
 {
+    debugInfo->SetDebugLoc(fnCallExpr->GetFirstToken());
     IRValue exprValue = GenExpressionIR(fnCallExpr->GetGetExpression());
 
     auto fnPtrType = dynamic_cast<PointerDataType *>(
@@ -3464,10 +3419,8 @@ IRValue CodeGen::GenMemberAccessExpressionIR(MemberAccessExpression *maExpr,
         {
             auto temp = semanticAnalyzer.currentScope;
             semanticAnalyzer.currentScope = structType->scope;
-            debugInfo->SetScope(semanticAnalyzer.currentScope);
             irValue = GenExpressionIR(maExpr->GetRightExpression());
             semanticAnalyzer.currentScope = temp;
-            debugInfo->SetScope(semanticAnalyzer.currentScope);
         }
     }
     else if (maExpr->accessType == MemberAccessExpression::AccessType::UNION)
@@ -3524,11 +3477,9 @@ IRValue CodeGen::GenMemberAccessExpressionIR(MemberAccessExpression *maExpr,
         semanticAnalyzer.currentScope =
             semanticAnalyzer.pkgToScopeMap[pgkType->pkg];
 
-        debugInfo->SetScope(semanticAnalyzer.currentScope);
         irValue = GenExpressionIR(maExpr->GetRightExpression());
 
         semanticAnalyzer.currentScope = temp;
-        debugInfo->SetScope(semanticAnalyzer.currentScope);
     }
 
     return irValue;
@@ -3704,73 +3655,64 @@ IRValue CodeGen::GenPrimaryExpressionIR(PrimaryExpression *primaryExpr,
 }
 IRValue CodeGen::GenExpressionIR(Expression *expression, bool isWrite)
 {
+    debugInfo->SetDebugLoc(expression->GetFirstToken());
     IRValue irValue = {};
     if (dynamic_cast<FnExpression *>(expression))
     {
         auto *fnExpr = dynamic_cast<FnExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenFnExpressionIR(fnExpr, isWrite);
     }
     else if (dynamic_cast<FnCallExpression *>(expression))
     {
         auto *fnCallExpr = dynamic_cast<FnCallExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenFnCallExpressionIR(fnCallExpr, isWrite);
     }
     else if (dynamic_cast<MemberAccessExpression *>(expression))
     {
         MemberAccessExpression *maExpr =
             dynamic_cast<MemberAccessExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenMemberAccessExpressionIR(maExpr, isWrite);
     }
     else if (dynamic_cast<SubscriptExpression *>(expression))
     {
         SubscriptExpression *subExpr =
             dynamic_cast<SubscriptExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenSubScriptExpressionIR(subExpr, isWrite);
     }
     else if (dynamic_cast<TernaryExpression *>(expression))
     {
         TernaryExpression *ternaryExpr =
             dynamic_cast<TernaryExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenTernaryExpressionIR(ternaryExpr, isWrite);
     }
     else if (dynamic_cast<BinaryExpression *>(expression))
     {
         BinaryExpression *binaryExpression =
             dynamic_cast<BinaryExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenBinaryExpressionIR(binaryExpression, isWrite);
     }
     else if (dynamic_cast<UnaryExpression *>(expression))
     {
         UnaryExpression *unaryExpression =
             dynamic_cast<UnaryExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenUnaryExpressionIR(unaryExpression, isWrite);
     }
     else if (dynamic_cast<GroupingExpression *>(expression))
     {
         GroupingExpression *groupingExpression =
             dynamic_cast<GroupingExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenGroupingExpressionIR(groupingExpression, isWrite);
     }
     else if (dynamic_cast<CastExpression *>(expression))
     {
         CastExpression *castExpression =
             dynamic_cast<CastExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenCastExpressionIR(castExpression, isWrite);
     }
     else if (dynamic_cast<PrimaryExpression *>(expression))
     {
         PrimaryExpression *primaryExpression =
             dynamic_cast<PrimaryExpression *>(expression);
-        debugInfo->SetDebugLocation(expression->GetFirstToken());
         irValue = GenPrimaryExpressionIR(primaryExpression, isWrite);
     }
     else

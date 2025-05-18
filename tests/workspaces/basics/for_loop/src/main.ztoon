@@ -1,4 +1,6 @@
 package mainPkg
+
+
 fn main() -> i32
 {
     a: i32 = 0;

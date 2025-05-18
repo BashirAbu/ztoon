@@ -189,7 +189,6 @@ class CodeGen
     std::unordered_map<Statement *, bool> globalStatementIRDoneMap;
     std::unordered_map<VarDeclStatement *, IRValue> globalConstsMap;
     std::unordered_map<Symbol *, IRSymbol *> symbolToIRSymobMap;
-
     class DebugInfo *debugInfo = nullptr;
     Project *project = nullptr;
     friend class DebugInfo;

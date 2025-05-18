@@ -110,3 +110,6 @@ workspace:
     - defer:
             relative_path: defer/
             type: exe
+    - dinfo:
+            relative_path: dinfo/
+            type: exe
